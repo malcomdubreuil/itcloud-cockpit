@@ -1,0 +1,550 @@
+// ITCloud Cockpit — schéma v1.1 (mono-tenant, MySQL 8)
+// Conventions : UUID partout, soft delete (deletedAt), tenantId sur toutes
+// les tables métier (une seule valeur en v1 — retrofit multi-tenant en v2).
+// Règle soft delete × unique : recréer une entité soft-supprimée avec la même
+// clé unique = réactiver l'enregistrement existant (voir doc §5.0).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Tenancy & sécurité ───────────────────────────
+
+model Tenant {
+  id          String  @id @default(uuid())
+  name        String
+  itcloudCode String?
+  partnerTier String? // Certifié / Or / Platine / Titane / Élite — config v1
+  settings    Json    @default("{}")
+
+  users          User[]
+  clients        Client[]
+  suppliers      Supplier[]
+  products       Product[]
+  apiCredentials ApiCredential[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id           String    @id @default(uuid())
+  tenantId     String
+  email        String    @unique
+  passwordHash String
+  name         String
+  roleId       String
+  mfaEnabled   Boolean   @default(false)
+  mfaSecretEnc String?   // TOTP chiffré AES-256-GCM
+  mfaKeyVersion Int?     // version de clé du chiffrement du secret
+  lastLoginAt  DateTime?
+  deletedAt    DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  notes     Note[]
+  comments  Comment[]
+  documents Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([roleId])
+}
+
+model Role {
+  id          String @id @default(uuid())
+  tenantId    String
+  name        String // Admin, Gestionnaire, Comptable, Lecture
+  permissions Json   // ex. ["clients:read","invoices:write"] ou ["*"]
+
+  users User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, name])
+}
+
+model ApiCredential {
+  id         String    @id @default(uuid())
+  tenantId   String
+  provider   String    // "ITCLOUD"
+  keyEnc     String    // AES-256-GCM
+  keyVersion Int       @default(1)
+  lastUsedAt DateTime?
+  rotatedAt  DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, provider])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  userId     String?  // null si action système (sync)
+  action     String   // "client.update", "sync.run", "auth.login"…
+  entityType String?
+  entityId   String?
+  before     Json?
+  after      Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, createdAt])
+}
+
+// ─────────────────────────────── Clients ──────────────────────────────────
+
+enum PaymentMethod {
+  PREAUTORISE
+  CHEQUE
+  VIREMENT
+  CARTE
+}
+
+enum BillingType {
+  MENSUEL
+  ANNUEL
+  MIXTE
+}
+
+enum ClientStatus {
+  ACTIF
+  SUSPENDU
+  INACTIF
+}
+
+model Client {
+  id            String         @id @default(uuid())
+  tenantId      String
+  companyName   String
+  contactName   String?
+  phone         String?
+  email         String?
+  clientCode    String?        // code client ITCloud — pivot du rapprochement
+  paymentMethod PaymentMethod?
+  billingType   BillingType?
+  status        ClientStatus   @default(ACTIF)
+  anniversary   DateTime?
+  deletedAt     DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  services         ClientService[]
+  invoices         Invoice[]
+  notes            Note[]
+  comments         Comment[]
+  documents        Document[]
+  tags             Tag[]
+  categories       Category[]
+  azureConsumption AzureConsumption[]
+  alerts           Alert[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, clientCode])
+  @@index([tenantId, status])
+  @@index([tenantId, companyName])
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  tenantId  String
+  clientId  String
+  authorId  String
+  content   String   @db.Text
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id])
+  author User   @relation(fields: [authorId], references: [id])
+
+  @@index([tenantId, clientId])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  tenantId  String
+  clientId  String
+  authorId  String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id])
+  author User   @relation(fields: [authorId], references: [id])
+
+  @@index([tenantId, clientId])
+}
+
+model Document {
+  id           String    @id @default(uuid())
+  tenantId     String
+  clientId     String
+  fileName     String
+  mimeType     String
+  size         Int
+  storagePath  String    // relatif au répertoire de stockage hors racine web
+  uploadedById String
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  client     Client @relation(fields: [clientId], references: [id])
+  uploadedBy User   @relation(fields: [uploadedById], references: [id])
+
+  @@index([tenantId, clientId])
+}
+
+model Tag {
+  id       String @id @default(uuid())
+  tenantId String
+  name     String
+  color    String
+
+  clients Client[]
+
+  @@unique([tenantId, name])
+}
+
+model Category {
+  id       String @id @default(uuid())
+  tenantId String
+  name     String
+
+  clients Client[]
+
+  @@unique([tenantId, name])
+}
+
+// ──────────────────── Fournisseurs, catalogue, tarifs ─────────────────────
+
+enum BillingCycle {
+  MENSUEL
+  ANNUEL
+  TRIMESTRIEL
+}
+
+model Supplier {
+  id       String  @id @default(uuid())
+  tenantId String
+  name     String  // Microsoft, Bitdefender, Acronis, Azure…
+  group    String?
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, name])
+}
+
+model Product {
+  id           String       @id @default(uuid())
+  tenantId     String
+  supplierId   String
+  group        String?      // mappé sur BACKUP, ANTIVIRUS, LICENCE, CLOUD (alertes)
+  name         String
+  description  String?      @db.Text
+  sku          String       // clé de rapprochement avec l'API
+  msrp         Decimal      @db.Decimal(12, 4) // PDSF
+  partnerCost  Decimal      @db.Decimal(12, 4) // coût partenaire (niveau courant)
+  billingCycle BillingCycle
+  active       Boolean      @default(true)
+  deletedAt    DateTime?
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  services       ClientService[]
+  priceOverrides PriceOverride[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, sku, billingCycle])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, group])
+}
+
+model PriceOverride {
+  id            String   @id @default(uuid())
+  tenantId      String
+  productId     String
+  clientId      String?  // null = prix par défaut du tenant
+  price         Decimal  @db.Decimal(12, 4)
+  effectiveFrom DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, productId, clientId])
+}
+
+// ─────────────────────────── Services clients ─────────────────────────────
+
+enum ServiceStatus {
+  EN_ATTENTE
+  ACTIF
+  SUSPENDU
+  ANNULE
+  EXPIRE
+}
+
+model ClientService {
+  id           String        @id @default(uuid())
+  tenantId     String
+  clientId     String
+  productId    String
+  matchKey     String        // clientCode|sku|billingCycle (rapprochement §5.4)
+  externalId   String?       // si l'API expose un jour un id stable
+  licenseKey   String?
+  assignedUser String?
+  quantity     Int
+  unitCost     Decimal       @db.Decimal(12, 4) // snapshot coût au moment T
+  unitPrice    Decimal       @db.Decimal(12, 4) // snapshot prix de vente
+  purchaseDate DateTime?
+  renewalDate  DateTime?
+  status       ServiceStatus @default(ACTIF)
+  missingSince DateTime?     // 1re sync SUCCES où l'item est absent (§7.2)
+  deletedAt    DateTime?
+
+  client  Client  @relation(fields: [clientId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  changes      ServiceChange[]
+  invoiceItems InvoiceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, matchKey])
+  @@index([tenantId, renewalDate])
+  @@index([tenantId, status])
+  @@index([tenantId, clientId])
+}
+
+enum ChangeType {
+  CREATION
+  MODIFICATION
+  ANNULATION
+  REACTIVATION
+  QTE
+  PRIX
+  SUSPENSION
+  RENOUVELLEMENT
+}
+
+enum ChangeSource {
+  SYNC
+  MANUEL
+}
+
+model ServiceChange {
+  id         String       @id @default(uuid())
+  tenantId   String
+  serviceId  String
+  changeType ChangeType
+  field      String?
+  oldValue   Json?
+  newValue   Json?
+  source     ChangeSource
+  syncRunId  String?
+  userId     String?
+  createdAt  DateTime     @default(now())
+
+  service ClientService @relation(fields: [serviceId], references: [id])
+  syncRun SyncRun?      @relation(fields: [syncRunId], references: [id])
+
+  @@index([tenantId, serviceId, createdAt])
+}
+
+// ───────────────────────────── Synchronisation ────────────────────────────
+
+enum SyncTrigger {
+  SCHEDULE
+  MANUEL
+}
+
+enum SyncStatus {
+  EN_COURS
+  SUCCES
+  ERREUR
+  PARTIEL
+}
+
+model SyncRun {
+  id           String     @id @default(uuid())
+  tenantId     String
+  trigger      SyncTrigger
+  endpoint     String     // services-report, invoice-items-report, azure…
+  status       SyncStatus
+  startedAt    DateTime
+  finishedAt   DateTime?
+  itemsFetched Int        @default(0)
+  itemsCreated Int        @default(0)
+  itemsUpdated Int        @default(0)
+  itemsFlagged Int        @default(0)
+  errorMessage String?    @db.Text
+  rawPayload   Json?      // rétention 30 jours
+
+  changes          ServiceChange[]
+  azureConsumption AzureConsumption[]
+
+  @@index([tenantId, startedAt])
+  @@index([tenantId, status])
+}
+
+model AzureConsumption {
+  id        String   @id @default(uuid())
+  tenantId  String
+  clientId  String
+  period    DateTime // mois
+  category  String?
+  costCad   Decimal  @db.Decimal(12, 4)
+  budgetCad Decimal? @db.Decimal(12, 2)
+  syncRunId String
+
+  client  Client  @relation(fields: [clientId], references: [id])
+  syncRun SyncRun @relation(fields: [syncRunId], references: [id])
+
+  @@unique([tenantId, clientId, period, category])
+}
+
+// ─────────────────────────────── Facturation ──────────────────────────────
+
+enum InvoiceStatus {
+  BROUILLON
+  ENVOYEE
+  PAYEE
+  EN_RETARD
+  ANNULEE
+}
+
+model Invoice {
+  id          String        @id @default(uuid())
+  tenantId    String
+  clientId    String
+  number      String        // attribué via InvoiceSequence (SELECT … FOR UPDATE)
+  periodStart DateTime
+  periodEnd   DateTime
+  subtotal    Decimal       @db.Decimal(12, 2)
+  tps         Decimal       @db.Decimal(12, 2) // 5 %
+  tvq         Decimal       @db.Decimal(12, 2) // 9,975 %
+  total       Decimal       @db.Decimal(12, 2)
+  costTotal   Decimal       @db.Decimal(12, 2)
+  status      InvoiceStatus @default(BROUILLON)
+  dueDate     DateTime?
+  paidAt      DateTime?
+  deletedAt   DateTime?
+
+  client Client        @relation(fields: [clientId], references: [id])
+  items  InvoiceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, number])
+  @@index([tenantId, clientId])
+  @@index([tenantId, status])
+}
+
+model InvoiceSequence {
+  tenantId   String @id
+  nextNumber Int    @default(1)
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid())
+  invoiceId   String
+  serviceId   String?
+  description String
+  quantity    Int
+  unitPrice   Decimal @db.Decimal(12, 4)
+  unitCost    Decimal @db.Decimal(12, 4)
+  prorata     Boolean @default(false)
+  lineTotal   Decimal @db.Decimal(12, 2)
+
+  invoice Invoice        @relation(fields: [invoiceId], references: [id])
+  service ClientService? @relation(fields: [serviceId], references: [id])
+
+  @@index([invoiceId])
+}
+
+// ──────────────────────────────── Alertes ─────────────────────────────────
+
+enum AlertType {
+  RENOUVELLEMENT_30J
+  LICENCE_EXPIREE
+  PRODUIT_SUSPENDU
+  PAIEMENT_ECHOUE
+  SANS_SAUVEGARDE
+  SANS_ANTIVIRUS
+  AZURE_SANS_BUDGET
+  FACTURE_IMPAYEE
+  MARGE_NEGATIVE
+}
+
+enum Severity {
+  INFO
+  ATTENTION
+  CRITIQUE
+}
+
+enum AlertStatus {
+  OUVERTE
+  VUE
+  RESOLUE
+  IGNOREE
+}
+
+model Alert {
+  id         String      @id @default(uuid())
+  tenantId   String
+  type       AlertType
+  severity   Severity
+  clientId   String?
+  serviceId  String?
+  invoiceId  String?
+  message    String
+  status     AlertStatus @default(OUVERTE)
+  resolvedAt DateTime?
+  createdAt  DateTime    @default(now())
+
+  client Client? @relation(fields: [clientId], references: [id])
+
+  @@index([tenantId, status, severity])
+  @@index([tenantId, type, clientId, serviceId, invoiceId])
+}
+
+// ────────────────────────────── Snapshots KPI ─────────────────────────────
+
+model DailyKpiSnapshot {
+  id            String   @id @default(uuid())
+  tenantId      String
+  date          DateTime // jour (00:00)
+  mrr           Decimal  @db.Decimal(14, 2)
+  arr           Decimal  @db.Decimal(14, 2)
+  monthlyProfit Decimal  @db.Decimal(14, 2)
+  licenseCount  Int
+  clientCount   Int
+  createdAt     DateTime @default(now())
+
+  @@unique([tenantId, date])
+}
