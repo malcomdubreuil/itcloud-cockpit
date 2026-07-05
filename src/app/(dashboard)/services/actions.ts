@@ -156,3 +156,174 @@ export async function updateServicePrice(serviceId: string, price: number) {
 
   revalidatePath("/services");
 }
+
+// ── Boucle de refacturation ─────────────────────────────────────────────────
+
+function revalidateBillingViews() {
+  revalidatePath("/services");
+  revalidatePath("/dashboard");
+  revalidatePath("/clients");
+}
+
+// « Facturé → suivant » : le client vient d'être refacturé (nouvelle facture
+// QuickBooks créée). On avance l'échéance d'un cycle et on enregistre le
+// nouveau numéro → le service sort des urgences. C'est le cœur du logiciel.
+export async function markServiceBilled(
+  serviceId: string,
+  input: { qbInvoiceNo: string; renewalDate: string; itcloudInvoiceNo?: string },
+) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+
+  const qb = input.qbInvoiceNo.trim();
+  if (!qb) throw new Error("Le numéro de facture QuickBooks est requis");
+  if (qb.length > 100) throw new Error("Numéro trop long");
+  const newRenewal = new Date(`${input.renewalDate}T00:00:00`);
+  if (isNaN(newRenewal.getTime())) throw new Error("Date d'échéance invalide");
+
+  const service = await prisma.clientService.findUniqueOrThrow({
+    where: { id: serviceId },
+    select: {
+      id: true, tenantId: true, renewalDate: true,
+      lastQbInvoiceNo: true, lastItcloudInvoiceNo: true,
+    },
+  });
+  if (service.tenantId !== session.user.tenantId) throw new Error("Introuvable");
+
+  const it = input.itcloudInvoiceNo?.trim() || service.lastItcloudInvoiceNo;
+
+  await prisma.$transaction([
+    prisma.clientService.update({
+      where: { id: serviceId },
+      data: {
+        renewalDate: newRenewal,
+        lastQbInvoiceNo: qb,
+        lastItcloudInvoiceNo: it,
+        status: "ACTIF", // une facturation réactive un service expiré
+      },
+    }),
+    prisma.serviceChange.create({
+      data: {
+        tenantId: session.user.tenantId,
+        serviceId: service.id,
+        changeType: "RENOUVELLEMENT",
+        field: "renewalDate",
+        oldValue: {
+          renewalDate: service.renewalDate?.toISOString().slice(0, 10) ?? null,
+          qbInvoiceNo: service.lastQbInvoiceNo,
+        },
+        newValue: {
+          renewalDate: input.renewalDate,
+          qbInvoiceNo: qb,
+        },
+        source: "MANUEL",
+        userId: session.user.id,
+      },
+    }),
+  ]);
+
+  await audit({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "service.billed",
+    entityType: "ClientService",
+    entityId: service.id,
+    before: {
+      renewalDate: service.renewalDate?.toISOString().slice(0, 10) ?? null,
+      qbInvoiceNo: service.lastQbInvoiceNo,
+    },
+    after: { renewalDate: input.renewalDate, qbInvoiceNo: qb },
+  });
+
+  revalidateBillingViews();
+}
+
+// « Annulé / ne pas renouveler » : le service ne sera plus facturé → sort du
+// dashboard, des urgences et du MRR.
+export async function cancelService(serviceId: string) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+
+  const service = await prisma.clientService.findUniqueOrThrow({
+    where: { id: serviceId },
+    select: { id: true, tenantId: true, status: true },
+  });
+  if (service.tenantId !== session.user.tenantId) throw new Error("Introuvable");
+
+  await prisma.$transaction([
+    prisma.clientService.update({
+      where: { id: serviceId },
+      data: { status: "ANNULE" },
+    }),
+    prisma.serviceChange.create({
+      data: {
+        tenantId: session.user.tenantId,
+        serviceId: service.id,
+        changeType: "ANNULATION",
+        field: "status",
+        oldValue: service.status,
+        newValue: "ANNULE",
+        source: "MANUEL",
+        userId: session.user.id,
+      },
+    }),
+  ]);
+
+  await audit({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "service.cancel",
+    entityType: "ClientService",
+    entityId: service.id,
+    before: { status: service.status },
+    after: { status: "ANNULE" },
+  });
+
+  revalidateBillingViews();
+}
+
+// Annulé par erreur → remettre actif.
+export async function reactivateService(serviceId: string) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+
+  const service = await prisma.clientService.findUniqueOrThrow({
+    where: { id: serviceId },
+    select: { id: true, tenantId: true, status: true },
+  });
+  if (service.tenantId !== session.user.tenantId) throw new Error("Introuvable");
+
+  await prisma.$transaction([
+    prisma.clientService.update({
+      where: { id: serviceId },
+      data: { status: "ACTIF" },
+    }),
+    prisma.serviceChange.create({
+      data: {
+        tenantId: session.user.tenantId,
+        serviceId: service.id,
+        changeType: "REACTIVATION",
+        field: "status",
+        oldValue: service.status,
+        newValue: "ACTIF",
+        source: "MANUEL",
+        userId: session.user.id,
+      },
+    }),
+  ]);
+
+  await audit({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "service.reactivate",
+    entityType: "ClientService",
+    entityId: service.id,
+    before: { status: service.status },
+    after: { status: "ACTIF" },
+  });
+
+  revalidateBillingViews();
+}

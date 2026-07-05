@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { ServiceActions } from "@/components/service-actions";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -155,9 +156,8 @@ export default async function DashboardPage() {
                 const months = CYCLE_MONTHS[s.product.billingCycle] ?? 1;
                 const amount = Number(s.unitPrice) * s.quantity;
                 return (
-                  <Link
+                  <div
                     key={s.id}
-                    href={`/services?q=${encodeURIComponent(s.client.clientCode ?? s.client.companyName)}&tri=echeance`}
                     className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50"
                   >
                     <span
@@ -178,7 +178,10 @@ export default async function DashboardPage() {
                     >
                       {days} j
                     </span>
-                    <span className="min-w-0 flex-1">
+                    <Link
+                      href={`/services?q=${encodeURIComponent(s.client.clientCode ?? s.client.companyName)}&tri=echeance`}
+                      className="min-w-0 flex-1 hover:underline"
+                    >
                       <span className="block truncate text-sm font-medium">
                         {s.client.companyName}
                       </span>
@@ -187,14 +190,23 @@ export default async function DashboardPage() {
                         {s.quantity > 1 && ` × ${s.quantity}`}
                         {!s.lastQbInvoiceNo && " · aucune facture QB notée"}
                       </span>
-                    </span>
+                    </Link>
                     <span className="shrink-0 text-right text-sm tabular-nums">
                       {cadExact.format(amount)}
                       <span className="block text-xs text-muted-foreground">
                         {cadExact.format(amount / months)}/mois
                       </span>
                     </span>
-                  </Link>
+                    <ServiceActions
+                      serviceId={s.id}
+                      status="ACTIF"
+                      renewalDate={s.renewalDate!.toISOString().slice(0, 10)}
+                      billingCycle={s.product.billingCycle}
+                      qbInvoiceNo={s.lastQbInvoiceNo}
+                      clientName={s.client.companyName}
+                      productName={s.product.name}
+                    />
+                  </div>
                 );
               })}
             </CardContent>

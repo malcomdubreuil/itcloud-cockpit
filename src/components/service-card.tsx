@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MoneyInput } from "@/components/money-input";
 import { InlineTextInput } from "@/components/inline-text-input";
+import { ServiceActions } from "@/components/service-actions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -226,6 +227,18 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
               {profitMonthly >= 0 ? "+" : ""}{cad.format(profitMonthly)}/mois
             </p>
           </div>
+
+          {s.billingMode === "INDIRECT" && (s.status === "ACTIF" || s.status === "ANNULE" || s.status === "EXPIRE") && (
+            <ServiceActions
+              serviceId={s.id}
+              status={s.status}
+              renewalDate={s.renewalDate ? s.renewalDate.toISOString().slice(0, 10) : null}
+              billingCycle={s.product.billingCycle}
+              qbInvoiceNo={s.lastQbInvoiceNo}
+              clientName={s.client?.companyName ?? ""}
+              productName={s.product.name}
+            />
+          )}
         </div>
       </CardContent>
     </Card>
