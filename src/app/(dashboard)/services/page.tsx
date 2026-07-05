@@ -4,38 +4,22 @@ import { redirect } from "next/navigation";
 import { ChevronLeft, ChevronRight, Wrench } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
-import { MoneyInput } from "@/components/money-input";
-import { Badge } from "@/components/ui/badge";
+import { ServiceCard } from "@/components/service-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-import { updateServicePrice } from "./actions";
 
 export const metadata: Metadata = { title: "Services" };
 
 const PAGE_SIZE = 50;
 
-const CYCLE_LABEL: Record<string, string> = {
-  MENSUEL: "Mensuel",
-  ANNUEL: "Annuel",
-  TRIMESTRIEL: "Trimestriel",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  ACTIF: "Actif",
-  SUSPENDU: "Suspendu",
-  ANNULE: "Annulé",
-  EXPIRE: "Expiré",
-  EN_ATTENTE: "En attente",
-};
-
-const cad = new Intl.NumberFormat("fr-CA", {
-  style: "currency",
-  currency: "CAD",
-});
-
-type SearchParams = Promise<{ q?: string; statut?: string; page?: string }>;
+type SearchParams = Promise<{
+  q?: string;
+  statut?: string;
+  facturation?: string;
+  tri?: string;
+  page?: string;
+}>;
 
 export default async function ServicesPage({
   searchParams,
@@ -46,13 +30,24 @@ export default async function ServicesPage({
   if (!session?.user) redirect("/login");
   const tenantId = session.user.tenantId;
 
-  const { q = "", statut = "ACTIF", page: pageRaw } = await searchParams;
+  const {
+    q = "",
+    statut = "ACTIF",
+    facturation = "INDIRECT",
+    tri = "client",
+    page: pageRaw,
+  } = await searchParams;
   const page = Math.max(1, parseInt(pageRaw ?? "1") || 1);
+  const byRenewal = tri === "echeance";
 
   const where = {
     tenantId,
     deletedAt: null,
     ...(statut && statut !== "TOUS" ? { status: statut as never } : {}),
+    // Direct = ITCloud facture le client : masqué par défaut (rien à refacturer)
+    ...(facturation !== "TOUS" ? { billingMode: facturation as never } : {}),
+    // le tri par échéance sert à la refacturation : seuls les services datés comptent
+    ...(byRenewal ? { renewalDate: { not: null } } : {}),
     ...(q
       ? {
           OR: [
@@ -67,13 +62,17 @@ export default async function ServicesPage({
   const [services, total] = await Promise.all([
     prisma.clientService.findMany({
       where,
-      orderBy: [{ client: { companyName: "asc" } }, { product: { name: "asc" } }],
+      orderBy: byRenewal
+        ? [{ renewalDate: "asc" }]
+        : [{ client: { companyName: "asc" } }, { product: { name: "asc" } }],
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: {
         id: true, quantity: true, unitCost: true, unitPrice: true,
         status: true, renewalDate: true,
-        client: { select: { id: true, companyName: true, clientCode: true } },
+        lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true,
+        billingMode: true,
+        client: { select: { id: true, companyName: true } },
         product: { select: { name: true, billingCycle: true, msrp: true } },
       },
     }),
@@ -84,7 +83,7 @@ export default async function ServicesPage({
 
   const buildUrl = (overrides: Record<string, string>) => {
     const params = new URLSearchParams();
-    const merged = { q, statut, page: "", ...overrides };
+    const merged = { q, statut, facturation, tri, page: "", ...overrides };
     for (const [k, v] of Object.entries(merged)) if (v) params.set(k, v);
     const qs = params.toString();
     return qs ? `/services?${qs}` : "/services";
@@ -95,9 +94,11 @@ export default async function ServicesPage({
       <div>
         <h1 className="text-2xl font-semibold">Services</h1>
         <p className="text-sm text-muted-foreground">
-          {total} services — le <strong>prix de vente</strong> se modifie
-          directement dans la liste, par client. Le PDSF est affiché à titre
-          indicatif ; chaque changement est historisé.
+          {total} services — prix affichés <strong>par mois</strong>, prix de
+          vente modifiable directement. Couleur = urgence de refacturation :{" "}
+          <span className="font-medium text-red-600">rouge ≤ 30 j</span>,{" "}
+          <span className="font-medium text-yellow-600">jaune 30–60 j</span>,
+          vert ensuite.
         </p>
       </div>
 
@@ -119,6 +120,23 @@ export default async function ServicesPage({
           <option value="EXPIRE">Expirés</option>
           <option value="TOUS">Tous</option>
         </select>
+        <select
+          name="facturation"
+          defaultValue={facturation}
+          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+        >
+          <option value="INDIRECT">Indirects (je facture)</option>
+          <option value="DIRECT">Directs (ITCloud facture)</option>
+          <option value="TOUS">Toutes facturations</option>
+        </select>
+        <select
+          name="tri"
+          defaultValue={tri}
+          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+        >
+          <option value="client">Tri : client</option>
+          <option value="echeance">Tri : échéance (à facturer)</option>
+        </select>
         <Button type="submit" variant="secondary">Filtrer</Button>
       </form>
 
@@ -133,71 +151,29 @@ export default async function ServicesPage({
         </Card>
       ) : (
         <div className="space-y-2">
-          {services.map((s) => {
-            const price = Number(s.unitPrice);
-            const cost = Number(s.unitCost);
-            const margin = price > 0 ? ((price - cost) / price) * 100 : null;
-            return (
-              <Card key={s.id} className="py-3">
-                <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4">
-                  <div className="min-w-0 flex-1 basis-64">
-                    <p className="truncate font-medium">{s.client.companyName}</p>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {s.product.name}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline">
-                        {CYCLE_LABEL[s.product.billingCycle]}
-                      </Badge>
-                      {s.status !== "ACTIF" && (
-                        <Badge variant="secondary">{STATUS_LABEL[s.status]}</Badge>
-                      )}
-                      {s.renewalDate && (
-                        <span className="text-xs text-muted-foreground">
-                          Échéance {s.renewalDate.toLocaleDateString("fr-CA")}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 text-sm">
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Qté</p>
-                      <p className="tabular-nums">{s.quantity}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">PDSF</p>
-                      <p className="tabular-nums">{cad.format(Number(s.product.msrp))}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Coût u.</p>
-                      <p className="tabular-nums">{cad.format(cost)}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Prix de vente u.</p>
-                      <MoneyInput
-                        id={s.id}
-                        value={price}
-                        action={updateServicePrice}
-                        label="Prix de vente"
-                      />
-                    </div>
-                    <div className="w-16 text-right">
-                      <p className="text-xs text-muted-foreground">Marge</p>
-                      <p
-                        className={cn(
-                          "tabular-nums font-medium",
-                          margin !== null && margin < 0 && "text-destructive",
-                        )}
-                      >
-                        {margin === null ? "—" : `${margin.toFixed(1)} %`}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+          {services.map((s) => (
+            <ServiceCard
+              key={s.id}
+              service={{
+                id: s.id,
+                quantity: s.quantity,
+                unitCost: Number(s.unitCost),
+                unitPrice: Number(s.unitPrice),
+                status: s.status,
+                billingMode: s.billingMode,
+                renewalDate: s.renewalDate,
+                lastQbInvoiceNo: s.lastQbInvoiceNo,
+                lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
+                notes: s.notes,
+                product: {
+                  name: s.product.name,
+                  billingCycle: s.product.billingCycle,
+                  msrp: Number(s.product.msrp),
+                },
+                client: s.client,
+              }}
+            />
+          ))}
         </div>
       )}
 

@@ -25,13 +25,17 @@ export function MoneyInput({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const save = (raw: string) => {
+    // Champ inchangé (même texte que l'affichage initial) → rien à faire.
+    if (raw === current.toFixed(2)) return;
     const parsed = parseFloat(raw.replace(",", "."));
     if (isNaN(parsed) || parsed < 0) {
       if (inputRef.current) inputRef.current.value = current.toFixed(2);
       return;
     }
     const rounded = Math.round(parsed * 10000) / 10000;
-    if (rounded === current) return;
+    // Comparaison sur valeurs arrondies : évite les faux enregistrements dus
+    // aux flottants (ex. 35,40/12 = 2,9499999…) quand rien n'a changé.
+    if (rounded === Math.round(current * 10000) / 10000) return;
     startTransition(async () => {
       try {
         await action(id, rounded);

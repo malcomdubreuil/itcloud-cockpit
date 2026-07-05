@@ -42,3 +42,6 @@ next-env.d.ts
 
 # donnees clients (PII) - jamais commitees
 /data
+
+# secrets (cles privees) - jamais commites
+/secrets

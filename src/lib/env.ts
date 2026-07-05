@@ -38,6 +38,11 @@ const envSchema = z.object({
   // Secret des endpoints /api/cron/* (Bearer)
   CRON_SECRET: z.string().min(32, "CRON_SECRET : 32 caractères minimum"),
 
+  // Intégration ITCloud (auth par signature RSA) — optionnel tant que la
+  // synchronisation (phase 1) n'est pas configurée sur l'environnement.
+  ITCLOUD_INTEGRATION_ID: z.string().uuid().optional(),
+  ITCLOUD_PRIVATE_KEY_PATH: z.string().optional(),
+
   APP_URL: z.string().optional(),
 });
 

@@ -307,6 +307,14 @@ enum ServiceStatus {
   EXPIRE
 }
 
+// Mode de facturation ITCloud : INDIRECT = le partenaire facture son client
+// (le cœur du logiciel) ; DIRECT = ITCloud facture le client directement,
+// donc rien à refacturer (exclu des listes « à facturer » par défaut).
+enum BillingMode {
+  INDIRECT
+  DIRECT
+}
+
 model ClientService {
   id           String        @id @default(uuid())
   tenantId     String
@@ -322,7 +330,15 @@ model ClientService {
   purchaseDate DateTime?
   renewalDate  DateTime?
   status       ServiceStatus @default(ACTIF)
+  billingMode  BillingMode   @default(INDIRECT)
   missingSince DateTime?     // 1re sync SUCCES où l'item est absent (§7.2)
+
+  // Aide à la refacturation : derniers numéros de facture (éditables ;
+  // celui d'ITCloud sera aussi alimenté par la sync invoice-items en phase 1)
+  lastQbInvoiceNo      String? // dernière facture QuickBooks (GOD-INFO) au client
+  lastItcloudInvoiceNo String? // dernière facture ITCloud pour ce service
+  notes                String? @db.Text // notes libres par service (ex-colonne M du fichier Excel)
+
   deletedAt    DateTime?
 
   client  Client  @relation(fields: [clientId], references: [id])

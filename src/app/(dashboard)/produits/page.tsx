@@ -6,7 +6,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { ProductActiveToggle } from "@/components/product-active-toggle";
 import { MoneyInput } from "@/components/money-input";
-import { updateProductCost } from "./actions";
+import { updateProductCostMonthly } from "./actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,6 +22,21 @@ const CYCLE_LABEL: Record<string, string> = {
   ANNUEL: "Annuel",
   TRIMESTRIEL: "Trimestriel",
 };
+
+const CYCLE_MONTHS: Record<string, number> = {
+  MENSUEL: 1,
+  TRIMESTRIEL: 3,
+  ANNUEL: 12,
+};
+
+const CYCLE_SUFFIX: Record<string, string> = {
+  MENSUEL: "/mois",
+  TRIMESTRIEL: "/trim.",
+  ANNUEL: "/an",
+};
+
+// Prix vendant suggéré : coût mensuel + 2 $ par mois (règle du partenaire)
+const SUGGESTED_MARKUP_MONTHLY = 2;
 
 const cad = new Intl.NumberFormat("fr-CA", {
   style: "currency",
@@ -157,36 +172,58 @@ export default async function ProduitsPage({
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {products.map((p) => (
-            <Card key={p.id} className={cn("py-3", !p.active && "opacity-70")}>
-              <CardContent className="flex items-center gap-3 px-4">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium" title={p.name}>{p.name}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    {p.group && <Badge variant="secondary">{p.group}</Badge>}
-                    <Badge variant="outline">{CYCLE_LABEL[p.billingCycle]}</Badge>
-                    {p._count.services > 0 && (
-                      <Badge>{p._count.services} service{p._count.services > 1 ? "s" : ""} actif{p._count.services > 1 ? "s" : ""}</Badge>
-                    )}
+          {products.map((p) => {
+            const months = CYCLE_MONTHS[p.billingCycle] ?? 1;
+            const suffix = CYCLE_SUFFIX[p.billingCycle] ?? "";
+            const msrp = Number(p.msrp);
+            const costMonthly = Number(p.partnerCost) / months;
+            const suggestedMonthly = costMonthly + SUGGESTED_MARKUP_MONTHLY;
+            return (
+              <Card key={p.id} className={cn("py-3", !p.active && "opacity-70")}>
+                <CardContent className="flex items-center gap-3 px-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium" title={p.name}>{p.name}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {p.group && <Badge variant="secondary">{p.group}</Badge>}
+                      <Badge variant="outline">{CYCLE_LABEL[p.billingCycle]}</Badge>
+                      {p._count.services > 0 && (
+                        <Badge>{p._count.services} service{p._count.services > 1 ? "s" : ""} actif{p._count.services > 1 ? "s" : ""}</Badge>
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span>
+                        PDSF {cad.format(msrp)}{suffix}
+                        {months > 1 && (
+                          <span className="ml-1">({cad.format(msrp / months)}/mois)</span>
+                        )}
+                      </span>
+                      <span>·</span>
+                      <span className="inline-flex items-center gap-1">
+                        Coût
+                        <MoneyInput
+                          id={p.id}
+                          value={costMonthly}
+                          action={updateProductCostMonthly}
+                          label="Coût mensuel"
+                        />
+                        /mois
+                      </span>
+                      <span>·</span>
+                      <span className="font-medium text-foreground">
+                        Prix suggéré {cad.format(suggestedMonthly)}/mois
+                        {months > 1 && (
+                          <span className="ml-1 font-normal text-muted-foreground">
+                            ({cad.format(suggestedMonthly * months)}{suffix})
+                          </span>
+                        )}
+                      </span>
+                    </div>
                   </div>
-                  <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>PDSF {cad.format(Number(p.msrp))}</span>
-                    <span>·</span>
-                    <span className="inline-flex items-center gap-1">
-                      Coût
-                      <MoneyInput
-                        id={p.id}
-                        value={Number(p.partnerCost)}
-                        action={updateProductCost}
-                        label="Coût partenaire"
-                      />
-                    </span>
-                  </div>
-                </div>
-                <ProductActiveToggle productId={p.id} active={p.active} />
-              </CardContent>
-            </Card>
-          ))}
+                  <ProductActiveToggle productId={p.id} active={p.active} />
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
