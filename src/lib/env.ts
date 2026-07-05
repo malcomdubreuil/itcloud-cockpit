@@ -43,6 +43,13 @@ const envSchema = z.object({
   ITCLOUD_INTEGRATION_ID: z.string().uuid().optional(),
   ITCLOUD_PRIVATE_KEY_PATH: z.string().optional(),
 
+  // Intégration QuickBooks Online (OAuth 2.0) — optionnel tant que non branché.
+  // Le refresh token + realmId sont stockés chiffrés en BD (pas dans l'env).
+  QBO_CLIENT_ID: z.string().optional(),
+  QBO_CLIENT_SECRET: z.string().optional(),
+  QBO_REDIRECT_URI: z.string().optional(),
+  QBO_ENVIRONMENT: z.enum(["production", "sandbox"]).default("production"),
+
   APP_URL: z.string().optional(),
 });
 
