@@ -144,7 +144,14 @@ export function ServiceActions({
         if (res.status === "billed") {
           toast.success(
             `Facture #${res.newDocNumber} créée dans QuickBooks (non envoyée). Vérifie-la puis envoie-la. Prochaine échéance ${nextDate}.`,
-            { duration: 8000 },
+            {
+              duration: 20000,
+              action: {
+                label: "Ouvrir dans QuickBooks",
+                onClick: () =>
+                  window.open(res.invoiceUrl, "_blank", "noopener,noreferrer"),
+              },
+            },
           );
         } else {
           toast.success(

@@ -208,8 +208,14 @@ function buildDuplicatePayload(
 //   (qui lui assigne son numéro à l'enregistrement), l'envoie, puis revient
 //   saisir le numéro final dans l'ERP (ce qui avancera alors l'échéance).
 export type BillResult =
-  | { status: "billed"; newDocNumber: string }
-  | { status: "draft_no_number"; invoiceId: string };
+  | { status: "billed"; newDocNumber: string; invoiceUrl: string }
+  | { status: "draft_no_number"; invoiceId: string; invoiceUrl: string };
+
+// Lien profond vers une facture dans QuickBooks Online (ouvre dans la compagnie
+// active de l'utilisateur connecté).
+function qbInvoiceUrl(invoiceId: string): string {
+  return `https://qbo.intuit.com/app/invoice?txnId=${invoiceId}`;
+}
 
 // Duplique la dernière facture QuickBooks du service avec de nouvelles dates.
 // N'ENVOIE JAMAIS au client. Ne plante pas si QuickBooks ne retourne pas de
@@ -271,5 +277,9 @@ export async function billViaQuickBooks(
     renewalDate: input.renewalDate,
   });
 
-  return { status: "billed", newDocNumber: newDoc };
+  return {
+    status: "billed",
+    newDocNumber: newDoc,
+    invoiceUrl: qbInvoiceUrl(created.Id),
+  };
 }
