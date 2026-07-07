@@ -108,6 +108,38 @@ export class QuickBooksClient {
     return data.Invoice;
   }
 
+  // Génère le prochain numéro de facture au format AAAA-NNNN en lisant le plus
+  // grand numéro existant dans QuickBooks et en l'incrémentant. Sert quand la
+  // compagnie a la numérotation personnalisée (QuickBooks n'assigne rien).
+  async getNextDocNumber(): Promise<string> {
+    const data = await this.query<{
+      QueryResponse: { Invoice?: { DocNumber?: string }[] };
+    }>("SELECT * FROM Invoice MAXRESULTS 1000");
+    const invoices = data.QueryResponse.Invoice ?? [];
+
+    let bestYear = -1;
+    let bestNum = -1;
+    let width = 4;
+    for (const inv of invoices) {
+      const m = /^(\d{4})-(\d+)$/.exec((inv.DocNumber ?? "").trim());
+      if (!m) continue;
+      const y = parseInt(m[1], 10);
+      const n = parseInt(m[2], 10);
+      if (y > bestYear || (y === bestYear && n > bestNum)) {
+        bestYear = y;
+        bestNum = n;
+        width = m[2].length;
+      }
+    }
+
+    if (bestYear < 0) {
+      // Aucun numéro au format connu : démarre sur l'année courante.
+      return `${new Date().getFullYear()}-0001`;
+    }
+    const next = (bestNum + 1).toString().padStart(width, "0");
+    return `${bestYear}-${next}`;
+  }
+
   // Crée une facture (utilisé pour dupliquer : on repart de l'ancienne sans
   // Id/SyncToken/DocNumber, en ajustant les dates).
   async createInvoice(payload: Record<string, unknown>): Promise<QboInvoice> {

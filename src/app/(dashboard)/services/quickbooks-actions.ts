@@ -33,6 +33,7 @@ async function loadService(serviceId: string, tenantId: string) {
       tenantId: true,
       renewalDate: true,
       lastQbInvoiceNo: true,
+      quantity: true,
     },
   });
   if (service.tenantId !== tenantId) throw new Error("Introuvable");
@@ -98,33 +99,69 @@ export async function previewLastQbInvoice(
   };
 }
 
-// Construit le corps d'une nouvelle facture en dupliquant l'ancienne : on repart
-// des lignes/du client/des taxes de la source, sans les identifiants ni les dates
-// (QuickBooks réassigne le numéro et recalcule les taxes).
+// Incrémente de 1 an toutes les dates JJ-MM-AAAA d'un texte (règle Keven pour la
+// ligne de période : « Du 10-08-2025 au 09-08-2026 » → « Du 10-08-2026 au 09-08-2027 »).
+function bumpYears(text: string): string {
+  return text.replace(
+    /(\d{2}-\d{2}-)(\d{4})/g,
+    (_, dm: string, year: string) => dm + (parseInt(year, 10) + 1),
+  );
+}
+
+// Nettoie une ligne source : retire Id/LineNum (réassignés par QuickBooks) et
+// incrémente l'année dans la description (règle période).
+function cleanLine(l: unknown): Record<string, unknown> {
+  const keep = { ...(l as Record<string, unknown>) };
+  delete keep.Id;
+  delete keep.LineNum;
+  if (typeof keep.Description === "string") {
+    keep.Description = bumpYears(keep.Description);
+  }
+  return keep;
+}
+
+const detailType = (l: unknown) =>
+  (l as { DetailType?: string })?.DetailType ?? "";
+
+// Construit le corps d'une nouvelle facture en dupliquant l'ancienne. Règles :
+// - une LIGNE par licence (on duplique la ligne produit, on n'augmente pas la
+//   quantité) quand la source a une seule ligne produit et que quantity > 1 ;
+// - année de la ligne de période +1 ;
+// - numéro de facture fourni par l'ERP (docNumber) ;
+// on repart du client/des taxes de la source, sans Id ni dates.
 function buildDuplicatePayload(
   src: QboInvoice,
   txnDate: string,
+  quantity: number,
+  docNumber: string,
 ): Record<string, unknown> {
-  const lines = Array.isArray(src.Line)
-    ? src.Line
-        .filter(
-          (l) =>
-            (l as { DetailType?: string })?.DetailType &&
-            (l as { DetailType?: string }).DetailType !== "SubTotalLineDetail",
-        )
-        .map((l) => {
-          // Retire l'Id de ligne et le numéro d'ordre : QuickBooks les réassigne.
-          const keep = { ...(l as Record<string, unknown>) };
-          delete keep.Id;
-          delete keep.LineNum;
-          return keep;
-        })
-    : [];
+  const rawLines = (Array.isArray(src.Line) ? src.Line : []).filter(
+    (l) => detailType(l) && detailType(l) !== "SubTotalLineDetail",
+  );
+  const productLines = rawLines.filter(
+    (l) => detailType(l) === "SalesItemLineDetail",
+  );
+  const otherLines = rawLines.filter(
+    (l) => detailType(l) !== "SalesItemLineDetail",
+  );
+
+  let lines: Record<string, unknown>[];
+  if (productLines.length === 1 && quantity > 1) {
+    // Règle 1 : une ligne identique par licence, puis les lignes de période.
+    const copies = Array.from({ length: quantity }, () =>
+      cleanLine(productLines[0]),
+    );
+    lines = [...copies, ...otherLines.map(cleanLine)];
+  } else {
+    // Cas simple ou multi-produits : on garde les lignes telles quelles.
+    lines = rawLines.map(cleanLine);
+  }
 
   const payload: Record<string, unknown> = {
     CustomerRef: src.CustomerRef,
     Line: lines,
     TxnDate: txnDate,
+    DocNumber: docNumber, // Règle 2 : numéro fourni par l'ERP.
   };
 
   // Conserve les termes de paiement et recalcule l'échéance avec le même délai.
@@ -199,13 +236,15 @@ export async function billViaQuickBooks(
     throw new Error(`Facture source ${docNumber} introuvable dans QuickBooks.`);
   }
 
+  // Règle 2 : l'ERP génère le nouveau numéro AVANT la création (si ça échoue,
+  // aucune facture n'est créée — pas de brouillon sans numéro).
+  const newNumber = await client.getNextDocNumber();
+
   const created = await client.createInvoice(
-    buildDuplicatePayload(src, input.txnDate),
+    buildDuplicatePayload(src, input.txnDate, service.quantity, newNumber),
   );
 
-  // Trace TOUJOURS la création dès qu'elle a réussi (l'Id QuickBooks permet de
-  // retrouver la facture même si elle n'a pas encore de numéro). Écrit APRÈS le
-  // succès de createInvoice, pas avant, pour refléter la réalité.
+  // Trace TOUJOURS la création dès qu'elle a réussi (l'Id QuickBooks + le numéro).
   await audit({
     tenantId: user.tenantId,
     userId: user.id,
@@ -215,20 +254,18 @@ export async function billViaQuickBooks(
     before: { sourceDocNumber: docNumber },
     after: {
       quickbooksInvoiceId: created.Id,
-      docNumber: created.DocNumber ?? null,
+      docNumber: created.DocNumber ?? newNumber,
       txnDate: input.txnDate,
+      lines: service.quantity,
     },
   });
 
-  const newDoc = created.DocNumber?.trim();
-  if (!newDoc) {
-    // Numérotation personnalisée : QuickBooks a créé le brouillon sans numéro.
-    // On NE fait PAS avancer l'échéance et on n'enregistre pas de faux numéro.
-    return { status: "draft_no_number", invoiceId: created.Id };
-  }
+  // Le numéro vient de l'ERP ; QuickBooks devrait le renvoyer tel quel. Filet de
+  // sécurité : si jamais il est vide, on garde celui qu'on a généré.
+  const newDoc = created.DocNumber?.trim() || newNumber;
 
-  // QuickBooks a attribué un numéro : on finalise côté ERP (avance l'échéance +
-  // enregistre le numéro) via la logique existante et testée.
+  // Finalise côté ERP (avance l'échéance + enregistre le numéro). Le brouillon
+  // reste NON envoyé : l'utilisateur le vérifie puis l'envoie lui-même.
   await markServiceBilled(serviceId, {
     qbInvoiceNo: newDoc,
     renewalDate: input.renewalDate,
