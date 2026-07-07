@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Ban, Check, Loader2, Receipt, RotateCcw, Wand2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -85,6 +85,8 @@ export function ServiceActions({
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [txnDate, setTxnDate] = useState(todayIso());
+  // Verrou synchrone : empêche toute double-soumission (un clic = une facture).
+  const submittingRef = useRef(false);
 
   function openBilling() {
     setQb("");
@@ -129,21 +131,33 @@ export function ServiceActions({
   }
 
   function createInQuickBooks() {
+    // Garde synchrone : si une soumission est déjà en cours, on ignore le clic.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     start(async () => {
       try {
-        const { newDocNumber } = await billViaQuickBooks(serviceId, {
+        const res = await billViaQuickBooks(serviceId, {
           txnDate,
           renewalDate: nextDate,
         });
         setDialog(false);
-        toast.success(
-          `Facture #${newDocNumber} créée dans QuickBooks (non envoyée). Vérifie-la puis envoie-la. Prochaine échéance ${nextDate}.`,
-          { duration: 8000 },
-        );
+        if (res.status === "billed") {
+          toast.success(
+            `Facture #${res.newDocNumber} créée dans QuickBooks (non envoyée). Vérifie-la puis envoie-la. Prochaine échéance ${nextDate}.`,
+            { duration: 8000 },
+          );
+        } else {
+          toast.success(
+            "Brouillon créé dans QuickBooks (sans numéro — ta numérotation est personnalisée). Ouvre-le dans QuickBooks : il recevra son numéro à l'enregistrement. Vérifie/ajuste, envoie-le, puis reviens saisir le numéro final ici pour avancer l'échéance.",
+            { duration: 12000 },
+          );
+        }
       } catch (e) {
         toast.error(
           e instanceof Error ? e.message : "Échec de la création dans QuickBooks",
         );
+      } finally {
+        submittingRef.current = false;
       }
     });
   }

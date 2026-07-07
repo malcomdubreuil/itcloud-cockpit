@@ -164,12 +164,24 @@ function buildDuplicatePayload(
   return payload;
 }
 
-// Duplique la dernière facture QuickBooks du service avec de nouvelles dates,
-// enregistre le nouveau numéro et avance l'échéance. N'ENVOIE PAS au client.
+// Résultat de la duplication :
+// - "billed" : QuickBooks a attribué un numéro → échéance avancée, n° enregistré.
+// - "draft_no_number" : numérotation personnalisée → brouillon créé SANS numéro ;
+//   on N'AVANCE PAS l'échéance. L'utilisateur ouvre la facture dans QuickBooks
+//   (qui lui assigne son numéro à l'enregistrement), l'envoie, puis revient
+//   saisir le numéro final dans l'ERP (ce qui avancera alors l'échéance).
+export type BillResult =
+  | { status: "billed"; newDocNumber: string }
+  | { status: "draft_no_number"; invoiceId: string };
+
+// Duplique la dernière facture QuickBooks du service avec de nouvelles dates.
+// N'ENVOIE JAMAIS au client. Ne plante pas si QuickBooks ne retourne pas de
+// numéro (numérotation personnalisée) : le brouillon existe alors et il faut
+// le finaliser côté QuickBooks.
 export async function billViaQuickBooks(
   serviceId: string,
   input: { txnDate: string; renewalDate: string },
-): Promise<{ newDocNumber: string }> {
+): Promise<BillResult> {
   const user = await requireUser();
   const service = await loadService(serviceId, user.tenantId);
 
@@ -190,12 +202,10 @@ export async function billViaQuickBooks(
   const created = await client.createInvoice(
     buildDuplicatePayload(src, input.txnDate),
   );
-  const newDoc = created.DocNumber?.trim();
-  if (!newDoc) {
-    throw new Error("QuickBooks n'a pas retourné de numéro pour la nouvelle facture.");
-  }
 
-  // Trace la création (l'Id QuickBooks permet de retrouver la facture).
+  // Trace TOUJOURS la création dès qu'elle a réussi (l'Id QuickBooks permet de
+  // retrouver la facture même si elle n'a pas encore de numéro). Écrit APRÈS le
+  // succès de createInvoice, pas avant, pour refléter la réalité.
   await audit({
     tenantId: user.tenantId,
     userId: user.id,
@@ -203,15 +213,26 @@ export async function billViaQuickBooks(
     entityType: "ClientService",
     entityId: service.id,
     before: { sourceDocNumber: docNumber },
-    after: { newDocNumber: newDoc, quickbooksInvoiceId: created.Id },
+    after: {
+      quickbooksInvoiceId: created.Id,
+      docNumber: created.DocNumber ?? null,
+      txnDate: input.txnDate,
+    },
   });
 
-  // Enregistre côté ERP (avance l'échéance + nouveau numéro) via la logique
-  // existante et testée.
+  const newDoc = created.DocNumber?.trim();
+  if (!newDoc) {
+    // Numérotation personnalisée : QuickBooks a créé le brouillon sans numéro.
+    // On NE fait PAS avancer l'échéance et on n'enregistre pas de faux numéro.
+    return { status: "draft_no_number", invoiceId: created.Id };
+  }
+
+  // QuickBooks a attribué un numéro : on finalise côté ERP (avance l'échéance +
+  // enregistre le numéro) via la logique existante et testée.
   await markServiceBilled(serviceId, {
     qbInvoiceNo: newDoc,
     renewalDate: input.renewalDate,
   });
 
-  return { newDocNumber: newDoc };
+  return { status: "billed", newDocNumber: newDoc };
 }
