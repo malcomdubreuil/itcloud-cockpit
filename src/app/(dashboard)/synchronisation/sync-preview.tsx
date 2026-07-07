@@ -3,20 +3,44 @@
 import { useState, useTransition } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { previewItcloudSync, type SyncPreview } from "./actions";
+import {
+  previewItcloudSync,
+  applyItcloudSync,
+  type SyncPreview,
+  type SyncApplyResult,
+} from "./actions";
 
 type Row = { client: string; product: string; detail: string };
 
 export function SyncPreviewClient() {
   const [pending, start] = useTransition();
   const [preview, setPreview] = useState<SyncPreview | null>(null);
+  const [confirmApply, setConfirmApply] = useState(false);
+  const [applyRes, setApplyRes] = useState<SyncApplyResult | null>(null);
 
   function run() {
+    setConfirmApply(false);
+    setApplyRes(null);
     start(async () => {
       try {
         setPreview(await previewItcloudSync());
       } catch (e) {
         setPreview({
+          ok: false,
+          reason: e instanceof Error ? e.message : "Erreur inattendue",
+        });
+      }
+    });
+  }
+
+  function doApply() {
+    start(async () => {
+      try {
+        const res = await applyItcloudSync();
+        setApplyRes(res);
+        setConfirmApply(false);
+      } catch (e) {
+        setApplyRes({
           ok: false,
           reason: e instanceof Error ? e.message : "Erreur inattendue",
         });
@@ -80,11 +104,107 @@ export function SyncPreviewClient() {
             rows={preview.missingFromItcloud}
           />
 
-          <p className="text-xs text-muted-foreground">
-            Aperçu en lecture seule — <strong>aucune donnée n&apos;a été
-            modifiée</strong>. L&apos;étape « appliquer » viendra ensuite, une
-            fois cet aperçu validé.
-          </p>
+          {/* ── Appliquer ──────────────────────────────────────────── */}
+          <div className="space-y-3 rounded-md border bg-muted/40 p-4">
+            <p className="text-sm">
+              L&apos;aperçu ci-dessus est en <strong>lecture seule</strong>.
+              « Appliquer » écrira ces changements dans l&apos;ERP : mise à jour
+              des rapprochés (statut/quantité + liaison <code>externalId</code>{" "}
+              qui fiabilise les syncs futures), flag des absents (sans jamais
+              supprimer), et création des nouveaux <em>dont le produit existe
+              déjà</em> au catalogue.
+            </p>
+
+            {!applyRes && !confirmApply && (
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmApply(true)}
+                disabled={pending}
+              >
+                Appliquer les changements
+              </Button>
+            )}
+
+            {!applyRes && confirmApply && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">
+                  Confirmer l&apos;écriture en base ?
+                </span>
+                <Button onClick={doApply} disabled={pending}>
+                  {pending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  Oui, appliquer
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => setConfirmApply(false)}
+                  disabled={pending}
+                >
+                  Annuler
+                </Button>
+              </div>
+            )}
+
+            {applyRes && applyRes.ok === false && (
+              <p className="text-sm text-destructive">{applyRes.reason}</p>
+            )}
+
+            {applyRes && applyRes.ok && (
+              <div className="space-y-1 text-sm">
+                <p className="font-medium text-emerald-600 dark:text-emerald-400">
+                  Synchronisation appliquée ✓
+                </p>
+                <ul className="ml-4 list-disc text-muted-foreground">
+                  <li>
+                    Liaisons ITCloud créées (externalId) :{" "}
+                    <strong className="text-foreground">
+                      {applyRes.externalIdBackfilled}
+                    </strong>
+                  </li>
+                  <li>
+                    Statuts mis à jour :{" "}
+                    <strong className="text-foreground">
+                      {applyRes.statusUpdated}
+                    </strong>
+                  </li>
+                  <li>
+                    Quantités mises à jour :{" "}
+                    <strong className="text-foreground">
+                      {applyRes.quantityUpdated}
+                    </strong>
+                  </li>
+                  <li>
+                    Mode Direct/Indirect mis à jour :{" "}
+                    <strong className="text-foreground">
+                      {applyRes.billingModeUpdated}
+                    </strong>
+                  </li>
+                  <li>
+                    Nouveaux services créés :{" "}
+                    <strong className="text-foreground">
+                      {applyRes.created}
+                    </strong>
+                  </li>
+                  <li>
+                    Nouveaux non créés (produit à configurer) :{" "}
+                    <strong className="text-foreground">
+                      {applyRes.skippedNew}
+                    </strong>
+                  </li>
+                  <li>
+                    Services flagués « absents » :{" "}
+                    <strong className="text-foreground">
+                      {applyRes.flaggedMissing}
+                    </strong>
+                  </li>
+                </ul>
+                <p className="pt-1 text-xs text-muted-foreground">
+                  Relance l&apos;aperçu pour voir l&apos;état à jour.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
