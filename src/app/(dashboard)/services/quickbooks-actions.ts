@@ -184,10 +184,19 @@ function buildDuplicatePayload(
     payload.TxnTaxDetail = { TxnTaxCodeRef: tax.TxnTaxCodeRef };
   }
 
+  // Message au bas de la facture : copié avec ses dates avancées d'un an
+  // (même règle que la ligne de période — ex. la date d'engagement).
+  const memo = s.CustomerMemo as { value?: string } | undefined;
+  if (memo !== undefined) {
+    payload.CustomerMemo =
+      typeof memo?.value === "string"
+        ? { ...memo, value: bumpYears(memo.value) }
+        : memo;
+  }
+
   // Autres champs utiles copiés tels quels s'ils existent.
   for (const f of [
     "CurrencyRef",
-    "CustomerMemo",
     "BillEmail",
     "BillAddr",
     "ShipAddr",
