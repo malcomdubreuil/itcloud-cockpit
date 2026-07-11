@@ -180,7 +180,9 @@ export async function previewItcloudSync(): Promise<SyncPreview> {
         detail: `${erpS.quantity} → ${qty}`,
       });
     }
-    if (erpS.status !== status) {
+    // Même règle que l'application : un service annulé dans l'ERP ne sera pas
+    // réactivé par la sync, donc on ne l'affiche pas comme changement.
+    if (erpS.status !== status && erpS.status !== "ANNULE") {
       statusChanges.push({
         client: erpS.client.companyName,
         product: erpS.product.name,
@@ -372,7 +374,10 @@ export async function applyItcloudSync(): Promise<SyncApplyResult> {
       data.externalId = String(a.firstServiceId);
       externalIdBackfilled++;
     }
-    if (erpS.status !== status) {
+    // Annulation manuelle prioritaire : la sync ne touche JAMAIS au statut
+    // d'un service annulé dans l'ERP (le remettre actif reste une action
+    // manuelle explicite).
+    if (erpS.status !== status && erpS.status !== "ANNULE") {
       data.status = status;
       changed.status = { from: erpS.status, to: status };
       statusUpdated++;

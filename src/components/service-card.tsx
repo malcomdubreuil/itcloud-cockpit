@@ -114,7 +114,8 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
               {s.client.companyName}
             </Link>
           ) : null}
-          <p className={cn("truncate", s.client ? "text-sm text-muted-foreground" : "font-medium")}>
+          {/* Nom complet, sur plusieurs lignes au besoin (jamais tronqué). */}
+          <p className={cn("break-words", s.client ? "text-sm text-muted-foreground" : "font-medium")}>
             {s.product.name}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
