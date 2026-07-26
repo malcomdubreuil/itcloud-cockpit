@@ -6,7 +6,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { ProductActiveToggle } from "@/components/product-active-toggle";
 import { MoneyInput } from "@/components/money-input";
-import { updateProductCostMonthly } from "./actions";
+import { updateProductSuggestedMonthly } from "./actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,7 +35,8 @@ const CYCLE_SUFFIX: Record<string, string> = {
   ANNUEL: "/an",
 };
 
-// Prix vendant suggéré : coût mensuel + 2 $ par mois (règle du partenaire)
+// Prix vendant suggéré par défaut : PDSF mensuel + 2 $ par mois (règle du
+// partenaire). Modifiable par produit (stocké dans suggestedPrice).
 const SUGGESTED_MARKUP_MONTHLY = 2;
 
 const cad = new Intl.NumberFormat("fr-CA", {
@@ -80,7 +81,7 @@ export default async function ProduitsPage({
         take: PAGE_SIZE,
         select: {
           id: true, name: true, group: true, billingCycle: true,
-          msrp: true, partnerCost: true, active: true,
+          msrp: true, partnerCost: true, suggestedPrice: true, active: true,
           _count: { select: { services: { where: { status: "ACTIF" } } } },
         },
       }),
@@ -177,7 +178,10 @@ export default async function ProduitsPage({
             const suffix = CYCLE_SUFFIX[p.billingCycle] ?? "";
             const msrp = Number(p.msrp);
             const costMonthly = Number(p.partnerCost) / months;
-            const suggestedMonthly = costMonthly + SUGGESTED_MARKUP_MONTHLY;
+            const suggestedMonthly =
+              p.suggestedPrice !== null
+                ? Number(p.suggestedPrice) / months
+                : msrp / months + SUGGESTED_MARKUP_MONTHLY;
             return (
               <Card key={p.id} className={cn("py-3", !p.active && "opacity-70")}>
                 <CardContent className="flex items-center gap-3 px-4">
@@ -198,19 +202,22 @@ export default async function ProduitsPage({
                         )}
                       </span>
                       <span>·</span>
-                      <span className="inline-flex items-center gap-1">
-                        Coût
-                        <MoneyInput
-                          id={p.id}
-                          value={costMonthly}
-                          action={updateProductCostMonthly}
-                          label="Coût mensuel"
-                        />
-                        /mois
+                      <span>
+                        Coût {cad.format(costMonthly)}/mois
+                        {months > 1 && (
+                          <span className="ml-1">({cad.format(Number(p.partnerCost))}{suffix})</span>
+                        )}
                       </span>
                       <span>·</span>
-                      <span className="font-medium text-foreground">
-                        Prix suggéré {cad.format(suggestedMonthly)}/mois
+                      <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                        Prix suggéré
+                        <MoneyInput
+                          id={p.id}
+                          value={suggestedMonthly}
+                          action={updateProductSuggestedMonthly}
+                          label="Prix suggéré mensuel"
+                        />
+                        /mois
                         {months > 1 && (
                           <span className="ml-1 font-normal text-muted-foreground">
                             ({cad.format(suggestedMonthly * months)}{suffix})

@@ -71,6 +71,44 @@ export async function updateProductCost(productId: string, cost: number) {
   revalidatePath("/services");
 }
 
+// Le prix suggéré s'affiche et s'édite EN MENSUEL dans l'UI ; il est stocké au
+// cycle du produit. NULL en base = défaut PDSF + 2 $/mois.
+export async function updateProductSuggestedMonthly(
+  productId: string,
+  monthlySuggested: number,
+) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "products:write");
+  if (!Number.isFinite(monthlySuggested) || monthlySuggested < 0) {
+    throw new Error("Prix invalide");
+  }
+
+  const product = await prisma.product.findUniqueOrThrow({
+    where: { id: productId },
+    select: { id: true, tenantId: true, billingCycle: true, suggestedPrice: true },
+  });
+  if (product.tenantId !== session.user.tenantId) throw new Error("Introuvable");
+
+  const value = (monthlySuggested * CYCLE_MONTHS[product.billingCycle]).toFixed(4);
+  await prisma.product.update({
+    where: { id: productId },
+    data: { suggestedPrice: value },
+  });
+
+  await audit({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "product.update_suggested_price",
+    entityType: "Product",
+    entityId: product.id,
+    before: { suggestedPrice: product.suggestedPrice?.toString() ?? null },
+    after: { suggestedPrice: value },
+  });
+
+  revalidatePath("/produits");
+}
+
 export async function toggleProductActive(productId: string, active: boolean) {
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");

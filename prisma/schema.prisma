@@ -263,6 +263,8 @@ model Product {
   sku          String       // clé de rapprochement avec l'API
   msrp         Decimal      @db.Decimal(12, 4) // PDSF
   partnerCost  Decimal      @db.Decimal(12, 4) // coût partenaire (niveau courant)
+  // Prix vendant suggéré (au cycle du produit). NULL = défaut PDSF + 2 $/mois.
+  suggestedPrice Decimal?   @db.Decimal(12, 4)
   billingCycle BillingCycle
   active       Boolean      @default(true)
   deletedAt    DateTime?
