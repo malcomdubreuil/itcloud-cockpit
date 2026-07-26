@@ -107,7 +107,7 @@ export async function previewLastQbInvoice(
 // sur l'année (déc → janv de l'année suivante).
 function bumpDates(text: string, unit: "year" | "month"): string {
   return text.replace(/(\d{2})-(\d{2})-(\d{4})/g, (_, dd: string, mm: string, yyyy: string) => {
-    let day = parseInt(dd, 10);
+    const day = parseInt(dd, 10);
     let month = parseInt(mm, 10);
     let year = parseInt(yyyy, 10);
     if (unit === "year") {
