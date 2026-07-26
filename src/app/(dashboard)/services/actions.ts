@@ -81,6 +81,37 @@ export async function updateServiceNotes(serviceId: string, value: string) {
   revalidatePath("/services");
 }
 
+// Marque un service comme « facturé au mois » : la refacturation avancera
+// alors les dates de +1 mois au lieu du cycle du produit.
+export async function setServiceMonthlyBilling(serviceId: string, value: boolean) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+
+  const service = await prisma.clientService.findUniqueOrThrow({
+    where: { id: serviceId },
+    select: { id: true, tenantId: true, monthlyBilling: true },
+  });
+  if (service.tenantId !== session.user.tenantId) throw new Error("Introuvable");
+
+  await prisma.clientService.update({
+    where: { id: serviceId },
+    data: { monthlyBilling: value },
+  });
+
+  await audit({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "service.set_monthly_billing",
+    entityType: "ClientService",
+    entityId: service.id,
+    before: { monthlyBilling: service.monthlyBilling },
+    after: { monthlyBilling: value },
+  });
+
+  revalidatePath("/services");
+}
+
 export async function updateQbInvoiceNo(serviceId: string, value: string) {
   await updateInvoiceNo(serviceId, "lastQbInvoiceNo", value);
 }

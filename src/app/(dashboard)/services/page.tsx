@@ -71,7 +71,7 @@ export default async function ServicesPage({
         id: true, quantity: true, unitCost: true, unitPrice: true,
         status: true, renewalDate: true,
         lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true,
-        billingMode: true,
+        billingMode: true, monthlyBilling: true,
         client: { select: { id: true, companyName: true } },
         product: { select: { name: true, billingCycle: true, msrp: true } },
       },
@@ -165,6 +165,7 @@ export default async function ServicesPage({
                 lastQbInvoiceNo: s.lastQbInvoiceNo,
                 lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
                 notes: s.notes,
+                monthlyBilling: s.monthlyBilling,
                 product: {
                   name: s.product.name,
                   billingCycle: s.product.billingCycle,

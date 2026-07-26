@@ -334,6 +334,9 @@ model ClientService {
   status       ServiceStatus @default(ACTIF)
   billingMode  BillingMode   @default(INDIRECT)
   missingSince DateTime?     // 1re sync SUCCES où l'item est absent (§7.2)
+  // Facturation au mois : quand true, la refacturation avance les dates de
+  // +1 mois (au lieu du cycle du produit) — service annuel refacturé mensuellement.
+  monthlyBilling Boolean     @default(false)
 
   // Aide à la refacturation : derniers numéros de facture (éditables ;
   // celui d'ITCloud sera aussi alimenté par la sync invoice-items en phase 1)

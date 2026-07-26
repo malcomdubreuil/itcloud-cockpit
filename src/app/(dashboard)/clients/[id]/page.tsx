@@ -66,6 +66,7 @@ export default async function ClientPage({ params }: Props) {
           id: true, quantity: true, unitCost: true, unitPrice: true,
           status: true, billingMode: true, renewalDate: true,
           lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true,
+          monthlyBilling: true,
           product: { select: { name: true, billingCycle: true, msrp: true } },
         },
       },
@@ -167,6 +168,7 @@ export default async function ClientPage({ params }: Props) {
                 lastQbInvoiceNo: s.lastQbInvoiceNo,
                 lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
                 notes: s.notes,
+                monthlyBilling: s.monthlyBilling,
                 product: {
                   name: s.product.name,
                   billingCycle: s.product.billingCycle,
@@ -197,6 +199,7 @@ export default async function ClientPage({ params }: Props) {
                 lastQbInvoiceNo: s.lastQbInvoiceNo,
                 lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
                 notes: s.notes,
+                monthlyBilling: s.monthlyBilling,
                 product: {
                   name: s.product.name,
                   billingCycle: s.product.billingCycle,

@@ -34,6 +34,7 @@ async function loadService(serviceId: string, tenantId: string) {
       renewalDate: true,
       lastQbInvoiceNo: true,
       quantity: true,
+      monthlyBilling: true,
     },
   });
   if (service.tenantId !== tenantId) throw new Error("Introuvable");
@@ -99,23 +100,38 @@ export async function previewLastQbInvoice(
   };
 }
 
-// Incrémente de 1 an toutes les dates JJ-MM-AAAA d'un texte (règle Keven pour la
-// ligne de période : « Du 10-08-2025 au 09-08-2026 » → « Du 10-08-2026 au 09-08-2027 »).
-function bumpYears(text: string): string {
-  return text.replace(
-    /(\d{2}-\d{2}-)(\d{4})/g,
-    (_, dm: string, year: string) => dm + (parseInt(year, 10) + 1),
-  );
+// Avance toutes les dates JJ-MM-AAAA d'un texte, soit de +1 an (renouvellement
+// annuel : « Du 10-08-2025 au 09-08-2026 » → « ...2026 au ...2027 »), soit de
+// +1 mois pour les services facturés au mois (« Du 10-08-2025 au 09-09-2025 »
+// → « Du 10-09-2025 au 09-10-2025 »). On garde le même jour ; le mois déborde
+// sur l'année (déc → janv de l'année suivante).
+function bumpDates(text: string, unit: "year" | "month"): string {
+  return text.replace(/(\d{2})-(\d{2})-(\d{4})/g, (_, dd: string, mm: string, yyyy: string) => {
+    let day = parseInt(dd, 10);
+    let month = parseInt(mm, 10);
+    let year = parseInt(yyyy, 10);
+    if (unit === "year") {
+      year += 1;
+    } else {
+      month += 1;
+      if (month > 12) {
+        month = 1;
+        year += 1;
+      }
+    }
+    const p2 = (n: number) => String(n).padStart(2, "0");
+    return `${p2(day)}-${p2(month)}-${year}`;
+  });
 }
 
 // Nettoie une ligne source : retire Id/LineNum (réassignés par QuickBooks) et
-// incrémente l'année dans la description (règle période).
-function cleanLine(l: unknown): Record<string, unknown> {
+// avance les dates de la description (règle période, mensuelle ou annuelle).
+function cleanLine(l: unknown, unit: "year" | "month"): Record<string, unknown> {
   const keep = { ...(l as Record<string, unknown>) };
   delete keep.Id;
   delete keep.LineNum;
   if (typeof keep.Description === "string") {
-    keep.Description = bumpYears(keep.Description);
+    keep.Description = bumpDates(keep.Description, unit);
   }
   return keep;
 }
@@ -134,6 +150,7 @@ function buildDuplicatePayload(
   txnDate: string,
   quantity: number,
   docNumber: string,
+  unit: "year" | "month",
 ): Record<string, unknown> {
   const rawLines = (Array.isArray(src.Line) ? src.Line : []).filter(
     (l) => detailType(l) && detailType(l) !== "SubTotalLineDetail",
@@ -149,12 +166,12 @@ function buildDuplicatePayload(
   if (productLines.length === 1 && quantity > 1) {
     // Règle 1 : une ligne identique par licence, puis les lignes de période.
     const copies = Array.from({ length: quantity }, () =>
-      cleanLine(productLines[0]),
+      cleanLine(productLines[0], unit),
     );
-    lines = [...copies, ...otherLines.map(cleanLine)];
+    lines = [...copies, ...otherLines.map((l) => cleanLine(l, unit))];
   } else {
     // Cas simple ou multi-produits : on garde les lignes telles quelles.
-    lines = rawLines.map(cleanLine);
+    lines = rawLines.map((l) => cleanLine(l, unit));
   }
 
   const payload: Record<string, unknown> = {
@@ -190,7 +207,7 @@ function buildDuplicatePayload(
   if (memo !== undefined) {
     payload.CustomerMemo =
       typeof memo?.value === "string"
-        ? { ...memo, value: bumpYears(memo.value) }
+        ? { ...memo, value: bumpDates(memo.value, unit) }
         : memo;
   }
 
@@ -256,7 +273,13 @@ export async function billViaQuickBooks(
   const newNumber = await client.getNextDocNumber();
 
   const created = await client.createInvoice(
-    buildDuplicatePayload(src, input.txnDate, service.quantity, newNumber),
+    buildDuplicatePayload(
+      src,
+      input.txnDate,
+      service.quantity,
+      newNumber,
+      service.monthlyBilling ? "month" : "year",
+    ),
   );
 
   // Trace TOUJOURS la création dès qu'elle a réussi (l'Id QuickBooks + le numéro).

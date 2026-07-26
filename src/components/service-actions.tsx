@@ -60,6 +60,7 @@ export function ServiceActions({
   status,
   renewalDate,
   billingCycle,
+  monthlyBilling,
   qbInvoiceNo,
   clientName,
   productName,
@@ -68,6 +69,7 @@ export function ServiceActions({
   status: string;
   renewalDate: string | null; // ISO
   billingCycle: string;
+  monthlyBilling: boolean;
   qbInvoiceNo: string | null;
   clientName: string;
   productName: string;
@@ -75,7 +77,8 @@ export function ServiceActions({
   const [pending, start] = useTransition();
   const [dialog, setDialog] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const months = CYCLE_MONTHS[billingCycle] ?? 1;
+  // « Facturé au mois » force +1 mois, quel que soit le cycle du produit.
+  const months = monthlyBilling ? 1 : CYCLE_MONTHS[billingCycle] ?? 1;
 
   // Formulaire de facturation
   const [qb, setQb] = useState("");
@@ -375,7 +378,8 @@ export function ServiceActions({
                   onChange={(e) => setNextDate(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Avancée automatiquement de {CYCLE_LABEL[billingCycle] ?? "1 cycle"} — ajuste au besoin.
+                  Avancée automatiquement de{" "}
+                  {monthlyBilling ? "1 mois (facturation mensuelle)" : CYCLE_LABEL[billingCycle] ?? "1 cycle"} — ajuste au besoin.
                 </p>
               </div>
             </div>

@@ -72,7 +72,7 @@ export default async function DashboardPage() {
         take: 15,
         select: {
           id: true, quantity: true, unitPrice: true, renewalDate: true,
-          lastQbInvoiceNo: true,
+          lastQbInvoiceNo: true, monthlyBilling: true,
           client: { select: { companyName: true, clientCode: true } },
           product: { select: { name: true, billingCycle: true } },
         },
@@ -202,6 +202,7 @@ export default async function DashboardPage() {
                       status="ACTIF"
                       renewalDate={s.renewalDate!.toISOString().slice(0, 10)}
                       billingCycle={s.product.billingCycle}
+                      monthlyBilling={s.monthlyBilling}
                       qbInvoiceNo={s.lastQbInvoiceNo}
                       clientName={s.client.companyName}
                       productName={s.product.name}

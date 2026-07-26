@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MoneyInput } from "@/components/money-input";
 import { InlineTextInput } from "@/components/inline-text-input";
 import { ServiceActions } from "@/components/service-actions";
+import { MonthlyBillingToggle } from "@/components/monthly-billing-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -84,6 +85,7 @@ export type ServiceCardData = {
   lastQbInvoiceNo: string | null;
   lastItcloudInvoiceNo: string | null;
   notes: string | null;
+  monthlyBilling: boolean;
   product: { name: string; billingCycle: string; msrp: number };
   client?: { id: string; companyName: string };
 };
@@ -127,6 +129,12 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
             )}
             {s.status !== "ACTIF" && (
               <Badge variant="secondary">{STATUS_LABEL[s.status]}</Badge>
+            )}
+            {s.billingMode === "INDIRECT" && (
+              <MonthlyBillingToggle
+                serviceId={s.id}
+                monthlyBilling={s.monthlyBilling}
+              />
             )}
             {s.renewalDate && (
               <span className={cn("text-xs", urgency ? URGENCY_TEXT[urgency] : "text-muted-foreground")}>
@@ -235,6 +243,7 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
               status={s.status}
               renewalDate={s.renewalDate ? s.renewalDate.toISOString().slice(0, 10) : null}
               billingCycle={s.product.billingCycle}
+              monthlyBilling={s.monthlyBilling}
               qbInvoiceNo={s.lastQbInvoiceNo}
               clientName={s.client?.companyName ?? ""}
               productName={s.product.name}
