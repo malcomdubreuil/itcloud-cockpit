@@ -35,7 +35,12 @@ export function MonthlyBillingToggle({
         startTransition(async () => {
           setOptimistic(!optimistic);
           try {
-            await setServiceMonthlyBilling(serviceId, !optimistic);
+            const next = !optimistic;
+            const res = await setServiceMonthlyBilling(serviceId, next);
+            toast.success(
+              `Facturation ${next ? "mensuelle" : productCycleLabel.toLowerCase()}` +
+                (res?.renewalDate ? ` — prochaine échéance ${res.renewalDate}` : ""),
+            );
           } catch {
             toast.error("Impossible de modifier la facturation mensuelle.");
           }

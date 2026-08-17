@@ -83,6 +83,27 @@ export async function updateServiceNotes(serviceId: string, value: string) {
 
 // Marque un service comme « facturé au mois » : la refacturation avancera
 // alors les dates de +1 mois au lieu du cycle du produit.
+// Ré-exprime une échéance dans un autre cycle : on repart de la dernière
+// facturation (échéance actuelle moins l'ancien cycle) et on avance d'un
+// nouveau cycle, en roulant jusqu'à retomber dans le futur. Passer en mensuel
+// donne donc une échéance à ~1 mois (et non l'ancienne date annuelle), tout en
+// conservant le jour d'anniversaire de facturation ; la bascule est réversible.
+function reexpressRenewal(
+  current: Date,
+  oldMonths: number,
+  newMonths: number,
+): Date {
+  const anchor = new Date(current);
+  anchor.setMonth(anchor.getMonth() - oldMonths); // dernière facturation
+  const next = new Date(anchor);
+  next.setMonth(next.getMonth() + newMonths);
+  const now = Date.now();
+  for (let i = 0; next.getTime() <= now && i < 240; i++) {
+    next.setMonth(next.getMonth() + newMonths);
+  }
+  return next;
+}
+
 export async function setServiceMonthlyBilling(serviceId: string, value: boolean) {
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");
@@ -90,14 +111,52 @@ export async function setServiceMonthlyBilling(serviceId: string, value: boolean
 
   const service = await prisma.clientService.findUniqueOrThrow({
     where: { id: serviceId },
-    select: { id: true, tenantId: true, monthlyBilling: true },
+    select: {
+      id: true, tenantId: true, monthlyBilling: true, renewalDate: true,
+      product: { select: { billingCycle: true } },
+    },
   });
   if (service.tenantId !== session.user.tenantId) throw new Error("Introuvable");
+  if (service.monthlyBilling === value) {
+    return { renewalDate: service.renewalDate?.toISOString().slice(0, 10) ?? null };
+  }
 
-  await prisma.clientService.update({
-    where: { id: serviceId },
-    data: { monthlyBilling: value },
-  });
+  const productMonths = CYCLE_MONTHS[service.product.billingCycle] ?? 1;
+  const oldMonths = service.monthlyBilling ? 1 : productMonths;
+  const newMonths = value ? 1 : productMonths;
+
+  // L'échéance suit le cycle choisi : mensuel → ~1 mois, annuel → ~1 an.
+  const newRenewal = service.renewalDate
+    ? reexpressRenewal(service.renewalDate, oldMonths, newMonths)
+    : null;
+
+  await prisma.$transaction([
+    prisma.clientService.update({
+      where: { id: serviceId },
+      data: {
+        monthlyBilling: value,
+        ...(newRenewal ? { renewalDate: newRenewal } : {}),
+      },
+    }),
+    prisma.serviceChange.create({
+      data: {
+        tenantId: service.tenantId,
+        serviceId: service.id,
+        changeType: "MODIFICATION",
+        field: "monthlyBilling,renewalDate",
+        oldValue: {
+          monthlyBilling: service.monthlyBilling,
+          renewalDate: service.renewalDate?.toISOString().slice(0, 10) ?? null,
+        },
+        newValue: {
+          monthlyBilling: value,
+          renewalDate: newRenewal?.toISOString().slice(0, 10) ?? null,
+        },
+        source: "MANUEL",
+        userId: session.user.id,
+      },
+    }),
+  ]);
 
   await audit({
     tenantId: session.user.tenantId,
@@ -105,11 +164,18 @@ export async function setServiceMonthlyBilling(serviceId: string, value: boolean
     action: "service.set_monthly_billing",
     entityType: "ClientService",
     entityId: service.id,
-    before: { monthlyBilling: service.monthlyBilling },
-    after: { monthlyBilling: value },
+    before: {
+      monthlyBilling: service.monthlyBilling,
+      renewalDate: service.renewalDate?.toISOString().slice(0, 10) ?? null,
+    },
+    after: {
+      monthlyBilling: value,
+      renewalDate: newRenewal?.toISOString().slice(0, 10) ?? null,
+    },
   });
 
-  revalidatePath("/services");
+  revalidateBillingViews();
+  return { renewalDate: newRenewal?.toISOString().slice(0, 10) ?? null };
 }
 
 export async function updateQbInvoiceNo(serviceId: string, value: string) {
