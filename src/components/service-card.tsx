@@ -76,6 +76,7 @@ const URGENCY_TEXT: Record<string, string> = {
 
 export type ServiceCardData = {
   id: string;
+  clientId: string;
   quantity: number;
   unitCost: number;
   unitPrice: number;
@@ -121,7 +122,17 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
             {s.product.name}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <Badge variant="outline">{CYCLE_LABEL[s.product.billingCycle]}</Badge>
+            {/* Un SEUL élément pour le cycle : bouton bascule si je facture ce
+                service (Indirect), simple badge sinon (facturé par ITCloud). */}
+            {s.billingMode === "INDIRECT" ? (
+              <MonthlyBillingToggle
+                serviceId={s.id}
+                monthlyBilling={s.monthlyBilling}
+                productCycleLabel={CYCLE_LABEL[s.product.billingCycle]}
+              />
+            ) : (
+              <Badge variant="outline">{CYCLE_LABEL[s.product.billingCycle]}</Badge>
+            )}
             {s.billingMode === "DIRECT" && (
               <Badge variant="secondary" title="ITCloud facture ce client directement — rien à refacturer">
                 Facturé par ITCloud
@@ -129,12 +140,6 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
             )}
             {s.status !== "ACTIF" && (
               <Badge variant="secondary">{STATUS_LABEL[s.status]}</Badge>
-            )}
-            {s.billingMode === "INDIRECT" && (
-              <MonthlyBillingToggle
-                serviceId={s.id}
-                monthlyBilling={s.monthlyBilling}
-              />
             )}
             {s.renewalDate && (
               <span className={cn("text-xs", urgency ? URGENCY_TEXT[urgency] : "text-muted-foreground")}>
@@ -240,10 +245,8 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
           {s.billingMode === "INDIRECT" && (s.status === "ACTIF" || s.status === "ANNULE" || s.status === "EXPIRE") && (
             <ServiceActions
               serviceId={s.id}
+              clientId={s.clientId}
               status={s.status}
-              renewalDate={s.renewalDate ? s.renewalDate.toISOString().slice(0, 10) : null}
-              billingCycle={s.product.billingCycle}
-              monthlyBilling={s.monthlyBilling}
               qbInvoiceNo={s.lastQbInvoiceNo}
               clientName={s.client?.companyName ?? ""}
               productName={s.product.name}

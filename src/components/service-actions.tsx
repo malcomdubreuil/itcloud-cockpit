@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  markServiceBilled,
+  markClientBilled,
   cancelService,
   reactivateService,
 } from "@/app/(dashboard)/services/actions";
@@ -15,18 +15,6 @@ import {
   previewLastQbInvoice,
   billViaQuickBooks,
 } from "@/app/(dashboard)/services/quickbooks-actions";
-
-const CYCLE_MONTHS: Record<string, number> = {
-  MENSUEL: 1,
-  TRIMESTRIEL: 3,
-  ANNUEL: 12,
-};
-
-const CYCLE_LABEL: Record<string, string> = {
-  MENSUEL: "1 mois",
-  TRIMESTRIEL: "3 mois",
-  ANNUEL: "1 an",
-};
 
 // Aperçu de la dernière facture QuickBooks (miroir du type serveur).
 type Preview =
@@ -48,28 +36,21 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// Ajoute des mois à une date ISO (échéance suivante après facturation).
-function addMonths(iso: string | null, months: number): string {
-  const d = iso ? new Date(iso) : new Date();
-  d.setMonth(d.getMonth() + months);
-  return d.toISOString().slice(0, 10);
+function servicesLabel(n: number): string {
+  return `${n} service${n > 1 ? "s" : ""} du client mis à jour`;
 }
 
 export function ServiceActions({
   serviceId,
+  clientId,
   status,
-  renewalDate,
-  billingCycle,
-  monthlyBilling,
   qbInvoiceNo,
   clientName,
   productName,
 }: {
   serviceId: string;
+  clientId: string;
   status: string;
-  renewalDate: string | null; // ISO
-  billingCycle: string;
-  monthlyBilling: boolean;
   qbInvoiceNo: string | null;
   clientName: string;
   productName: string;
@@ -77,12 +58,9 @@ export function ServiceActions({
   const [pending, start] = useTransition();
   const [dialog, setDialog] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
-  // « Facturé au mois » force +1 mois, quel que soit le cycle du produit.
-  const months = monthlyBilling ? 1 : CYCLE_MONTHS[billingCycle] ?? 1;
 
-  // Formulaire de facturation
+  // Formulaire de facturation (numéro manuel)
   const [qb, setQb] = useState("");
-  const [nextDate, setNextDate] = useState(addMonths(renewalDate, months));
 
   // Automatisation QuickBooks
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -93,7 +71,6 @@ export function ServiceActions({
 
   function openBilling() {
     setQb("");
-    setNextDate(addMonths(renewalDate, months));
     setPreview(null);
     setTxnDate(todayIso());
     setDialog(true);
@@ -101,17 +78,16 @@ export function ServiceActions({
 
   function submitBilling() {
     if (!qb.trim()) {
-      toast.error("Entre le nouveau numéro de facture QuickBooks.");
+      toast.error("Entre le numéro de facture QuickBooks.");
       return;
     }
     start(async () => {
       try {
-        await markServiceBilled(serviceId, {
+        const { count } = await markClientBilled(clientId, {
           qbInvoiceNo: qb.trim(),
-          renewalDate: nextDate,
         });
         setDialog(false);
-        toast.success(`Facturé — prochaine échéance ${nextDate}`);
+        toast.success(`Facturé — ${servicesLabel(count)}.`);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Échec de la facturation");
       }
@@ -134,19 +110,15 @@ export function ServiceActions({
   }
 
   function createInQuickBooks() {
-    // Garde synchrone : si une soumission est déjà en cours, on ignore le clic.
     if (submittingRef.current) return;
     submittingRef.current = true;
     start(async () => {
       try {
-        const res = await billViaQuickBooks(serviceId, {
-          txnDate,
-          renewalDate: nextDate,
-        });
+        const res = await billViaQuickBooks(serviceId, { txnDate });
         setDialog(false);
         if (res.status === "billed") {
           toast.success(
-            `Facture #${res.newDocNumber} créée dans QuickBooks (non envoyée). Vérifie-la puis envoie-la. Prochaine échéance ${nextDate}.`,
+            `Facture #${res.newDocNumber} créée dans QuickBooks (non envoyée) — ${servicesLabel(res.servicesBilled)}. Vérifie-la puis envoie-la.`,
             {
               duration: 20000,
               action: {
@@ -158,7 +130,7 @@ export function ServiceActions({
           );
         } else {
           toast.success(
-            "Brouillon créé dans QuickBooks (sans numéro — ta numérotation est personnalisée). Ouvre-le dans QuickBooks : il recevra son numéro à l'enregistrement. Vérifie/ajuste, envoie-le, puis reviens saisir le numéro final ici pour avancer l'échéance.",
+            "Brouillon créé dans QuickBooks (sans numéro — ta numérotation est personnalisée). Ouvre-le dans QuickBooks : il recevra son numéro à l'enregistrement. Vérifie/ajuste, envoie-le, puis reviens saisir le numéro final ici.",
             { duration: 12000 },
           );
         }
@@ -257,12 +229,15 @@ export function ServiceActions({
           <div className="w-full max-w-sm rounded-lg border bg-background p-5 shadow-lg">
             <div className="mb-1 flex items-center gap-2">
               <Receipt className="h-5 w-5" />
-              <h3 className="text-lg font-semibold">Marquer facturé</h3>
+              <h3 className="text-lg font-semibold">Facturer le client</h3>
             </div>
-            <p className="mb-4 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{clientName}</span>
-              {" · "}
-              {productName}
+            <p className="mb-1 text-sm">
+              <span className="font-medium">{clientName}</span>
+            </p>
+            <p className="mb-4 text-xs text-muted-foreground">
+              La facture couvre le client entier : <strong>tous ses services
+              indirects actifs</strong> recevront ce numéro et verront leur
+              échéance avancer (chacun selon son cycle).
             </p>
 
             {/* ── Automatique via QuickBooks ──────────────────────────── */}
@@ -352,36 +327,20 @@ export function ServiceActions({
               <span className="h-px flex-1 bg-border" />
             </div>
 
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="qb-new">Nouveau n° de facture QuickBooks</Label>
-                <Input
-                  id="qb-new"
-                  value={qb}
-                  onChange={(e) => setQb(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && submitBilling()}
-                  placeholder="ex. 2026-0742"
-                />
-                {qbInvoiceNo && (
-                  <p className="text-xs text-muted-foreground">
-                    Précédent : {qbInvoiceNo}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="next-date">Prochaine échéance</Label>
-                <Input
-                  id="next-date"
-                  type="date"
-                  value={nextDate}
-                  onChange={(e) => setNextDate(e.target.value)}
-                />
+            <div className="space-y-1.5">
+              <Label htmlFor="qb-new">Numéro de facture QuickBooks</Label>
+              <Input
+                id="qb-new"
+                value={qb}
+                onChange={(e) => setQb(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submitBilling()}
+                placeholder="ex. 2026-0742"
+              />
+              {qbInvoiceNo && (
                 <p className="text-xs text-muted-foreground">
-                  Avancée automatiquement de{" "}
-                  {monthlyBilling ? "1 mois (facturation mensuelle)" : CYCLE_LABEL[billingCycle] ?? "1 cycle"} — ajuste au besoin.
+                  Précédent : {qbInvoiceNo}
                 </p>
-              </div>
+              )}
             </div>
 
             <div className="mt-5 flex justify-end gap-2">

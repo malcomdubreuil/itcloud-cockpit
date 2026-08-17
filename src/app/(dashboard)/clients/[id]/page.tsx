@@ -159,6 +159,7 @@ export default async function ClientPage({ params }: Props) {
               key={s.id}
               service={{
                 id: s.id,
+                clientId: id,
                 quantity: s.quantity,
                 unitCost: Number(s.unitCost),
                 unitPrice: Number(s.unitPrice),
@@ -190,6 +191,7 @@ export default async function ClientPage({ params }: Props) {
               key={s.id}
               service={{
                 id: s.id,
+                clientId: id,
                 quantity: s.quantity,
                 unitCost: Number(s.unitCost),
                 unitPrice: Number(s.unitPrice),

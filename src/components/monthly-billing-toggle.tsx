@@ -11,9 +11,12 @@ import { cn } from "@/lib/utils";
 export function MonthlyBillingToggle({
   serviceId,
   monthlyBilling,
+  productCycleLabel = "Annuel",
 }: {
   serviceId: string;
   monthlyBilling: boolean;
+  /** Libellé du cycle du produit, affiché quand la facturation n'est pas mensuelle. */
+  productCycleLabel?: string;
 }) {
   const [optimistic, setOptimistic] = useOptimistic(monthlyBilling);
   const [pending, startTransition] = useTransition();
@@ -25,8 +28,8 @@ export function MonthlyBillingToggle({
       aria-pressed={optimistic}
       title={
         optimistic
-          ? "Facturé au mois : la refacturation avance les dates de +1 mois. Cliquer pour désactiver."
-          : "Marquer comme facturé au mois (+1 mois à la refacturation)"
+          ? `Facturation mensuelle : refacturé tous les mois. Cliquer pour revenir à ${productCycleLabel.toLowerCase()}.`
+          : `Facturation ${productCycleLabel.toLowerCase()} : refacturé selon le cycle du produit. Cliquer pour passer au mensuel.`
       }
       onClick={() => {
         startTransition(async () => {
@@ -46,7 +49,7 @@ export function MonthlyBillingToggle({
       )}
     >
       <CalendarClock className="h-3 w-3" />
-      Facturation mensuelle
+      {optimistic ? "Mensuel" : productCycleLabel}
     </button>
   );
 }

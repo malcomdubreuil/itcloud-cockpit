@@ -270,6 +270,91 @@ export async function markServiceBilled(
   revalidateBillingViews();
 }
 
+function advanceMonths(base: Date | null, months: number): Date {
+  const d = base ? new Date(base) : new Date();
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
+
+// Facture TOUT le client : une facture QuickBooks couvre tous les services du
+// client, donc chaque service actif INDIRECT reçoit le nouveau numéro et voit
+// son échéance avancer de SON propre cycle (ou +1 mois si « facturation
+// mensuelle »). Les DIRECT (facturés par ITCloud) ne sont jamais touchés.
+export async function markClientBilled(
+  clientId: string,
+  input: { qbInvoiceNo: string },
+): Promise<{ count: number }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+
+  const qb = input.qbInvoiceNo.trim();
+  if (!qb) throw new Error("Le numéro de facture QuickBooks est requis");
+  if (qb.length > 100) throw new Error("Numéro trop long");
+
+  const services = await prisma.clientService.findMany({
+    where: {
+      tenantId: session.user.tenantId,
+      clientId,
+      status: "ACTIF",
+      billingMode: "INDIRECT",
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      renewalDate: true,
+      lastQbInvoiceNo: true,
+      monthlyBilling: true,
+      product: { select: { billingCycle: true } },
+    },
+  });
+  if (services.length === 0) {
+    throw new Error("Aucun service indirect actif à facturer pour ce client.");
+  }
+
+  for (const s of services) {
+    const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
+    const newRenewal = advanceMonths(s.renewalDate, months);
+    await prisma.$transaction([
+      prisma.clientService.update({
+        where: { id: s.id },
+        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF" },
+      }),
+      prisma.serviceChange.create({
+        data: {
+          tenantId: session.user.tenantId,
+          serviceId: s.id,
+          changeType: "RENOUVELLEMENT",
+          field: "renewalDate",
+          oldValue: {
+            renewalDate: s.renewalDate?.toISOString().slice(0, 10) ?? null,
+            qbInvoiceNo: s.lastQbInvoiceNo,
+          },
+          newValue: {
+            renewalDate: newRenewal.toISOString().slice(0, 10),
+            qbInvoiceNo: qb,
+          },
+          source: "MANUEL",
+          userId: session.user.id,
+        },
+      }),
+    ]);
+  }
+
+  await audit({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "client.billed",
+    entityType: "Client",
+    entityId: clientId,
+    before: null,
+    after: { qbInvoiceNo: qb, services: services.length },
+  });
+
+  revalidateBillingViews();
+  return { count: services.length };
+}
+
 // « Annulé / ne pas renouveler » : le service ne sera plus facturé → sort du
 // dashboard, des urgences et du MRR.
 export async function cancelService(serviceId: string) {

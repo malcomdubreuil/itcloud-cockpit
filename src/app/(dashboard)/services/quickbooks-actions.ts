@@ -8,7 +8,7 @@ import {
   QuickBooksClient,
   type QboInvoice,
 } from "@/infrastructure/quickbooks/QuickBooksClient";
-import { markServiceBilled } from "./actions";
+import { markClientBilled } from "./actions";
 
 // Automatisation QuickBooks de la refacturation.
 // Le flux de l'utilisateur : retrouver sa dernière facture d'un client, la
@@ -31,6 +31,7 @@ async function loadService(serviceId: string, tenantId: string) {
     select: {
       id: true,
       tenantId: true,
+      clientId: true,
       renewalDate: true,
       lastQbInvoiceNo: true,
       quantity: true,
@@ -234,7 +235,12 @@ function buildDuplicatePayload(
 //   (qui lui assigne son numéro à l'enregistrement), l'envoie, puis revient
 //   saisir le numéro final dans l'ERP (ce qui avancera alors l'échéance).
 export type BillResult =
-  | { status: "billed"; newDocNumber: string; invoiceUrl: string }
+  | {
+      status: "billed";
+      newDocNumber: string;
+      invoiceUrl: string;
+      servicesBilled: number;
+    }
   | { status: "draft_no_number"; invoiceId: string; invoiceUrl: string };
 
 // Lien profond vers une facture dans QuickBooks Online (ouvre dans la compagnie
@@ -249,7 +255,7 @@ function qbInvoiceUrl(invoiceId: string): string {
 // le finaliser côté QuickBooks.
 export async function billViaQuickBooks(
   serviceId: string,
-  input: { txnDate: string; renewalDate: string },
+  input: { txnDate: string },
 ): Promise<BillResult> {
   const user = await requireUser();
   const service = await loadService(serviceId, user.tenantId);
@@ -304,14 +310,16 @@ export async function billViaQuickBooks(
 
   // Finalise côté ERP (avance l'échéance + enregistre le numéro). Le brouillon
   // reste NON envoyé : l'utilisateur le vérifie puis l'envoie lui-même.
-  await markServiceBilled(serviceId, {
+  // La facture couvre TOUT le client → tous ses services indirects actifs
+  // reçoivent le numéro + échéance avancée (chacun selon son cycle).
+  const { count } = await markClientBilled(service.clientId, {
     qbInvoiceNo: newDoc,
-    renewalDate: input.renewalDate,
   });
 
   return {
     status: "billed",
     newDocNumber: newDoc,
     invoiceUrl: qbInvoiceUrl(created.Id),
+    servicesBilled: count,
   };
 }
