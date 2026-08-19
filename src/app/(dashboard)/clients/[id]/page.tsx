@@ -135,13 +135,24 @@ export default async function ClientPage({ params }: Props) {
         {[
           { label: "Services actifs", value: String(active.length) },
           { label: "Licences", value: String(licenses) },
-          { label: "Revenu", value: `${cad.format(monthly)}/mois` },
-          { label: "Profit", value: `${profit >= 0 ? "+" : ""}${cad.format(profit)}/mois` },
-        ].map(({ label, value }) => (
+          {
+            label: "Revenu",
+            value: `${cad.format(monthly * 12)}/an`,
+            sub: `${cad.format(monthly)}/mois`,
+          },
+          {
+            label: "Profit",
+            value: `${profit >= 0 ? "+" : ""}${cad.format(profit * 12)}/an`,
+            sub: `${profit >= 0 ? "+" : ""}${cad.format(profit)}/mois`,
+          },
+        ].map(({ label, value, sub }) => (
           <Card key={label}>
             <CardHeader className="pb-2">
               <CardDescription>{label}</CardDescription>
               <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
+              {sub && (
+                <p className="text-xs tabular-nums text-muted-foreground">{sub}</p>
+              )}
             </CardHeader>
           </Card>
         ))}
