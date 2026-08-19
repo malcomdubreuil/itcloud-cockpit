@@ -43,9 +43,10 @@ export default async function DashboardPage() {
   if (!session?.user) redirect("/login");
   const tenantId = session.user.tenantId;
 
-  const in60days = new Date(Date.now() + 60 * 86_400_000);
+  // Fenêtre max : seuil d'alerte le plus large (60 j) + bande jaune (30 j).
+  const inMaxDays = new Date(Date.now() + 90 * 86_400_000);
 
-  const [activeServices, clientCount, suspendedCount, toBill] =
+  const [activeServices, clientCount, suspendedCount, dueRaw] =
     await Promise.all([
       // KPI = ce que JE facture : la facturation directe (ITCloud) est exclue
       prisma.clientService.findMany({
@@ -61,18 +62,18 @@ export default async function DashboardPage() {
       prisma.clientService.count({
         where: { tenantId, deletedAt: null, status: "SUSPENDU" },
       }),
-      // Refacturation (~30 j avant échéance) : tout ce qui échoit sous 60 j,
-      // facturation indirecte seulement (les Direct sont facturés par ITCloud)
+      // Refacturation : chaque service a son propre seuil d'alerte (30/45/60 j),
+      // donc on ratisse large puis on filtre en mémoire.
+      // Facturation indirecte seulement (les Direct sont facturés par ITCloud).
       prisma.clientService.findMany({
         where: {
           tenantId, deletedAt: null, status: "ACTIF", billingMode: "INDIRECT",
-          renewalDate: { not: null, lte: in60days },
+          renewalDate: { not: null, lte: inMaxDays },
         },
         orderBy: { renewalDate: "asc" },
-        take: 15,
         select: {
           id: true, clientId: true, quantity: true, unitPrice: true, renewalDate: true,
-          lastQbInvoiceNo: true, monthlyBilling: true,
+          lastQbInvoiceNo: true, monthlyBilling: true, urgencyDays: true,
           client: { select: { companyName: true, clientCode: true } },
           product: { select: { name: true, billingCycle: true } },
         },
@@ -91,13 +92,16 @@ export default async function DashboardPage() {
   }
   const monthlyProfit = mrr - monthlyCost;
 
-  const redCount = toBill.filter((s) => daysUntil(s.renewalDate!) <= 30).length;
-  const yellowTotal = await prisma.clientService.count({
-    where: {
-      tenantId, deletedAt: null, status: "ACTIF", billingMode: "INDIRECT",
-      renewalDate: { not: null, lte: in60days },
-    },
-  });
+  // Chaque service utilise SON seuil : rouge à ≤ seuil, jaune dans les 30 j
+  // qui précèdent. Le seuil se règle service par service (bouton « Alerte N j »).
+  const dueSoon = dueRaw.filter(
+    (s) => daysUntil(s.renewalDate!) <= s.urgencyDays + 30,
+  );
+  const toBill = dueSoon.slice(0, 15);
+  const redCount = dueSoon.filter(
+    (s) => daysUntil(s.renewalDate!) <= s.urgencyDays,
+  ).length;
+  const yellowTotal = dueSoon.length;
 
   const kpis = [
     { label: "Clients actifs", value: String(clientCount) },
@@ -108,7 +112,7 @@ export default async function DashboardPage() {
     { label: "Profit annuel", value: cad.format(monthlyProfit * 12) },
     { label: "Services actifs", value: String(activeServices.length) },
     { label: "Services suspendus", value: String(suspendedCount) },
-    { label: "À facturer (≤ 60 j)", value: String(yellowTotal) },
+    { label: "À facturer (bientôt)", value: String(yellowTotal) },
   ];
 
   return (
@@ -116,8 +120,9 @@ export default async function DashboardPage() {
       <div>
         <h1 className="text-2xl font-semibold">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          Vue d&apos;ensemble — la refacturation se fait ~30 jours avant
-          l&apos;échéance de chaque service.
+          Vue d&apos;ensemble — la refacturation se fait avant l&apos;échéance de
+          chaque service, selon le seuil d&apos;alerte réglé sur ce service
+          (30, 45 ou 60 jours).
         </p>
       </div>
 
@@ -144,7 +149,7 @@ export default async function DashboardPage() {
         {toBill.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              Rien à facturer dans les 60 prochains jours. 🎉
+              Rien à facturer pour le moment. 🎉
             </CardContent>
           </Card>
         ) : (
@@ -152,7 +157,7 @@ export default async function DashboardPage() {
             <CardContent className="divide-y px-0">
               {toBill.map((s) => {
                 const days = daysUntil(s.renewalDate!);
-                const urgent = days <= 30;
+                const urgent = days <= s.urgencyDays;
                 const months = CYCLE_MONTHS[s.product.billingCycle] ?? 1;
                 const amount = Number(s.unitPrice) * s.quantity;
                 return (

@@ -66,7 +66,7 @@ export default async function ClientPage({ params }: Props) {
           id: true, quantity: true, unitCost: true, unitPrice: true,
           status: true, billingMode: true, renewalDate: true,
           lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true,
-          monthlyBilling: true,
+          monthlyBilling: true, urgencyDays: true,
           product: { select: { name: true, billingCycle: true, msrp: true } },
         },
       },
@@ -170,6 +170,7 @@ export default async function ClientPage({ params }: Props) {
                 lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
                 notes: s.notes,
                 monthlyBilling: s.monthlyBilling,
+                urgencyDays: s.urgencyDays,
                 product: {
                   name: s.product.name,
                   billingCycle: s.product.billingCycle,
@@ -202,6 +203,7 @@ export default async function ClientPage({ params }: Props) {
                 lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
                 notes: s.notes,
                 monthlyBilling: s.monthlyBilling,
+                urgencyDays: s.urgencyDays,
                 product: {
                   name: s.product.name,
                   billingCycle: s.product.billingCycle,

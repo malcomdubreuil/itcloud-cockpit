@@ -78,6 +78,7 @@ export default async function ClientsPage({
           where: { deletedAt: null, status: "ACTIF", billingMode: "INDIRECT" },
           select: {
             quantity: true, unitPrice: true, unitCost: true, renewalDate: true,
+            urgencyDays: true,
             product: { select: { billingCycle: true } },
           },
         },
@@ -91,12 +92,15 @@ export default async function ClientsPage({
     let monthly = 0;
     let profit = 0;
     let nextRenewal: Date | null = null;
+    // Seuil d'alerte du service qui porte la prochaine échéance (réglable par service)
+    let nextUrgencyDays = 30;
     for (const s of c.services) {
       const months = CYCLE_MONTHS[s.product.billingCycle] ?? 1;
       monthly += (Number(s.unitPrice) * s.quantity) / months;
       profit += ((Number(s.unitPrice) - Number(s.unitCost)) * s.quantity) / months;
       if (s.renewalDate && (!nextRenewal || s.renewalDate < nextRenewal)) {
         nextRenewal = s.renewalDate;
+        nextUrgencyDays = s.urgencyDays;
       }
     }
     return {
@@ -105,7 +109,7 @@ export default async function ClientsPage({
       monthly,
       profit,
       nextRenewal,
-      urgency: renewalUrgency(nextRenewal, "ACTIF"),
+      urgency: renewalUrgency(nextRenewal, "ACTIF", nextUrgencyDays),
     };
   });
 

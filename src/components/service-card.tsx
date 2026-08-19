@@ -3,6 +3,7 @@ import { MoneyInput } from "@/components/money-input";
 import { InlineTextInput } from "@/components/inline-text-input";
 import { ServiceActions } from "@/components/service-actions";
 import { MonthlyBillingToggle } from "@/components/monthly-billing-toggle";
+import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -50,11 +51,17 @@ const cad = new Intl.NumberFormat("fr-CA", {
 
 type Urgency = "rouge" | "jaune" | "vert" | null;
 
-export function renewalUrgency(renewalDate: Date | null, status: string): Urgency {
+// Seuil d'urgence choisi par service (30, 45 ou 60 j) : rouge à partir de ce
+// seuil, jaune pendant les 30 jours qui précèdent, vert au-delà.
+export function renewalUrgency(
+  renewalDate: Date | null,
+  status: string,
+  urgencyDays = 30,
+): Urgency {
   if (!renewalDate || status !== "ACTIF") return null;
   const days = daysUntil(renewalDate);
-  if (days <= 30) return "rouge";
-  if (days <= 60) return "jaune";
+  if (days <= urgencyDays) return "rouge";
+  if (days <= urgencyDays + 30) return "jaune";
   return "vert";
 }
 
@@ -87,6 +94,7 @@ export type ServiceCardData = {
   lastItcloudInvoiceNo: string | null;
   notes: string | null;
   monthlyBilling: boolean;
+  urgencyDays: number;
   product: { name: string; billingCycle: string; msrp: number };
   client?: { id: string; companyName: string };
 };
@@ -97,7 +105,10 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
   const margin = s.unitPrice > 0 ? ((s.unitPrice - s.unitCost) / s.unitPrice) * 100 : null;
   const profitMonthly = ((s.unitPrice - s.unitCost) * s.quantity) / months;
   // Facturation directe = ITCloud facture le client : aucune urgence pour nous
-  const urgency = s.billingMode === "DIRECT" ? null : renewalUrgency(s.renewalDate, s.status);
+  const urgency =
+    s.billingMode === "DIRECT"
+      ? null
+      : renewalUrgency(s.renewalDate, s.status, s.urgencyDays);
   const days = s.renewalDate ? daysUntil(s.renewalDate) : null;
 
   return (
@@ -132,6 +143,9 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
               />
             ) : (
               <Badge variant="outline">{CYCLE_LABEL[s.product.billingCycle]}</Badge>
+            )}
+            {s.billingMode === "INDIRECT" && (
+              <UrgencyDaysToggle serviceId={s.id} urgencyDays={s.urgencyDays} />
             )}
             {s.billingMode === "DIRECT" && (
               <Badge variant="secondary" title="ITCloud facture ce client directement — rien à refacturer">

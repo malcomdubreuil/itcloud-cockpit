@@ -337,6 +337,8 @@ model ClientService {
   // Facturation au mois : quand true, la refacturation avance les dates de
   // +1 mois (au lieu du cycle du produit) — service annuel refacturé mensuellement.
   monthlyBilling Boolean     @default(false)
+  // Seuil d'urgence (jours avant échéance) où le service passe au rouge : 30, 45 ou 60.
+  urgencyDays  Int           @default(30)
 
   // Aide à la refacturation : derniers numéros de facture (éditables ;
   // celui d'ITCloud sera aussi alimenté par la sync invoice-items en phase 1)

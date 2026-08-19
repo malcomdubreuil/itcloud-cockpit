@@ -178,6 +178,40 @@ export async function setServiceMonthlyBilling(serviceId: string, value: boolean
   return { renewalDate: newRenewal?.toISOString().slice(0, 10) ?? null };
 }
 
+// Seuil d'alerte du service : nombre de jours avant l'échéance où il passe au
+// rouge (30, 45 ou 60). Réglable par service — certains clients doivent être
+// relancés plus tôt que d'autres.
+export async function setServiceUrgencyDays(serviceId: string, days: number) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+  if (![30, 45, 60].includes(days)) throw new Error("Seuil invalide (30, 45 ou 60)");
+
+  const service = await prisma.clientService.findUniqueOrThrow({
+    where: { id: serviceId },
+    select: { id: true, tenantId: true, urgencyDays: true },
+  });
+  if (service.tenantId !== session.user.tenantId) throw new Error("Introuvable");
+  if (service.urgencyDays === days) return;
+
+  await prisma.clientService.update({
+    where: { id: serviceId },
+    data: { urgencyDays: days },
+  });
+
+  await audit({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "service.set_urgency_days",
+    entityType: "ClientService",
+    entityId: service.id,
+    before: { urgencyDays: service.urgencyDays },
+    after: { urgencyDays: days },
+  });
+
+  revalidateBillingViews();
+}
+
 export async function updateQbInvoiceNo(serviceId: string, value: string) {
   await updateInvoiceNo(serviceId, "lastQbInvoiceNo", value);
 }
