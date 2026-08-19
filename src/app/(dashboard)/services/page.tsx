@@ -68,7 +68,7 @@ export default async function ServicesPage({
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       select: {
-        id: true, clientId: true, quantity: true, quantityManual: true, unitCost: true, unitPrice: true,
+        id: true, clientId: true, quantity: true, quantityManual: true, renewalDateManual: true, unitCost: true, unitPrice: true,
         status: true, renewalDate: true,
         lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true,
         billingMode: true, monthlyBilling: true, urgencyDays: true,
@@ -160,6 +160,7 @@ export default async function ServicesPage({
                 clientId: s.clientId,
                 quantity: s.quantity,
                 quantityManual: s.quantityManual,
+                renewalDateManual: s.renewalDateManual,
                 unitCost: Number(s.unitCost),
                 unitPrice: Number(s.unitPrice),
                 status: s.status,

@@ -3,6 +3,7 @@ import { MoneyInput } from "@/components/money-input";
 import { InlineTextInput } from "@/components/inline-text-input";
 import { ServiceActions } from "@/components/service-actions";
 import { QuantityInput } from "@/components/quantity-input";
+import { RenewalDateInput } from "@/components/renewal-date-input";
 import { MonthlyBillingToggle } from "@/components/monthly-billing-toggle";
 import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +89,7 @@ export type ServiceCardData = {
   clientId: string;
   quantity: number;
   quantityManual: boolean;
+  renewalDateManual: boolean;
   unitCost: number;
   unitPrice: number;
   status: string;
@@ -112,7 +114,6 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
     s.billingMode === "DIRECT"
       ? null
       : renewalUrgency(s.renewalDate, s.status, s.urgencyDays);
-  const days = s.renewalDate ? daysUntil(s.renewalDate) : null;
 
   return (
     <Card
@@ -159,10 +160,14 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
               <Badge variant="secondary">{STATUS_LABEL[s.status]}</Badge>
             )}
             {s.renewalDate && (
-              <span className={cn("text-xs", urgency ? URGENCY_TEXT[urgency] : "text-muted-foreground")}>
-                Échéance {s.renewalDate.toLocaleDateString("fr-CA")}
-                {days !== null && ` (${days} j)`}
-              </span>
+              <RenewalDateInput
+                id={s.id}
+                value={s.renewalDate.toISOString().slice(0, 10)}
+                manual={s.renewalDateManual}
+                daysClassName={
+                  urgency ? URGENCY_TEXT[urgency] : "text-muted-foreground"
+                }
+              />
             )}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">

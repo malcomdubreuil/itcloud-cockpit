@@ -262,6 +262,62 @@ export async function updateServiceQuantity(serviceId: string, quantity: number)
   revalidateBillingViews();
 }
 
+// Échéance éditée à la main : on la marque « manuelle » pour que la
+// synchronisation ITCloud ne la touche pas. (La facturation, elle, continue de
+// l'avancer normalement : c'est le but du bouton « Facturé ».)
+export async function updateServiceRenewalDate(serviceId: string, iso: string) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+
+  const date = new Date(`${iso}T00:00:00`);
+  if (isNaN(date.getTime())) throw new Error("Date invalide");
+  const year = date.getFullYear();
+  if (year < 2000 || year > 2100) throw new Error("Date hors plage");
+
+  const service = await prisma.clientService.findUniqueOrThrow({
+    where: { id: serviceId },
+    select: {
+      id: true, tenantId: true, renewalDate: true, renewalDateManual: true,
+    },
+  });
+  if (service.tenantId !== session.user.tenantId) throw new Error("Introuvable");
+
+  const before = service.renewalDate?.toISOString().slice(0, 10) ?? null;
+  if (before === iso && service.renewalDateManual) return;
+
+  await prisma.$transaction([
+    prisma.clientService.update({
+      where: { id: serviceId },
+      data: { renewalDate: date, renewalDateManual: true },
+    }),
+    prisma.serviceChange.create({
+      data: {
+        tenantId: service.tenantId,
+        serviceId: service.id,
+        changeType: "MODIFICATION",
+        field: "renewalDate",
+        oldValue: { renewalDate: before },
+        newValue: { renewalDate: iso, renewalDateManual: true },
+        source: "MANUEL",
+        userId: session.user.id,
+      },
+    }),
+  ]);
+
+  await audit({
+    tenantId: service.tenantId,
+    userId: session.user.id,
+    action: "service.update_renewal_date",
+    entityType: "ClientService",
+    entityId: service.id,
+    before: { renewalDate: before, renewalDateManual: service.renewalDateManual },
+    after: { renewalDate: iso, renewalDateManual: true },
+  });
+
+  revalidateBillingViews();
+}
+
 export async function updateQbInvoiceNo(serviceId: string, value: string) {
   await updateInvoiceNo(serviceId, "lastQbInvoiceNo", value);
 }

@@ -329,6 +329,8 @@ model ClientService {
   quantity     Int
   // Quantité fixée à la main : la synchronisation ITCloud ne l'écrase plus.
   quantityManual Boolean     @default(false)
+  // Échéance fixée à la main : ni la synchro ni un recalcul ne l'écrasent.
+  renewalDateManual Boolean  @default(false)
   unitCost     Decimal       @db.Decimal(12, 4) // snapshot coût au moment T
   unitPrice    Decimal       @db.Decimal(12, 4) // snapshot prix de vente
   purchaseDate DateTime?

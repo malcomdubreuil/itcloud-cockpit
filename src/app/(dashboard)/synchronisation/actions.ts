@@ -385,6 +385,9 @@ export async function applyItcloudSync(): Promise<SyncApplyResult> {
       changed.status = { from: erpS.status, to: status };
       statusUpdated++;
     }
+    // NOTE : la synchro ne touche JAMAIS renewalDate d'un service existant
+    // (seuls les services créés reçoivent la date d'ITCloud). Si cela devait
+    // changer un jour, respecter erpS.renewalDateManual comme pour la quantité.
     // Quantité fixée à la main → jamais écrasée par la synchro.
     if (!erpS.quantityManual && erpS.quantity !== qty) {
       data.quantity = qty;
