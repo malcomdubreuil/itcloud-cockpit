@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MoneyInput } from "@/components/money-input";
 import { InlineTextInput } from "@/components/inline-text-input";
 import { ServiceActions } from "@/components/service-actions";
+import { QuantityInput } from "@/components/quantity-input";
 import { MonthlyBillingToggle } from "@/components/monthly-billing-toggle";
 import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +13,7 @@ import {
   updateQbInvoiceNo,
   updateItcloudInvoiceNo,
   updateServiceNotes,
+  updateServiceQuantity,
 } from "@/app/(dashboard)/services/actions";
 
 // Carte service partagée (page Services + fiche client) : montants en mensuel
@@ -85,6 +87,7 @@ export type ServiceCardData = {
   id: string;
   clientId: string;
   quantity: number;
+  quantityManual: boolean;
   unitCost: number;
   unitPrice: number;
   status: string;
@@ -202,7 +205,12 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
         <div className="flex items-center gap-4 text-sm">
           <div className="text-right">
             <p className="text-xs text-muted-foreground">Qté</p>
-            <p className="tabular-nums">{s.quantity}</p>
+            <QuantityInput
+              id={s.id}
+              value={s.quantity}
+              manual={s.quantityManual}
+              action={updateServiceQuantity}
+            />
           </div>
           <div className="text-right">
             <p className="text-xs text-muted-foreground">PDSF</p>

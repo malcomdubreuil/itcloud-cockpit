@@ -212,6 +212,56 @@ export async function setServiceUrgencyDays(serviceId: string, days: number) {
   revalidateBillingViews();
 }
 
+// Quantité éditée à la main : on la marque « manuelle » pour que la
+// synchronisation ITCloud ne l'écrase plus (le nombre de licences facturé peut
+// légitimement différer de ce que rapporte ITCloud).
+export async function updateServiceQuantity(serviceId: string, quantity: number) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+  if (!Number.isInteger(quantity) || quantity < 0 || quantity > 100000) {
+    throw new Error("Quantité invalide");
+  }
+
+  const service = await prisma.clientService.findUniqueOrThrow({
+    where: { id: serviceId },
+    select: { id: true, tenantId: true, quantity: true, quantityManual: true },
+  });
+  if (service.tenantId !== session.user.tenantId) throw new Error("Introuvable");
+  if (service.quantity === quantity && service.quantityManual) return;
+
+  await prisma.$transaction([
+    prisma.clientService.update({
+      where: { id: serviceId },
+      data: { quantity, quantityManual: true },
+    }),
+    prisma.serviceChange.create({
+      data: {
+        tenantId: service.tenantId,
+        serviceId: service.id,
+        changeType: "QTE",
+        field: "quantity",
+        oldValue: { quantity: service.quantity },
+        newValue: { quantity, quantityManual: true },
+        source: "MANUEL",
+        userId: session.user.id,
+      },
+    }),
+  ]);
+
+  await audit({
+    tenantId: service.tenantId,
+    userId: session.user.id,
+    action: "service.update_quantity",
+    entityType: "ClientService",
+    entityId: service.id,
+    before: { quantity: service.quantity, quantityManual: service.quantityManual },
+    after: { quantity, quantityManual: true },
+  });
+
+  revalidateBillingViews();
+}
+
 export async function updateQbInvoiceNo(serviceId: string, value: string) {
   await updateInvoiceNo(serviceId, "lastQbInvoiceNo", value);
 }

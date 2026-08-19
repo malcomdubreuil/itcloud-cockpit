@@ -143,6 +143,7 @@ export async function previewItcloudSync(): Promise<SyncPreview> {
     select: {
       matchKey: true,
       quantity: true,
+      quantityManual: true,
       status: true,
       billingMode: true,
       client: { select: { companyName: true } },
@@ -173,7 +174,8 @@ export async function previewItcloudSync(): Promise<SyncPreview> {
       continue;
     }
     matched++;
-    if (erpS.quantity !== qty) {
+    // Quantité fixée à la main → la synchro n'y touche pas.
+    if (!erpS.quantityManual && erpS.quantity !== qty) {
       quantityChanges.push({
         client: erpS.client.companyName,
         product: erpS.product.name,
@@ -344,6 +346,7 @@ export async function applyItcloudSync(): Promise<SyncApplyResult> {
       externalId: true,
       status: true,
       quantity: true,
+      quantityManual: true,
       billingMode: true,
       missingSince: true,
     },
@@ -382,7 +385,8 @@ export async function applyItcloudSync(): Promise<SyncApplyResult> {
       changed.status = { from: erpS.status, to: status };
       statusUpdated++;
     }
-    if (erpS.quantity !== qty) {
+    // Quantité fixée à la main → jamais écrasée par la synchro.
+    if (!erpS.quantityManual && erpS.quantity !== qty) {
       data.quantity = qty;
       changed.quantity = { from: erpS.quantity, to: qty };
       quantityUpdated++;
