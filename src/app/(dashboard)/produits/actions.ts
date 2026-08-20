@@ -32,6 +32,47 @@ export async function updateProductCostMonthly(
   await updateProductCost(productId, monthlyCost * CYCLE_MONTHS[product.billingCycle]);
 }
 
+// Le PDSF s'affiche et s'édite EN MENSUEL dans l'UI ; il est stocké au cycle
+// du produit (ex. produit annuel : saisie 10 $/mois → msrp 120 $/an).
+export async function updateProductMsrpMonthly(
+  productId: string,
+  monthlyMsrp: number,
+) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "products:write");
+  if (!Number.isFinite(monthlyMsrp) || monthlyMsrp < 0) throw new Error("PDSF invalide");
+
+  const product = await prisma.product.findUniqueOrThrow({
+    where: { id: productId },
+    select: { id: true, tenantId: true, billingCycle: true, msrp: true },
+  });
+  if (product.tenantId !== session.user.tenantId) throw new Error("Introuvable");
+
+  const value = (monthlyMsrp * (CYCLE_MONTHS[product.billingCycle] ?? 1)).toFixed(4);
+  const before = product.msrp.toString();
+  if (before === value) return;
+
+  await prisma.product.update({
+    where: { id: productId },
+    // priceManual : prix saisi à la main → protégé des ré-imports
+    data: { msrp: value, priceManual: true },
+  });
+
+  await audit({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "product.update_msrp",
+    entityType: "Product",
+    entityId: product.id,
+    before: { msrp: before },
+    after: { msrp: value, priceManual: true },
+  });
+
+  revalidatePath("/produits");
+  revalidatePath("/services");
+}
+
 export async function updateProductCost(productId: string, cost: number) {
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");
@@ -48,7 +89,8 @@ export async function updateProductCost(productId: string, cost: number) {
   await prisma.$transaction([
     prisma.product.update({
       where: { id: productId },
-      data: { partnerCost: value },
+      // priceManual : prix saisi à la main → protégé des ré-imports
+      data: { partnerCost: value, priceManual: true },
     }),
     // les services de ce produit reprennent le nouveau coût (marges à jour)
     prisma.clientService.updateMany({

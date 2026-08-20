@@ -6,7 +6,11 @@ import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { ProductActiveToggle } from "@/components/product-active-toggle";
 import { MoneyInput } from "@/components/money-input";
-import { updateProductSuggestedMonthly } from "./actions";
+import {
+  updateProductSuggestedMonthly,
+  updateProductMsrpMonthly,
+  updateProductCostMonthly,
+} from "./actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -81,7 +85,7 @@ export default async function ProduitsPage({
         take: PAGE_SIZE,
         select: {
           id: true, name: true, group: true, billingCycle: true,
-          msrp: true, partnerCost: true, suggestedPrice: true, active: true,
+          msrp: true, partnerCost: true, suggestedPrice: true, priceManual: true, active: true,
           _count: { select: { services: { where: { status: "ACTIF" } } } },
         },
       }),
@@ -195,15 +199,29 @@ export default async function ProduitsPage({
                       )}
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                      <span>
-                        PDSF {cad.format(msrp)}{suffix}
+                      <span className="inline-flex items-center gap-1">
+                        PDSF
+                        <MoneyInput
+                          id={p.id}
+                          value={msrp / months}
+                          action={updateProductMsrpMonthly}
+                          label="PDSF mensuel"
+                        />
+                        /mois
                         {months > 1 && (
-                          <span className="ml-1">({cad.format(msrp / months)}/mois)</span>
+                          <span className="ml-1">({cad.format(msrp)}{suffix})</span>
                         )}
                       </span>
                       <span>·</span>
-                      <span>
-                        Coût {cad.format(costMonthly)}/mois
+                      <span className="inline-flex items-center gap-1">
+                        Coût
+                        <MoneyInput
+                          id={p.id}
+                          value={costMonthly}
+                          action={updateProductCostMonthly}
+                          label="Coût mensuel"
+                        />
+                        /mois
                         {months > 1 && (
                           <span className="ml-1">({cad.format(Number(p.partnerCost))}{suffix})</span>
                         )}

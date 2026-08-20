@@ -73,7 +73,7 @@ async function main() {
     where: { tenantId, deletedAt: null },
     select: {
       id: true, sku: true, name: true, billingCycle: true,
-      active: true, partnerCost: true,
+      active: true, partnerCost: true, priceManual: true,
       _count: { select: { services: true } },
     },
   });
@@ -87,7 +87,15 @@ async function main() {
   let converted = 0;
   const unmatched: string[] = [];
 
+  let skippedManual = 0;
+
   for (const house of houseProducts) {
+    // Prix saisi à la main dans l'ERP → on n'y touche jamais (règle utilisateur).
+    if (house.priceManual) {
+      console.log(`  ignoré (prix manuel) : « ${house.name} » (${house.billingCycle})`);
+      skippedManual++;
+      continue;
+    }
     const candidates = byDescription.get(house.name) ?? [];
 
     // 1) correspondance exacte Description + cycle → fusion avec le produit catalogue
