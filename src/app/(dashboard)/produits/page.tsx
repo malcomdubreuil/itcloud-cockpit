@@ -190,7 +190,13 @@ export default async function ProduitsPage({
               <Card key={p.id} className={cn("py-3", !p.active && "opacity-70")}>
                 <CardContent className="flex items-center gap-3 px-4">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium" title={p.name}>{p.name}</p>
+                    <Link
+                      href={`/produits/${p.id}`}
+                      className="block truncate font-medium hover:underline"
+                      title="Voir les clients qui utilisent ce produit"
+                    >
+                      {p.name}
+                    </Link>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       {p.group && <Badge variant="secondary">{p.group}</Badge>}
                       <Badge variant="outline">{CYCLE_LABEL[p.billingCycle]}</Badge>

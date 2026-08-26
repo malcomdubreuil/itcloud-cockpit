@@ -156,23 +156,30 @@ function buildDuplicatePayload(
   const rawLines = (Array.isArray(src.Line) ? src.Line : []).filter(
     (l) => detailType(l) && detailType(l) !== "SubTotalLineDetail",
   );
-  const productLines = rawLines.filter(
-    (l) => detailType(l) === "SalesItemLineDetail",
-  );
-  const otherLines = rawLines.filter(
-    (l) => detailType(l) !== "SalesItemLineDetail",
-  );
+  // On regroupe chaque ligne de produit avec les lignes descriptives qui la
+  // suivent (date d'engagement / période) : elles restent COLLÉES sous leur
+  // produit. Une facture sans ligne d'engagement n'en reçoit pas.
+  const leading: unknown[] = [];
+  const groups: { product: unknown; extras: unknown[] }[] = [];
+  for (const l of rawLines) {
+    if (detailType(l) === "SalesItemLineDetail") {
+      groups.push({ product: l, extras: [] });
+    } else if (groups.length === 0) {
+      leading.push(l); // lignes avant tout produit (rare)
+    } else {
+      groups[groups.length - 1].extras.push(l);
+    }
+  }
 
-  let lines: Record<string, unknown>[];
-  if (productLines.length === 1 && quantity > 1) {
-    // Règle 1 : une ligne identique par licence, puis les lignes de période.
-    const copies = Array.from({ length: quantity }, () =>
-      cleanLine(productLines[0], unit),
-    );
-    lines = [...copies, ...otherLines.map((l) => cleanLine(l, unit))];
-  } else {
-    // Cas simple ou multi-produits : on garde les lignes telles quelles.
-    lines = rawLines.map((l) => cleanLine(l, unit));
+  const lines: Record<string, unknown>[] = leading.map((l) => cleanLine(l, unit));
+  for (const g of groups) {
+    // Règle 1 : une ligne par licence — le bloc produit + engagement est répété
+    // en entier, pour que chaque produit garde sa date d'engagement dessous.
+    const copies = groups.length === 1 && quantity > 1 ? quantity : 1;
+    for (let i = 0; i < copies; i++) {
+      lines.push(cleanLine(g.product, unit));
+      for (const extra of g.extras) lines.push(cleanLine(extra, unit));
+    }
   }
 
   const payload: Record<string, unknown> = {
