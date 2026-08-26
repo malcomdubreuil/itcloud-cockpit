@@ -75,16 +75,6 @@ const P_MAINTENANCE = "Maintenance site web";
 // Plafond de plausibilite d'un prix MENSUEL (grille Keven : 70G = 75 $/mois).
 const MAX_MENSUEL = 100;
 
-const CATALOGUE: { name: string; cycle: "MENSUEL" | "ANNUEL" }[] = [
-  { name: P_DOMAINE, cycle: "ANNUEL" },
-  { name: P_HEBERG, cycle: "MENSUEL" },
-  { name: P_SSL, cycle: "ANNUEL" },
-  { name: P_DNS, cycle: "MENSUEL" },
-  { name: P_ELEMENTOR, cycle: "ANNUEL" },
-  { name: P_COURRIEL, cycle: "ANNUEL" },
-  { name: P_MAINTENANCE, cycle: "MENSUEL" },
-];
-
 /** Reconnaît les lignes qui ne sont pas un simple nom de domaine. */
 function specialProduct(nom: string): string | null {
   if (/certificat\s*ssl/i.test(nom)) return P_SSL;
@@ -367,20 +357,29 @@ async function main() {
     (await prisma.supplier.findFirst({ where: { tenantId, name: "GOD-INFO" }, select: { id: true } })) ??
     (await prisma.supplier.create({ data: { tenantId, name: "GOD-INFO" }, select: { id: true } }));
 
+  // Les produits sont derives des plans : le cycle vient des colonnes de prix
+  // du fichier (Prix H = mensuel, Prix D = annuel), pas d'une liste figee.
+  // Sinon « Boite courriel » (20 $/mois) se retrouvait sur un produit ANNUEL,
+  // affiche a 1,67 $/mois et avance d'un an au lieu d'un mois a la facturation.
+  // Corollaire : aucun produit vide n'est cree.
   const productId = new Map<string, string>();
-  for (const { name, cycle } of CATALOGUE) {
+  const wanted = new Map<string, "MENSUEL" | "ANNUEL">();
+  for (const p of plans) wanted.set(`${p.product}|${p.cycle}`, p.cycle);
+
+  for (const [key, cycle] of wanted) {
+    const name = key.slice(0, key.lastIndexOf("|"));
     const existing = await prisma.product.findFirst({
       where: { tenantId, sku: name, billingCycle: cycle },
       select: { id: true },
     });
     if (existing) {
-      productId.set(name, existing.id);
+      productId.set(key, existing.id);
       continue;
     }
-    // PDSF = le prix le plus fréquent du catalogue pour ce produit ; le vrai
-    // prix vit sur chaque service. Coût 0 : Keven ajustera (100 % de profit).
-    const prices = plans.filter((p) => p.product === name).map((p) => p.price);
-    const msrp = prices.length ? prices.sort((a, b) => a - b)[Math.floor(prices.length / 2)] : 0;
+    // PDSF = prix median observe ; le vrai prix vit sur chaque service.
+    // Cout 0 : Keven ajustera (import a 100 % de profit, sa decision).
+    const prices = plans.filter((p) => p.product === name && p.cycle === cycle).map((p) => p.price).sort((a, b) => a - b);
+    const msrp = prices.length ? prices[Math.floor(prices.length / 2)] : 0;
     const created = await prisma.product.create({
       data: {
         tenantId, supplierId: supplier.id, name, sku: name,
@@ -390,7 +389,7 @@ async function main() {
       },
       select: { id: true },
     });
-    productId.set(name, created.id);
+    productId.set(key, created.id);
     console.log(`  produit cree : ${name} (${cycle})`);
   }
 
@@ -405,7 +404,7 @@ async function main() {
     if (exists) { already++; continue; }
     const svc = await prisma.clientService.create({
       data: {
-        tenantId, clientId: p.clientId, productId: productId.get(p.product)!,
+        tenantId, clientId: p.clientId, productId: productId.get(`${p.product}|${p.cycle}`)!,
         matchKey, quantity: 1,
         unitPrice: p.price.toFixed(4), unitCost: "0.0000",
         renewalDate: p.renewal, status: "ACTIF", billingMode: "INDIRECT",
