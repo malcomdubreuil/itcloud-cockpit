@@ -45,3 +45,5 @@ next-env.d.ts
 
 # secrets (cles privees) - jamais commites
 /secrets
+
+# Cache de resolution QuickBooks (donnees clients) — jamais versionne

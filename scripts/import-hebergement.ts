@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import { QuickBooksClient } from "../src/infrastructure/quickbooks/QuickBooksClient";
 
@@ -108,7 +108,10 @@ function norm(s: string): string {
 // Mots vides français : « Atelier DE Mecanique Boivin » doit matcher
 // « Atelier Mecanique Boivin ».
 const STOP = new Set(["de", "du", "des", "la", "le", "les", "l", "d", "et", "a", "au", "aux", "en", "sur"]);
-const tokens = (s: string) => norm(s).split(" ").filter((t) => t && !STOP.has(t));
+// Singulier/pluriel : « Multi-Service » doit matcher « MULTI-SERVICES ».
+const sing = (t: string) => (t.length > 3 && t.endsWith("s") ? t.slice(0, -1) : t);
+const tokens = (s: string) =>
+  norm(s).split(" ").filter((t) => t && !STOP.has(t)).map(sing);
 /** Forme compacte sans espaces : « AS MOTO » === « Asmoto ». */
 const compact = (s: string) => norm(s).replace(/ /g, "");
 
@@ -157,10 +160,20 @@ async function main() {
   // ── 1. Résoudre facture QuickBooks → client ────────────────────────────────
   const invoiceNos = [...new Set(rows.map((r) => r.factureQb).filter(Boolean))];
   console.log(`Résolution de ${invoiceNos.length} factures QuickBooks…`);
-  const qb = new QuickBooksClient(tenantId);
+  // Cache disque : 203 appels QuickBooks prennent des minutes, et le
+  // rapprochement se retouche souvent. Supprimer le fichier pour rafraichir.
+  const CACHE = "data/qb-clients.json";
   const qbCustomerByInvoice = new Map<string, string>();
+  try {
+    for (const [k, v] of Object.entries(
+      JSON.parse(readFileSync(CACHE, "utf8")) as Record<string, string>,
+    )) qbCustomerByInvoice.set(k, v);
+    console.log(`  (cache : ${qbCustomerByInvoice.size} deja resolues)`);
+  } catch { /* pas de cache */ }
+
+  const qb = new QuickBooksClient(tenantId);
   let qbFail = 0;
-  for (const no of invoiceNos) {
+  for (const no of invoiceNos.filter((n) => !qbCustomerByInvoice.has(n))) {
     try {
       const inv = await qb.getInvoiceByDocNumber(no);
       const name = inv?.CustomerRef?.name;
@@ -171,6 +184,7 @@ async function main() {
     }
   }
   console.log(`  ${qbCustomerByInvoice.size} résolues, ${qbFail} introuvables\n`);
+  writeFileSync(CACHE, JSON.stringify(Object.fromEntries(qbCustomerByInvoice)));
 
   // ── 2. Apparier au client de l'ERP ────────────────────────────────────────
   const clients = await prisma.client.findMany({
