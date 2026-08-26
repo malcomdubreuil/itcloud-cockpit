@@ -46,6 +46,43 @@ async function main() {
     console.log("Maintenance site web : rien a faire");
   }
 
+  // 3. Echeances restees dans le passe : le premier passage bornait le report
+  //    a 40 iterations, insuffisant pour les ancres remontant a 2021. Ces
+  //    services seraient apparus en rouge « a facturer » des l'import.
+  const past = await prisma.clientService.findMany({
+    where: {
+      deletedAt: null,
+      product: { itcloudManaged: false },
+      renewalDate: { lt: new Date() },
+    },
+    select: {
+      id: true, renewalDate: true, notes: true,
+      product: { select: { billingCycle: true } },
+      client: { select: { companyName: true } },
+    },
+    orderBy: { renewalDate: "asc" },
+  });
+  console.log(`
+ECHEANCES DANS LE PASSE : ${past.length}`);
+  const now = new Date();
+  for (const s of past) {
+    const d = new Date(s.renewalDate as Date);
+    if (s.product.billingCycle === "ANNUEL") {
+      d.setFullYear(d.getFullYear() + (now.getFullYear() - d.getFullYear()));
+      if (d < now) d.setFullYear(d.getFullYear() + 1);
+    } else {
+      const m = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+      d.setMonth(d.getMonth() + m);
+      if (d < now) d.setMonth(d.getMonth() + 1);
+    }
+    console.log(
+      `  ${(s.client.companyName || "").slice(0, 34).padEnd(34)} ${String(s.renewalDate?.toISOString().slice(0, 10))} -> ${d.toISOString().slice(0, 10)}  ${s.notes ?? ""}`,
+    );
+    if (APPLY) {
+      await prisma.clientService.update({ where: { id: s.id }, data: { renewalDate: d } });
+    }
+  }
+
   console.log("");
   const all = await prisma.product.findMany({
     where: { itcloudManaged: false },

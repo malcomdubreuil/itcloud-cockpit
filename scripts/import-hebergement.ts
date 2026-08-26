@@ -129,14 +129,23 @@ function score(a: string, b: string): number {
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
-/** Avance une date jusqu'au futur, par pas d'un cycle. */
+/** Avance une date jusqu'au futur, par pas d'un cycle.
+ *  Calcul direct plutot qu'une boucle bornee : certaines ancres du fichier
+ *  remontent a 2021, et une boucle de 40 iterations laissait les services
+ *  mensuels dans le passe — ils seraient apparus en rouge « a facturer »
+ *  des l'import. */
 function rollForward(d: Date, cycle: "MENSUEL" | "ANNUEL"): Date {
   const out = new Date(d);
   const now = new Date();
-  let guard = 0;
-  while (out < now && guard++ < 40) {
-    if (cycle === "ANNUEL") out.setFullYear(out.getFullYear() + 1);
-    else out.setMonth(out.getMonth() + 1);
+  if (out >= now) return out;
+  if (cycle === "ANNUEL") {
+    out.setFullYear(out.getFullYear() + (now.getFullYear() - out.getFullYear()));
+    if (out < now) out.setFullYear(out.getFullYear() + 1);
+  } else {
+    const months =
+      (now.getFullYear() - out.getFullYear()) * 12 + (now.getMonth() - out.getMonth());
+    out.setMonth(out.getMonth() + months);
+    if (out < now) out.setMonth(out.getMonth() + 1);
   }
   return out;
 }
