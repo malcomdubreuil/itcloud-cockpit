@@ -19,7 +19,15 @@ function mapCycle(apiCycle: string): string {
   if (c.startsWith("month")) return "MENSUEL";
   if (c.startsWith("annual") || c.startsWith("year")) return "ANNUEL";
   if (c.startsWith("quarter") || c.startsWith("trimest")) return "TRIMESTRIEL";
-  return "MENSUEL"; // Free Account, etc. → défaut, comme l'import
+  // « Free Account » : licences gratuites chez ITCloud, mais refacturées une
+  // fois par an comme le reste du client (vérifié sur les factures QuickBooks).
+  if (c.startsWith("free")) return "ANNUEL";
+  // Défaut ANNUEL : 559 des 581 services le sont, et se tromper vers l'annuel
+  // fait au pire attendre trop longtemps — alors qu'un faux MENSUEL fait
+  // revenir le client en « à facturer » 30 jours après avoir été payé pour un
+  // an (risque de double facturation). Le cycle inconnu est signalé.
+  console.warn(`[sync] cycle ITCloud inconnu « ${apiCycle} » → ANNUEL par défaut`);
+  return "ANNUEL";
 }
 
 // Mappe le statut ITCloud vers l'enum ERP.
