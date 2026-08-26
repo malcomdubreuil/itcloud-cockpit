@@ -255,6 +255,7 @@ type ItcloudAgg = {
   amountAll: number;
   nextInvoiceDate: string;
   registrationDate: string;
+  commitmentEndDate: string;
 };
 
 function aggregateItcloud(
@@ -284,6 +285,7 @@ function aggregateItcloud(
         amountAll: 0,
         nextInvoiceDate: it.nextInvoiceDate,
         registrationDate: it.registrationDate,
+        commitmentEndDate: it.commitmentEndDate,
       };
       byKey.set(key, a);
     }
@@ -349,6 +351,7 @@ export async function applyItcloudSync(): Promise<SyncApplyResult> {
       quantityManual: true,
       billingMode: true,
       missingSince: true,
+      commitmentEndDate: true,
     },
   });
   const erpByKey = new Map(erp.map((s) => [s.matchKey, s]));
@@ -399,6 +402,12 @@ export async function applyItcloudSync(): Promise<SyncApplyResult> {
       changed.billingMode = { from: erpS.billingMode, to: mode };
       billingModeUpdated++;
     }
+    // Date d'engagement ITCloud (sert aux lignes de facture) : on la suit.
+    const commit = parseItcloudDate(a.commitmentEndDate);
+    const commitBefore = erpS.commitmentEndDate?.toISOString().slice(0, 10) ?? null;
+    const commitAfter = commit?.toISOString().slice(0, 10) ?? null;
+    if (commitBefore !== commitAfter) data.commitmentEndDate = commit;
+
     // Un service revenu au rapport n'est plus « manquant ».
     if (erpS.missingSince) data.missingSince = null;
 
@@ -490,6 +499,7 @@ export async function applyItcloudSync(): Promise<SyncApplyResult> {
           status: status as never,
           billingMode: mode as never,
           renewalDate: parseItcloudDate(a.nextInvoiceDate),
+          commitmentEndDate: parseItcloudDate(a.commitmentEndDate),
           purchaseDate: parseItcloudDate(a.registrationDate),
         },
       });

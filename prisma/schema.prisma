@@ -340,6 +340,8 @@ model ClientService {
   unitPrice    Decimal       @db.Decimal(12, 4) // snapshot prix de vente
   purchaseDate DateTime?
   renewalDate  DateTime?
+  // Fin de la période d'engagement chez ITCloud (commitmentEndDate).
+  commitmentEndDate DateTime?
   status       ServiceStatus @default(ACTIF)
   billingMode  BillingMode   @default(INDIRECT)
   missingSince DateTime?     // 1re sync SUCCES où l'item est absent (§7.2)

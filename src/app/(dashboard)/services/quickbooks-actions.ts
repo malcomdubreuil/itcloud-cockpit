@@ -137,6 +137,70 @@ function cleanLine(l: unknown, unit: "year" | "month"): Record<string, unknown> 
   return keep;
 }
 
+// ── Ligne « Engagement » ────────────────────────────────────────────────────
+// ITCloud fournit la FIN de la période d'engagement de chaque service. Sur la
+// facture de renouvellement, on écrit la NOUVELLE période : elle commence le
+// lendemain de l'ancienne fin et dure un cycle.
+//   ancienne fin 2026-12-09 (annuel) → « Engagement du 2026-12-10 au 2027-12-09 »
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+function engagementText(
+  previousEnd: Date,
+  unit: "year" | "month",
+): string {
+  const start = new Date(previousEnd);
+  start.setDate(start.getDate() + 1);
+  const end = new Date(start);
+  if (unit === "year") end.setFullYear(end.getFullYear() + 1);
+  else end.setMonth(end.getMonth() + 1);
+  end.setDate(end.getDate() - 1);
+  return `Engagement du ${iso(start)} au ${iso(end)}`;
+}
+
+const ENGAGEMENT_RE = /^\s*engagement/i;
+
+// Normalise un libellé produit pour rapprocher une ligne de facture d'un
+// service de l'ERP (casse, accents, ponctuation, espaces).
+function normalizeLabel(s: string): string {
+  return (s || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// Retrouve le service correspondant à une ligne de facture (par nom de produit).
+function matchService<T extends { productName: string }>(
+  line: Record<string, unknown>,
+  services: T[],
+): T | null {
+  const detail = line.SalesItemLineDetail as
+    | { ItemRef?: { name?: string } }
+    | undefined;
+  const candidates = [
+    typeof line.Description === "string" ? line.Description : "",
+    detail?.ItemRef?.name ?? "",
+  ]
+    .map(normalizeLabel)
+    .filter(Boolean);
+  if (candidates.length === 0) return null;
+
+  let best: { svc: T; score: number } | null = null;
+  for (const svc of services) {
+    const p = normalizeLabel(svc.productName);
+    if (!p) continue;
+    for (const c of candidates) {
+      let score = 0;
+      if (c === p) score = 100;
+      else if (c.includes(p)) score = 80 - (c.length - p.length) / 100;
+      else if (p.includes(c)) score = 70 - (p.length - c.length) / 100;
+      if (score > 0 && (!best || score > best.score)) best = { svc, score };
+    }
+  }
+  return best ? best.svc : null;
+}
+
 const detailType = (l: unknown) =>
   (l as { DetailType?: string })?.DetailType ?? "";
 
@@ -146,12 +210,15 @@ const detailType = (l: unknown) =>
 // - année de la ligne de période +1 ;
 // - numéro de facture fourni par l'ERP (docNumber) ;
 // on repart du client/des taxes de la source, sans Id ni dates.
+type SvcForEngagement = { productName: string; commitmentEndDate: Date | null };
+
 function buildDuplicatePayload(
   src: QboInvoice,
   txnDate: string,
   quantity: number,
   docNumber: string,
   unit: "year" | "month",
+  clientServices: SvcForEngagement[] = [],
 ): Record<string, unknown> {
   const rawLines = (Array.isArray(src.Line) ? src.Line : []).filter(
     (l) => detailType(l) && detailType(l) !== "SubTotalLineDetail",
@@ -173,12 +240,35 @@ function buildDuplicatePayload(
 
   const lines: Record<string, unknown>[] = leading.map((l) => cleanLine(l, unit));
   for (const g of groups) {
+    const productLine = cleanLine(g.product, unit);
+
+    // Date d'engagement : l'ERP la connaît (venue d'ITCloud). On écrit la
+    // NOUVELLE période sous le produit. Les lignes « Engagement » de la facture
+    // source sont remplacées ; s'il n'y a aucune date connue, on n'ajoute rien.
+    const svc = matchService(productLine, clientServices);
+    const engagement = svc?.commitmentEndDate
+      ? engagementText(svc.commitmentEndDate, unit)
+      : null;
+    const extras = g.extras
+      .filter((e) => {
+        const d = (e as { Description?: unknown }).Description;
+        // on retire l'ancienne ligne d'engagement seulement si on la remplace
+        return !(engagement && typeof d === "string" && ENGAGEMENT_RE.test(d));
+      })
+      .map((e) => cleanLine(e, unit));
+    if (engagement) {
+      extras.unshift({
+        DetailType: "DescriptionOnly",
+        Description: engagement,
+      });
+    }
+
     // Règle 1 : une ligne par licence — le bloc produit + engagement est répété
     // en entier, pour que chaque produit garde sa date d'engagement dessous.
     const copies = groups.length === 1 && quantity > 1 ? quantity : 1;
     for (let i = 0; i < copies; i++) {
-      lines.push(cleanLine(g.product, unit));
-      for (const extra of g.extras) lines.push(cleanLine(extra, unit));
+      lines.push({ ...productLine });
+      for (const extra of extras) lines.push({ ...extra });
     }
   }
 
@@ -285,6 +375,26 @@ export async function billViaQuickBooks(
   // aucune facture n'est créée — pas de brouillon sans numéro).
   const newNumber = await client.getNextDocNumber();
 
+  // Services du client : servent à retrouver la date d'engagement de chaque
+  // ligne de produit de la facture.
+  const clientServices = (
+    await prisma.clientService.findMany({
+      where: {
+        tenantId: user.tenantId,
+        clientId: service.clientId,
+        deletedAt: null,
+        status: "ACTIF",
+      },
+      select: {
+        commitmentEndDate: true,
+        product: { select: { name: true } },
+      },
+    })
+  ).map((s) => ({
+    productName: s.product.name,
+    commitmentEndDate: s.commitmentEndDate,
+  }));
+
   const created = await client.createInvoice(
     buildDuplicatePayload(
       src,
@@ -292,6 +402,7 @@ export async function billViaQuickBooks(
       service.quantity,
       newNumber,
       service.monthlyBilling ? "month" : "year",
+      clientServices,
     ),
   );
 
