@@ -409,7 +409,8 @@ async function main() {
     });
     created++;
   }
-  console.log(`\n  ${created} services crees, ${already} deja presents`);
+  console.log(`
+  ${newClients.size} clients crees/retrouves, ${created} services crees, ${already} deja presents`);
   console.log("\nAPPLY_DONE");
 }
 
