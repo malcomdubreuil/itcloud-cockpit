@@ -270,6 +270,10 @@ model Product {
   suggestedPrice Decimal?   @db.Decimal(12, 4)
   // PDSF/coût saisis à la main : ni la synchro ni un ré-import ne les écrasent.
   priceManual  Boolean      @default(false)
+  // false = produit maison (hébergement, domaines, SSL…) : la synchronisation
+  // ITCloud l'ignore complètement, sinon ses services apparaîtraient pour
+  // toujours dans « absents du rapport ITCloud ».
+  itcloudManaged Boolean    @default(true)
   billingCycle BillingCycle
   active       Boolean      @default(true)
   deletedAt    DateTime?

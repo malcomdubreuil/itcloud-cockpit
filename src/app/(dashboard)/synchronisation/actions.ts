@@ -147,7 +147,9 @@ export async function previewItcloudSync(): Promise<SyncPreview> {
 
   // 3. Services ERP.
   const erp = await prisma.clientService.findMany({
-    where: { tenantId, deletedAt: null },
+    // Les produits maison (hébergement, domaines…) sont hors ITCloud : les
+    // inclure les ferait apparaître pour toujours en « absents du rapport ».
+    where: { tenantId, deletedAt: null, product: { itcloudManaged: true } },
     select: {
       matchKey: true,
       quantity: true,
@@ -349,7 +351,7 @@ export async function applyItcloudSync(): Promise<SyncApplyResult> {
   const { byKey, clientCodes } = aggregateItcloud(items);
 
   const erp = await prisma.clientService.findMany({
-    where: { tenantId, deletedAt: null },
+    where: { tenantId, deletedAt: null, product: { itcloudManaged: true } },
     select: {
       id: true,
       matchKey: true,
