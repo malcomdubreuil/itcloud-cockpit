@@ -151,6 +151,82 @@ export async function updateProductSuggestedMonthly(
   revalidatePath("/produits");
 }
 
+// Applique un prix de vente MENSUEL à TOUS les services actifs de ce produit
+// (chez tous les clients). Utile quand le tarif d'un produit change : on aligne
+// tout le monde d'un coup. Chaque changement est historisé (ServiceChange PRIX).
+export async function applyPriceToAllServices(
+  productId: string,
+  monthlyPrice: number,
+): Promise<{ updated: number }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+  if (!Number.isFinite(monthlyPrice) || monthlyPrice < 0) {
+    throw new Error("Prix invalide");
+  }
+
+  const product = await prisma.product.findUniqueOrThrow({
+    where: { id: productId },
+    select: { id: true, tenantId: true, name: true, billingCycle: true },
+  });
+  if (product.tenantId !== session.user.tenantId) throw new Error("Introuvable");
+
+  const months = CYCLE_MONTHS[product.billingCycle] ?? 1;
+  const value = (monthlyPrice * months).toFixed(4);
+
+  const services = await prisma.clientService.findMany({
+    where: {
+      tenantId: product.tenantId,
+      productId,
+      status: "ACTIF",
+      deletedAt: null,
+    },
+    select: { id: true, unitPrice: true },
+  });
+
+  let updated = 0;
+  for (const s of services) {
+    const before = s.unitPrice.toString();
+    if (before === value) continue;
+    await prisma.$transaction([
+      prisma.clientService.update({
+        where: { id: s.id },
+        data: { unitPrice: value },
+      }),
+      prisma.serviceChange.create({
+        data: {
+          tenantId: product.tenantId,
+          serviceId: s.id,
+          changeType: "PRIX",
+          field: "unitPrice",
+          oldValue: { unitPrice: before },
+          newValue: { unitPrice: value, appliqueDepuisProduit: true },
+          source: "MANUEL",
+          userId: session.user.id,
+        },
+      }),
+    ]);
+    updated++;
+  }
+
+  await audit({
+    tenantId: product.tenantId,
+    userId: session.user.id,
+    action: "product.apply_price_to_services",
+    entityType: "Product",
+    entityId: product.id,
+    before: null,
+    after: { produit: product.name, prixMensuel: monthlyPrice, services: updated },
+  });
+
+  revalidatePath("/produits");
+  revalidatePath(`/produits/${productId}`);
+  revalidatePath("/services");
+  revalidatePath("/clients");
+  revalidatePath("/dashboard");
+  return { updated };
+}
+
 export async function toggleProductActive(productId: string, active: boolean) {
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");

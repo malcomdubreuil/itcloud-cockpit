@@ -145,6 +145,24 @@ function cleanLine(l: unknown, unit: "year" | "month"): Record<string, unknown> 
   return keep;
 }
 
+// Un produit « P1M » est facturé au MOIS : ses dates avancent d'un mois, même
+// si le reste de la facture est annuel. Une même facture peut mélanger les deux.
+const P1M_RE = /P1M/i;
+
+function lineUnit(
+  productLine: Record<string, unknown>,
+  fallback: "year" | "month",
+): "year" | "month" {
+  const detail = productLine.SalesItemLineDetail as
+    | { ItemRef?: { name?: string } }
+    | undefined;
+  const text = [
+    typeof productLine.Description === "string" ? productLine.Description : "",
+    detail?.ItemRef?.name ?? "",
+  ].join(" ");
+  return P1M_RE.test(text) ? "month" : fallback;
+}
+
 const detailType = (l: unknown) =>
   (l as { DetailType?: string })?.DetailType ?? "";
 
@@ -181,10 +199,13 @@ function buildDuplicatePayload(
 
   const lines: Record<string, unknown>[] = leading.map((l) => cleanLine(l, unit));
   for (const g of groups) {
-    const productLine = cleanLine(g.product, unit);
+    // Chaque produit avance selon SON cycle : « P1M » = +1 mois, sinon le cycle
+    // du service facturé (+1 an en général).
+    const u = lineUnit(g.product as Record<string, unknown>, unit);
+    const productLine = cleanLine(g.product, u);
     // Les lignes descriptives (dont « Engagement du X au Y ») sont conservées
-    // telles quelles, avec leurs dates avancées d'un cycle.
-    const extras = g.extras.map((e) => cleanLine(e, unit));
+    // telles quelles, avec leurs dates avancées du même cycle que leur produit.
+    const extras = g.extras.map((e) => cleanLine(e, u));
 
     // Règle 1 : une ligne par licence — le bloc produit + engagement est répété
     // en entier, pour que chaque produit garde sa date d'engagement dessous.

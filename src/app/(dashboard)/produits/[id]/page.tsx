@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
+import { ApplyPriceAll } from "@/components/apply-price-all";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -69,6 +70,7 @@ export default async function ProduitPage({ params }: Props) {
       billingCycle: true,
       msrp: true,
       partnerCost: true,
+      suggestedPrice: true,
       active: true,
       supplier: { select: { name: true } },
       services: {
@@ -162,6 +164,16 @@ export default async function ProduitPage({ params }: Props) {
           </Card>
         ))}
       </div>
+
+      <ApplyPriceAll
+        productId={product.id}
+        serviceCount={active.length}
+        suggestedMonthly={
+          product.suggestedPrice !== null
+            ? Number(product.suggestedPrice) / months
+            : Number(product.msrp) / months + 2
+        }
+      />
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">
