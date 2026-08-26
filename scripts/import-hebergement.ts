@@ -72,6 +72,9 @@ const P_ELEMENTOR = "Elementor Pro";
 const P_COURRIEL = "Boîte courriel";
 const P_MAINTENANCE = "Maintenance site web";
 
+// Plafond de plausibilite d'un prix MENSUEL (grille Keven : 70G = 75 $/mois).
+const MAX_MENSUEL = 100;
+
 const CATALOGUE: { name: string; cycle: "MENSUEL" | "ANNUEL" }[] = [
   { name: P_DOMAINE, cycle: "ANNUEL" },
   { name: P_HEBERG, cycle: "MENSUEL" },
@@ -280,6 +283,17 @@ async function main() {
     const special = specialProduct(r.nom);
 
     // Une ligne peut porter DEUX services : le domaine et l'hébergement.
+    // Garde-fou : la grille de prix de Keven plafonne a 75 $/mois (forfait
+    // 70G). Au-dela, la colonne « Prix H » contient presque surement un
+    // montant annuel ou ponctuel mal place — l'importer en mensuel le
+    // multiplierait par douze. On signale plutot que de deviner.
+    if (r.prixHmensuel > MAX_MENSUEL) {
+      skipped.push(
+        `${r.nom} — ${r.prixHmensuel.toFixed(2)} $ en colonne mensuelle (max attendu ${MAX_MENSUEL} $) : annuel ou ponctuel ? A CONFIRMER`,
+      );
+      if (r.prixDannuel <= 0) continue;
+    }
+
     const add = (product: string, cycle: "MENSUEL" | "ANNUEL", price: number) => {
       plans.push({
         clientId: cl.id, client: cl.companyName, product, cycle, price,
@@ -295,6 +309,7 @@ async function main() {
       continue;
     }
     if (r.prixDannuel > 0) add(P_DOMAINE, "ANNUEL", r.prixDannuel);
+    if (r.prixHmensuel > MAX_MENSUEL) continue;   // signale plus haut
     // 2,00 $/mois = gestion DNS (confirmé par Keven), pas de l'hébergement.
     if (r.prixHmensuel > 0) {
       add(r.prixHmensuel === 2 ? P_DNS : P_HEBERG, "MENSUEL", r.prixHmensuel);
