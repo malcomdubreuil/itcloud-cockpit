@@ -5,7 +5,6 @@ import { ServiceActions } from "@/components/service-actions";
 import { QuantityInput } from "@/components/quantity-input";
 import { RenewalDateInput } from "@/components/renewal-date-input";
 import { MonthlyBillingToggle } from "@/components/monthly-billing-toggle";
-import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -54,7 +53,7 @@ const cad = new Intl.NumberFormat("fr-CA", {
 
 type Urgency = "rouge" | "jaune" | "vert" | null;
 
-// Seuil d'urgence choisi par service (30, 45 ou 60 j) : rouge à partir de ce
+// Seuil d'urgence choisi par CLIENT (30, 45 ou 60 j) : rouge à partir de ce
 // seuil, jaune pendant les 30 jours qui précèdent, vert au-delà.
 export function renewalUrgency(
   renewalDate: Date | null,
@@ -147,9 +146,6 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
               />
             ) : (
               <Badge variant="outline">{CYCLE_LABEL[s.product.billingCycle]}</Badge>
-            )}
-            {s.billingMode === "INDIRECT" && (
-              <UrgencyDaysToggle serviceId={s.id} urgencyDays={s.urgencyDays} />
             )}
             {s.billingMode === "DIRECT" && (
               <Badge variant="secondary" title="ITCloud facture ce client directement — rien à refacturer">

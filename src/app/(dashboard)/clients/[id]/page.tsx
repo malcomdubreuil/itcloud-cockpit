@@ -5,6 +5,7 @@ import { ArrowLeft, Mail, Phone } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { CYCLE_MONTHS, ServiceCard } from "@/components/service-card";
+import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -58,7 +59,7 @@ export default async function ClientPage({ params }: Props) {
     select: {
       id: true, tenantId: true, companyName: true, contactName: true,
       clientCode: true, email: true, phone: true, status: true,
-      paymentMethod: true, billingType: true,
+      paymentMethod: true, billingType: true, urgencyDays: true,
       services: {
         where: { deletedAt: null },
         orderBy: [{ status: "asc" }, { renewalDate: "asc" }],
@@ -66,7 +67,7 @@ export default async function ClientPage({ params }: Props) {
           id: true, quantity: true, quantityManual: true, renewalDateManual: true, unitCost: true, unitPrice: true,
           status: true, billingMode: true, renewalDate: true,
           lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true,
-          monthlyBilling: true, urgencyDays: true,
+          monthlyBilling: true,
           product: { select: { name: true, billingCycle: true, msrp: true } },
         },
       },
@@ -102,6 +103,7 @@ export default async function ClientPage({ params }: Props) {
           {client.status !== "ACTIF" && (
             <Badge variant="secondary">{STATUS_LABEL[client.status]}</Badge>
           )}
+          <UrgencyDaysToggle clientId={client.id} urgencyDays={client.urgencyDays} />
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
           {client.contactName && <span>{client.contactName}</span>}
@@ -183,7 +185,7 @@ export default async function ClientPage({ params }: Props) {
                 lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
                 notes: s.notes,
                 monthlyBilling: s.monthlyBilling,
-                urgencyDays: s.urgencyDays,
+                urgencyDays: client.urgencyDays,
                 product: {
                   name: s.product.name,
                   billingCycle: s.product.billingCycle,
@@ -218,7 +220,7 @@ export default async function ClientPage({ params }: Props) {
                 lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
                 notes: s.notes,
                 monthlyBilling: s.monthlyBilling,
-                urgencyDays: s.urgencyDays,
+                urgencyDays: client.urgencyDays,
                 product: {
                   name: s.product.name,
                   billingCycle: s.product.billingCycle,

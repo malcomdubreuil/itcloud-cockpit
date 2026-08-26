@@ -139,6 +139,9 @@ model Client {
   paymentMethod PaymentMethod?
   billingType   BillingType?
   status        ClientStatus   @default(ACTIF)
+  // Seuil d'alerte du client : jours avant échéance où ses services passent au
+  // rouge (30, 45 ou 60). Réglé par client — certains se relancent plus tôt.
+  urgencyDays   Int            @default(30)
   anniversary   DateTime?
   deletedAt     DateTime?
 

@@ -62,7 +62,7 @@ export default async function DashboardPage() {
       prisma.clientService.count({
         where: { tenantId, deletedAt: null, status: "SUSPENDU" },
       }),
-      // Refacturation : chaque service a son propre seuil d'alerte (30/45/60 j),
+      // Refacturation : le seuil d'alerte (30/45/60 j) est réglé par client,
       // donc on ratisse large puis on filtre en mémoire.
       // Facturation indirecte seulement (les Direct sont facturés par ITCloud).
       prisma.clientService.findMany({
@@ -73,8 +73,8 @@ export default async function DashboardPage() {
         orderBy: { renewalDate: "asc" },
         select: {
           id: true, clientId: true, quantity: true, unitPrice: true, renewalDate: true,
-          lastQbInvoiceNo: true, monthlyBilling: true, urgencyDays: true,
-          client: { select: { companyName: true, clientCode: true } },
+          lastQbInvoiceNo: true, monthlyBilling: true,
+          client: { select: { companyName: true, clientCode: true, urgencyDays: true } },
           product: { select: { name: true, billingCycle: true } },
         },
       }),
@@ -92,14 +92,14 @@ export default async function DashboardPage() {
   }
   const monthlyProfit = mrr - monthlyCost;
 
-  // Chaque service utilise SON seuil : rouge à ≤ seuil, jaune dans les 30 j
-  // qui précèdent. Le seuil se règle service par service (bouton « Alerte N j »).
+  // Chaque service utilise le seuil de SON CLIENT : rouge à ≤ seuil, jaune dans
+  // les 30 j qui précèdent. Le seuil se règle par client (bouton « Alerte N j »).
   const dueSoon = dueRaw.filter(
-    (s) => daysUntil(s.renewalDate!) <= s.urgencyDays + 30,
+    (s) => daysUntil(s.renewalDate!) <= s.client.urgencyDays + 30,
   );
   const toBill = dueSoon.slice(0, 15);
   const redCount = dueSoon.filter(
-    (s) => daysUntil(s.renewalDate!) <= s.urgencyDays,
+    (s) => daysUntil(s.renewalDate!) <= s.client.urgencyDays,
   ).length;
   const yellowTotal = dueSoon.length;
 
@@ -121,7 +121,7 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-semibold">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
           Vue d&apos;ensemble — la refacturation se fait avant l&apos;échéance de
-          chaque service, selon le seuil d&apos;alerte réglé sur ce service
+          chaque service, selon le seuil d&apos;alerte réglé sur le client
           (30, 45 ou 60 jours).
         </p>
       </div>
@@ -157,7 +157,7 @@ export default async function DashboardPage() {
             <CardContent className="divide-y px-0">
               {toBill.map((s) => {
                 const days = daysUntil(s.renewalDate!);
-                const urgent = days <= s.urgencyDays;
+                const urgent = days <= s.client.urgencyDays;
                 const months = CYCLE_MONTHS[s.product.billingCycle] ?? 1;
                 const amount = Number(s.unitPrice) * s.quantity;
                 return (

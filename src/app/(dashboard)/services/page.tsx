@@ -71,8 +71,8 @@ export default async function ServicesPage({
         id: true, clientId: true, quantity: true, quantityManual: true, renewalDateManual: true, unitCost: true, unitPrice: true,
         status: true, renewalDate: true,
         lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true,
-        billingMode: true, monthlyBilling: true, urgencyDays: true,
-        client: { select: { id: true, companyName: true } },
+        billingMode: true, monthlyBilling: true,
+        client: { select: { id: true, companyName: true, urgencyDays: true } },
         product: { select: { name: true, billingCycle: true, msrp: true } },
       },
     }),
@@ -97,7 +97,7 @@ export default async function ServicesPage({
           {total} services — prix affichés <strong>par mois</strong>, prix de
           vente modifiable directement. Couleur = urgence de refacturation :{" "}
           <span className="font-medium text-red-600">rouge</span> à partir du
-          seuil d&apos;alerte du service (bouton « Alerte 30/45/60 j »),{" "}
+          seuil d&apos;alerte du client (bouton « Alerte 30/45/60 j » sur sa fiche),{" "}
           <span className="font-medium text-yellow-600">jaune</span> dans les
           30 jours qui précèdent, vert ensuite.
         </p>
@@ -170,7 +170,7 @@ export default async function ServicesPage({
                 lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
                 notes: s.notes,
                 monthlyBilling: s.monthlyBilling,
-                urgencyDays: s.urgencyDays,
+                urgencyDays: s.client.urgencyDays,
                 product: {
                   name: s.product.name,
                   billingCycle: s.product.billingCycle,

@@ -3,19 +3,19 @@
 import { useOptimistic, useTransition } from "react";
 import { AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { setServiceUrgencyDays } from "@/app/(dashboard)/services/actions";
+import { setClientUrgencyDays } from "@/app/(dashboard)/services/actions";
 import { cn } from "@/lib/utils";
 
-// Seuil d'alerte du service : à combien de jours avant l'échéance il passe au
-// rouge. Un clic fait tourner 30 → 45 → 60 → 30. Certains clients doivent être
-// relancés plus tôt que d'autres, d'où le réglage par service.
+// Seuil d'alerte du CLIENT : à combien de jours avant l'échéance ses services
+// passent au rouge. Un clic fait tourner 30 → 45 → 60 → 30. Réglé par client —
+// certains doivent être relancés plus tôt que d'autres.
 const CYCLE: Record<number, number> = { 30: 45, 45: 60, 60: 30 };
 
 export function UrgencyDaysToggle({
-  serviceId,
+  clientId,
   urgencyDays,
 }: {
-  serviceId: string;
+  clientId: string;
   urgencyDays: number;
 }) {
   const [optimistic, setOptimistic] = useOptimistic(urgencyDays);
@@ -25,13 +25,13 @@ export function UrgencyDaysToggle({
     <button
       type="button"
       disabled={pending}
-      title={`Passe au rouge ${optimistic} jours avant l'échéance. Cliquer pour choisir 30 / 45 / 60 jours.`}
+      title={`Les services de ce client passent au rouge ${optimistic} jours avant l'échéance. Cliquer pour choisir 30 / 45 / 60 jours.`}
       onClick={() => {
         const next = CYCLE[optimistic] ?? 30;
         startTransition(async () => {
           setOptimistic(next);
           try {
-            await setServiceUrgencyDays(serviceId, next);
+            await setClientUrgencyDays(clientId, next);
             toast.success(`Alerte rouge ${next} jours avant l'échéance`);
           } catch {
             toast.error("Impossible de modifier le seuil d'alerte.");
