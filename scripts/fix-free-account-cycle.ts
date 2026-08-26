@@ -92,7 +92,16 @@ async function main() {
     newRenewal: Date | null;
     renewalSource: string;
   };
+  type KeyOnly = {
+    serviceId: string;
+    client: string;
+    sku: string;
+    oldKey: string;
+    newKey: string;
+    cycle: string;
+  };
   const plans: Plan[] = [];
+  const keyOnly: KeyOnly[] = [];
   const blocked: string[] = [];
 
   for (const it of suspects) {
@@ -123,7 +132,20 @@ async function main() {
       select: { id: true },
     });
     if (!target) {
-      blocked.push(`${svc.client.companyName} | ${sku} : pas de produit ANNUEL équivalent — à créer à la main`);
+      // Pas de produit ANNUEL équivalent (ex. Azure Plan, facturé à l'usage :
+      // son cycle MENSUEL est le bon). On réaligne quand même la matchKey sur
+      // ce que la synchro calcule, sinon le service apparaîtrait pour toujours
+      // à la fois en « nouveau » et en « absent ». La matchKey est une clé de
+      // rapprochement — elle suit ITCloud ; le cycle du produit reste la
+      // vérité pour la facturation, et n'est pas touché.
+      keyOnly.push({
+        serviceId: svc.id,
+        client: svc.client.companyName,
+        sku,
+        oldKey,
+        newKey,
+        cycle: svc.product.billingCycle,
+      });
       continue;
     }
 
@@ -178,6 +200,15 @@ async function main() {
       console.log(`      echeance  ${iso(p.oldRenewal)} inchangee`);
     }
     console.log("");
+  }
+
+  if (keyOnly.length) {
+    console.log(`CLE DE RAPPROCHEMENT SEULE (${keyOnly.length}) — cycle du produit inchange :\n`);
+    for (const k of keyOnly) {
+      console.log(`  ${k.client} — ${k.sku}  (produit laisse en ${k.cycle})`);
+      console.log(`      matchKey  ${k.oldKey}`);
+      console.log(`             -> ${k.newKey}\n`);
+    }
   }
 
   if (blocked.length) {
@@ -252,6 +283,28 @@ async function main() {
       });
     });
     console.log(`  OK  ${p.client} — ${p.sku}`);
+  }
+
+  for (const k of keyOnly) {
+    await prisma.$transaction(async (tx) => {
+      await tx.clientService.update({
+        where: { id: k.serviceId },
+        data: { matchKey: k.newKey },
+      });
+      await tx.serviceChange.create({
+        data: {
+          tenantId, serviceId: k.serviceId, changeType: "MODIFICATION",
+          field: "matchKey",
+          oldValue: { matchKey: k.oldKey },
+          newValue: {
+            matchKey: k.newKey,
+            motif: "realignement sur le cycle ITCloud « Free Account » (produit inchange)",
+          },
+          source: "MANUEL",
+        },
+      });
+    });
+    console.log(`  OK  ${k.client} — ${k.sku} (cle seule)`);
   }
 
   for (const e of emptied) {
