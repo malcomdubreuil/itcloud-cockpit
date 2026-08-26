@@ -97,10 +97,19 @@ export default async function DashboardPage() {
   const dueSoon = dueRaw.filter(
     (s) => daysUntil(s.renewalDate!) <= s.client.urgencyDays + 30,
   );
-  const toBill = dueSoon.slice(0, 15);
-  const redCount = dueSoon.filter(
-    (s) => daysUntil(s.renewalDate!) <= s.client.urgencyDays,
-  ).length;
+  // Les ROUGES d'abord, tous ensemble : un client réglé à 60 j qui est rouge
+  // passe avant un client à 30 j encore jaune, même si son échéance est plus
+  // lointaine. À l'intérieur de chaque groupe, ordre chronologique.
+  const isRed = (s: (typeof dueSoon)[number]) =>
+    daysUntil(s.renewalDate!) <= s.client.urgencyDays;
+  const sorted = [...dueSoon].sort((a, b) => {
+    const ra = isRed(a) ? 0 : 1;
+    const rb = isRed(b) ? 0 : 1;
+    if (ra !== rb) return ra - rb;
+    return a.renewalDate!.getTime() - b.renewalDate!.getTime();
+  });
+  const toBill = sorted.slice(0, 15);
+  const redCount = dueSoon.filter(isRed).length;
   const yellowTotal = dueSoon.length;
 
   const kpis = [
