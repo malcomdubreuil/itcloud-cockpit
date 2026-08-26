@@ -163,6 +163,66 @@ function lineUnit(
   return P1M_RE.test(text) ? "month" : fallback;
 }
 
+// ── Ligne « Engagement » ────────────────────────────────────────────────────
+// Format réel des factures de Keven : « Engagement 2025-09-23→2026-09-22 ».
+// Au renouvellement, la nouvelle période commence le lendemain de l'ancienne
+// fin et dure un cycle.
+const ENGAGEMENT_RE = /^\s*engagement/i;
+const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+
+function engagementText(previousEnd: Date, unit: "year" | "month"): string {
+  const start = new Date(previousEnd);
+  start.setDate(start.getDate() + 1);
+  const end = new Date(start);
+  if (unit === "year") end.setFullYear(end.getFullYear() + 1);
+  else end.setMonth(end.getMonth() + 1);
+  end.setDate(end.getDate() - 1);
+  return `Engagement ${isoDate(start)}→${isoDate(end)}`;
+}
+
+// Normalise un libellé produit pour le rapprochement facture ↔ service ERP.
+function normalizeLabel(s: string): string {
+  return (s || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+type SvcCommitment = { productName: string; commitmentEndDate: Date | null };
+
+// Retrouve le service ERP correspondant à une ligne de produit de la facture.
+function matchService(
+  line: Record<string, unknown>,
+  services: SvcCommitment[],
+): SvcCommitment | null {
+  const detail = line.SalesItemLineDetail as
+    | { ItemRef?: { name?: string } }
+    | undefined;
+  const candidates = [
+    typeof line.Description === "string" ? line.Description : "",
+    detail?.ItemRef?.name ?? "",
+  ]
+    .map(normalizeLabel)
+    .filter(Boolean);
+  if (candidates.length === 0) return null;
+
+  let best: { svc: SvcCommitment; score: number } | null = null;
+  for (const svc of services) {
+    const p = normalizeLabel(svc.productName);
+    if (!p) continue;
+    for (const c of candidates) {
+      let score = 0;
+      if (c === p) score = 100;
+      else if (c.includes(p)) score = 80 - (c.length - p.length) / 1000;
+      else if (p.includes(c)) score = 70 - (p.length - c.length) / 1000;
+      if (score > 0 && (!best || score > best.score)) best = { svc, score };
+    }
+  }
+  return best ? best.svc : null;
+}
+
 const detailType = (l: unknown) =>
   (l as { DetailType?: string })?.DetailType ?? "";
 
@@ -178,6 +238,7 @@ function buildDuplicatePayload(
   quantity: number,
   docNumber: string,
   unit: "year" | "month",
+  clientServices: SvcCommitment[] = [],
 ): Record<string, unknown> {
   const rawLines = (Array.isArray(src.Line) ? src.Line : []).filter(
     (l) => detailType(l) && detailType(l) !== "SubTotalLineDetail",
@@ -203,9 +264,26 @@ function buildDuplicatePayload(
     // du service facturé (+1 an en général).
     const u = lineUnit(g.product as Record<string, unknown>, unit);
     const productLine = cleanLine(g.product, u);
-    // Les lignes descriptives (dont « Engagement du X au Y ») sont conservées
-    // telles quelles, avec leurs dates avancées du même cycle que leur produit.
+    // Les lignes descriptives (période, message…) sont conservées telles
+    // quelles, avec leurs dates avancées du même cycle que leur produit.
     const extras = g.extras.map((e) => cleanLine(e, u));
+
+    // Chaque produit doit avoir SA ligne d'engagement juste en dessous. Si la
+    // facture source en avait une, elle est déjà là (dates avancées). Sinon on
+    // l'ajoute à partir de la date d'engagement connue de l'ERP (venue d'ITCloud).
+    const hasEngagement = extras.some((e) => {
+      const d = e.Description;
+      return typeof d === "string" && ENGAGEMENT_RE.test(d);
+    });
+    if (!hasEngagement) {
+      const svc = matchService(productLine, clientServices);
+      if (svc?.commitmentEndDate) {
+        extras.unshift({
+          DetailType: "DescriptionOnly",
+          Description: engagementText(svc.commitmentEndDate, u),
+        });
+      }
+    }
 
     // Règle 1 : une ligne par licence — le bloc produit + engagement est répété
     // en entier, pour que chaque produit garde sa date d'engagement dessous.
@@ -319,6 +397,22 @@ export async function billViaQuickBooks(
   // aucune facture n'est créée — pas de brouillon sans numéro).
   const newNumber = await client.getNextDocNumber();
 
+  // Services du client : donnent la date d'engagement de chaque produit.
+  const clientServices: SvcCommitment[] = (
+    await prisma.clientService.findMany({
+      where: {
+        tenantId: user.tenantId,
+        clientId: service.clientId,
+        deletedAt: null,
+        status: "ACTIF",
+      },
+      select: { commitmentEndDate: true, product: { select: { name: true } } },
+    })
+  ).map((x) => ({
+    productName: x.product.name,
+    commitmentEndDate: x.commitmentEndDate,
+  }));
+
   const created = await client.createInvoice(
     buildDuplicatePayload(
       src,
@@ -326,6 +420,7 @@ export async function billViaQuickBooks(
       service.quantity,
       newNumber,
       service.monthlyBilling ? "month" : "year",
+      clientServices,
     ),
   );
 
