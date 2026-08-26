@@ -99,10 +99,36 @@ function norm(s: string): string {
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
-    .replace(/\b(inc|ltee|ltd|enr|senc|srl|cie|co|corp|group[e]?)\b/g, "")
+    .replace(/(inc|ltee|ltd|enr|senc|srl|cie|corp)/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, " ");
+}
+
+// Mots vides français : « Atelier DE Mecanique Boivin » doit matcher
+// « Atelier Mecanique Boivin ».
+const STOP = new Set(["de", "du", "des", "la", "le", "les", "l", "d", "et", "a", "au", "aux", "en", "sur"]);
+const tokens = (s: string) => norm(s).split(" ").filter((t) => t && !STOP.has(t));
+/** Forme compacte sans espaces : « AS MOTO » === « Asmoto ». */
+const compact = (s: string) => norm(s).replace(/ /g, "");
+
+/** Score d'appariement entre deux raisons sociales. 1 = certain. */
+function score(a: string, b: string): number {
+  if (norm(a) === norm(b)) return 1;
+  if (compact(a) === compact(b)) return 1;
+  const ta = tokens(a);
+  const tb = tokens(b);
+  if (!ta.length || !tb.length) return 0;
+  const sa = new Set(ta);
+  const sb = new Set(tb);
+  const inter = [...sa].filter((t) => sb.has(t)).length;
+  // Un ensemble entièrement contenu dans l'autre (et au moins 2 mots communs,
+  // ou 1 mot long) = très probable.
+  if (inter === sa.size || inter === sb.size) {
+    if (inter >= 2) return 0.95;
+    if (inter === 1 && ta.concat(tb).some((t) => t.length >= 8)) return 0.9;
+  }
+  return inter / (sa.size + sb.size - inter); // Jaccard
 }
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -151,24 +177,26 @@ async function main() {
     where: { tenantId, deletedAt: null },
     select: { id: true, companyName: true },
   });
-  const byNorm = new Map<string, { id: string; companyName: string }>();
-  for (const c of clients) byNorm.set(norm(c.companyName), c);
-
   const clientByInvoice = new Map<string, { id: string; companyName: string }>();
-  const unmatchedQb = new Map<string, string>(); // facture -> nom QuickBooks
+  const unmatchedQb = new Map<string, string>();   // facture -> nom QuickBooks
+  const fuzzy: string[] = [];                      // appariements < 1 (a revoir)
+
   for (const [no, qbName] of qbCustomerByInvoice) {
-    const n = norm(qbName);
-    let hit = byNorm.get(n);
-    if (!hit) {
-      // repli : un nom contient l'autre (« Madavon Inc » vs « MADAVON CONSTRUCTION »)
-      const cands = clients.filter((c) => {
-        const cn = norm(c.companyName);
-        return cn.startsWith(n) || n.startsWith(cn);
-      });
-      if (cands.length === 1) hit = cands[0];
+    let best: { c: (typeof clients)[number]; s: number } | null = null;
+    let tie = false;
+    for (const c of clients) {
+      const sc = score(qbName, c.companyName);
+      if (!best || sc > best.s) { best = { c, s: sc }; tie = false; }
+      else if (best && sc === best.s && sc > 0) tie = true;
     }
-    if (hit) clientByInvoice.set(no, hit);
-    else unmatchedQb.set(no, qbName);
+    // Seuil 0.9 : en dessous, on refuse plutot que de rattacher au mauvais
+    // client — une facture mal rattachee est pire qu'une facture non importee.
+    if (best && best.s >= 0.9 && !(tie && best.s < 1)) {
+      clientByInvoice.set(no, best.c);
+      if (best.s < 1) fuzzy.push(`${qbName}  ->  ${best.c.companyName}`);
+    } else {
+      unmatchedQb.set(no, qbName);
+    }
   }
 
   // ── 3. Date d'ancrage par groupe de facture ───────────────────────────────
@@ -250,12 +278,22 @@ async function main() {
   const total = [...byProduct.values()].reduce((s, v) => s + v.annuel, 0);
   console.log(`  ${"".padStart(4)}  ${"TOTAL".padEnd(34)} ${total.toFixed(2).padStart(10)} $/an\n`);
 
-  if (unmatchedQb.size) {
-    console.log(`CLIENTS QUICKBOOKS SANS EQUIVALENT DANS L'ERP (${unmatchedQb.size}) :`);
-    for (const [no, name] of [...unmatchedQb].slice(0, 30)) console.log(`  - ${name}  (facture ${no})`);
-    if (unmatchedQb.size > 30) console.log(`  … et ${unmatchedQb.size - 30} autres`);
+  if (fuzzy.length) {
+    console.log(`APPARIEMENTS APPROXIMATIFS (${fuzzy.length}) — a verifier :`);
+    for (const f of fuzzy) console.log(`  ~ ${f}`);
     console.log("");
   }
+
+  // Un meme client QuickBooks peut porter plusieurs factures : on compte les
+  // noms distincts, pas les factures, sinon « Acxzon » est compte 20 fois.
+  const uniqueUnmatched = [...new Set(unmatchedQb.values())];
+  if (uniqueUnmatched.length) {
+    console.log(`CLIENTS QUICKBOOKS ABSENTS DE L'ERP : ${uniqueUnmatched.length} noms distincts (${unmatchedQb.size} factures)`);
+    for (const n of uniqueUnmatched.slice(0, 40)) console.log(`  - ${n}`);
+    if (uniqueUnmatched.length > 40) console.log(`  … et ${uniqueUnmatched.length - 40} autres`);
+    console.log("");
+  }
+
   if (skipped.length) {
     console.log(`LIGNES NON IMPORTEES (${skipped.length}) :`);
     for (const s of skipped.slice(0, 25)) console.log(`  - ${s}`);
