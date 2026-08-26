@@ -213,6 +213,34 @@ async function main() {
     }
   }
 
+  // ── 2b. Clients absents de l'ERP → on les cree ────────────────────────────
+  // Decision de Keven (2026-08-26) : ses clients « web seulement » n'ont jamais
+  // ete crees puisque l'ERP est ne d'ITCloud. Sans eux, leur hebergement
+  // n'apparaitrait jamais dans le tableau de bord de refacturation.
+  const uniqueUnmatched = [...new Set(unmatchedQb.values())];
+  const newClients = new Map<string, { id: string; companyName: string }>();
+  if (APPLY) {
+    for (const name of uniqueUnmatched) {
+      // Idempotent : si le script est relance, on ne recree pas.
+      const existing = await prisma.client.findFirst({
+        where: { tenantId, companyName: name, deletedAt: null },
+        select: { id: true, companyName: true },
+      });
+      newClients.set(
+        name,
+        existing ??
+          (await prisma.client.create({
+            data: { tenantId, companyName: name, status: "ACTIF" },
+            select: { id: true, companyName: true },
+          })),
+      );
+    }
+  }
+  for (const [no, name] of unmatchedQb) {
+    // En apercu, un id fictif suffit : rien n'est ecrit, on veut juste compter.
+    clientByInvoice.set(no, newClients.get(name) ?? { id: `NOUVEAU:${name}`, companyName: name });
+  }
+
   // ── 3. Date d'ancrage par groupe de facture ───────────────────────────────
   const anchor = new Map<string, string>();
   for (const r of rows) {
@@ -300,9 +328,8 @@ async function main() {
 
   // Un meme client QuickBooks peut porter plusieurs factures : on compte les
   // noms distincts, pas les factures, sinon « Acxzon » est compte 20 fois.
-  const uniqueUnmatched = [...new Set(unmatchedQb.values())];
   if (uniqueUnmatched.length) {
-    console.log(`CLIENTS QUICKBOOKS ABSENTS DE L'ERP : ${uniqueUnmatched.length} noms distincts (${unmatchedQb.size} factures)`);
+    console.log(`CLIENTS A CREER (absents de l'ERP) : ${uniqueUnmatched.length} noms distincts (${unmatchedQb.size} factures)`);
     for (const n of uniqueUnmatched.slice(0, 40)) console.log(`  - ${n}`);
     if (uniqueUnmatched.length > 40) console.log(`  … et ${uniqueUnmatched.length - 40} autres`);
     console.log("");
