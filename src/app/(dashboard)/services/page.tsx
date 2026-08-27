@@ -158,6 +158,7 @@ export default async function ServicesPage({
         <div className="space-y-2">
           {services.map((s) => (
             <ServiceCard
+              division={division}
               key={s.id}
               service={{
                 id: s.id,

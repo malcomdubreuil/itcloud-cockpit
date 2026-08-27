@@ -174,6 +174,7 @@ export default async function ClientPage({ params }: Props) {
         ) : (
           active.map((s) => (
             <ServiceCard
+              division={division}
               key={s.id}
               service={{
                 id: s.id,
@@ -209,6 +210,7 @@ export default async function ClientPage({ params }: Props) {
           </h2>
           {others.map((s) => (
             <ServiceCard
+              division={division}
               key={s.id}
               service={{
                 id: s.id,

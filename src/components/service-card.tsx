@@ -103,7 +103,17 @@ export type ServiceCardData = {
   client?: { id: string; companyName: string };
 };
 
-export function ServiceCard({ service: s }: { service: ServiceCardData }) {
+export function ServiceCard({
+  service: s,
+  division = "ITCLOUD",
+}: {
+  service: ServiceCardData;
+  division?: string;
+}) {
+  // Cote Hebergement, plusieurs champs n'ont aucun sens : le n° de facture
+  // ITCloud (ces produits ne viennent pas d'ITCloud) et le cout unitaire (les
+  // couts d'hebergement sont globaux, pas par licence — voir la page Couts).
+  const itcloud = division === "ITCLOUD";
   const months = CYCLE_MONTHS[s.product.billingCycle] ?? 1;
   const suffix = CYCLE_SUFFIX[s.product.billingCycle] ?? "";
   const margin = s.unitPrice > 0 ? ((s.unitPrice - s.unitCost) / s.unitPrice) * 100 : null;
@@ -177,16 +187,18 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
                 placeholder="n° facture"
               />
             </span>
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              Fact. ITCloud
-              <InlineTextInput
-                id={s.id}
-                value={s.lastItcloudInvoiceNo ?? ""}
-                action={updateItcloudInvoiceNo}
-                label="N° facture ITCloud"
-                placeholder="n° facture"
-              />
-            </span>
+            {itcloud && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                Fact. ITCloud
+                <InlineTextInput
+                  id={s.id}
+                  value={s.lastItcloudInvoiceNo ?? ""}
+                  action={updateItcloudInvoiceNo}
+                  label="N° facture ITCloud"
+                  placeholder="n° facture"
+                />
+              </span>
+            )}
             <span className="inline-flex min-w-0 flex-1 basis-52 items-center gap-1.5 text-xs text-muted-foreground">
               Note
               <InlineTextInput
@@ -222,15 +234,17 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
               </p>
             )}
           </div>
-          <div className="text-right">
-            <p className="text-xs text-muted-foreground">Coût u.</p>
-            <p className="tabular-nums">{cad.format(s.unitCost / months)}/mois</p>
-            {months > 1 && (
-              <p className="text-xs tabular-nums text-muted-foreground">
-                {cad.format(s.unitCost)}{suffix}
-              </p>
-            )}
-          </div>
+          {itcloud && (
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">Coût u.</p>
+              <p className="tabular-nums">{cad.format(s.unitCost / months)}/mois</p>
+              {months > 1 && (
+                <p className="text-xs tabular-nums text-muted-foreground">
+                  {cad.format(s.unitCost)}{suffix}
+                </p>
+              )}
+            </div>
+          )}
           <div className="text-right">
             <p className="text-xs text-muted-foreground">Prix de vente u. /mois</p>
             <MoneyInput
@@ -246,23 +260,41 @@ export function ServiceCard({ service: s }: { service: ServiceCardData }) {
             )}
           </div>
           <div className="w-24 text-right">
-            <p className="text-xs text-muted-foreground">Marge</p>
-            <p
-              className={cn(
-                "tabular-nums font-medium",
-                margin !== null && margin < 0 && "text-destructive",
-              )}
-            >
-              {margin === null ? "—" : `${margin.toFixed(1)} %`}
-            </p>
-            <p
-              className={cn(
-                "text-xs tabular-nums",
-                profitMonthly < 0 ? "text-destructive" : "text-muted-foreground",
-              )}
-            >
-              {profitMonthly >= 0 ? "+" : ""}{cad.format(profitMonthly)}/mois
-            </p>
+            {itcloud ? (
+              <>
+                <p className="text-xs text-muted-foreground">Marge</p>
+                <p
+                  className={cn(
+                    "tabular-nums font-medium",
+                    margin !== null && margin < 0 && "text-destructive",
+                  )}
+                >
+                  {margin === null ? "—" : `${margin.toFixed(1)} %`}
+                </p>
+                <p
+                  className={cn(
+                    "text-xs tabular-nums",
+                    profitMonthly < 0 ? "text-destructive" : "text-muted-foreground",
+                  )}
+                >
+                  {profitMonthly >= 0 ? "+" : ""}{cad.format(profitMonthly)}/mois
+                </p>
+              </>
+            ) : (
+              // Pas de marge par service ici : le cout de l'hebergement est
+              // global (un serveur, une licence illimitee…), pas par licence.
+              // Afficher 100 % serait faux. Le profit reel se lit au tableau
+              // de bord, une fois les couts fixes soustraits.
+              <>
+                <p className="text-xs text-muted-foreground">Revenu</p>
+                <p className="tabular-nums font-medium">
+                  {cad.format((s.unitPrice * s.quantity) / months)}/mois
+                </p>
+                <p className="text-xs tabular-nums text-muted-foreground">
+                  {cad.format(s.unitPrice * s.quantity)}{suffix}
+                </p>
+              </>
+            )}
           </div>
 
           {s.billingMode === "INDIRECT" && (s.status === "ACTIF" || s.status === "ANNULE" || s.status === "EXPIRE") && (
