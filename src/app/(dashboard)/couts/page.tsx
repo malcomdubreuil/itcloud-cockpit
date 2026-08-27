@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, divisionLabel, serviceDivisionFilter } from "@/lib/division";
-import { DeleteFixedCost, FixedCostForm } from "@/components/fixed-cost-form";
-import { Badge } from "@/components/ui/badge";
+import { FixedCostForm } from "@/components/fixed-cost-form";
+import { FixedCostRow } from "@/components/fixed-cost-row";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = { title: "Coûts" };
@@ -16,12 +15,6 @@ export const metadata: Metadata = { title: "Coûts" };
 // couvre 120 sites.
 
 const CYCLE_MONTHS: Record<string, number> = { MENSUEL: 1, TRIMESTRIEL: 3, ANNUEL: 12 };
-const CYCLE_LABEL: Record<string, string> = {
-  MENSUEL: "/mois",
-  TRIMESTRIEL: "/trimestre",
-  ANNUEL: "/an",
-};
-
 const cad = new Intl.NumberFormat("fr-CA", { style: "currency", currency: "CAD" });
 
 export default async function CoutsPage() {
@@ -134,35 +127,23 @@ export default async function CoutsPage() {
         ) : (
           <Card className="py-0">
             <CardContent className="divide-y px-0">
-              {couts.map((c) => {
-                const annuel = (Number(c.amount) * 12) / (CYCLE_MONTHS[c.cycle] ?? 1);
-                return (
-                  <div
-                    key={c.id}
-                    className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 hover:bg-muted/50"
-                  >
-                    <span className="min-w-0 flex-1 basis-56 truncate font-medium">
-                      {c.label}
-                    </span>
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                      {c.product && (
-                        <Link href={`/produits/${c.productId}`}>
-                          <Badge variant="secondary">{c.product.name}</Badge>
-                        </Link>
-                      )}
-                      {c.serverName && <Badge variant="outline">{c.serverName}</Badge>}
-                    </div>
-                    <span className="w-32 text-right text-sm tabular-nums">
-                      {cad.format(Number(c.amount))}
-                      {CYCLE_LABEL[c.cycle]}
-                    </span>
-                    <span className="w-32 text-right text-xs tabular-nums text-muted-foreground">
-                      = {cad.format(annuel)}/an
-                    </span>
-                    <DeleteFixedCost id={c.id} label={c.label} />
-                  </div>
-                );
-              })}
+              {couts.map((c) => (
+                <FixedCostRow
+                  key={c.id}
+                  cout={{
+                    id: c.id,
+                    label: c.label,
+                    amount: Number(c.amount),
+                    cycle: c.cycle,
+                    productId: c.productId,
+                    serverName: c.serverName,
+                    note: c.note,
+                  }}
+                  productName={c.product?.name ?? null}
+                  produits={produits}
+                  serveurs={serveurs}
+                />
+              ))}
             </CardContent>
           </Card>
         )}
