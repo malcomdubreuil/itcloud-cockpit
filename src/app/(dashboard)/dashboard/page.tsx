@@ -5,6 +5,7 @@ import { ArrowRight, Receipt } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
+import { domaineDeNote } from "@/lib/domaine";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -81,7 +82,7 @@ export default async function DashboardPage() {
         orderBy: { renewalDate: "asc" },
         select: {
           id: true, clientId: true, quantity: true, unitPrice: true, renewalDate: true,
-          lastQbInvoiceNo: true, monthlyBilling: true,
+          lastQbInvoiceNo: true, monthlyBilling: true, notes: true,
           client: { select: { companyName: true, clientCode: true, urgencyDays: true } },
           product: { select: { name: true, billingCycle: true } },
         },
@@ -218,10 +219,12 @@ export default async function DashboardPage() {
                     </span>
                     <Link
                       href={`/services?q=${encodeURIComponent(s.client.clientCode ?? s.client.companyName)}&tri=echeance`}
+                      title={s.client.companyName}
                       className="min-w-0 flex-1 hover:underline"
                     >
                       <span className="block truncate text-sm font-medium">
-                        {s.client.companyName}
+                        {(division === "ITCLOUD" ? "" : domaineDeNote(s.notes)) ||
+                          s.client.companyName}
                       </span>
                       <span className="block truncate text-xs text-muted-foreground">
                         {s.product.name}

@@ -5,7 +5,7 @@ import { ArrowLeft, Globe, Mail, Phone } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
-import { domaineDeNote } from "@/lib/domaine";
+import { domaineDeNote, domainePrincipal } from "@/lib/domaine";
 import { CYCLE_MONTHS, ServiceCard } from "@/components/service-card";
 import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { ResellerToggle } from "@/components/reseller-toggle";
@@ -122,6 +122,10 @@ export default async function ClientPage({ params }: Props) {
   // Groupement par domaine : chez un revendeur (Pclogic 147 services, Acxzon
   // 72), une liste plate est illisible — le domaine identifie le site, donc
   // « le client du revendeur ». Utile aussi pour un client a plusieurs sites.
+  const principal = client.isReseller || division === "ITCLOUD"
+    ? ""
+    : domainePrincipal(client.services);
+
   const parDomaine = new Map<string, typeof active>();
   for (const s of active) {
     const d = domaineDeNote(s.notes);
@@ -142,7 +146,12 @@ export default async function ClientPage({ params }: Props) {
           <ArrowLeft className="h-3.5 w-3.5" /> Clients
         </Link>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-semibold">{client.companyName}</h1>
+          <h1 className="text-2xl font-semibold">
+            {principal || client.companyName}
+          </h1>
+          {principal && (
+            <span className="text-sm text-muted-foreground">{client.companyName}</span>
+          )}
           {client.status !== "ACTIF" && (
             <Badge variant="secondary">{STATUS_LABEL[client.status]}</Badge>
           )}

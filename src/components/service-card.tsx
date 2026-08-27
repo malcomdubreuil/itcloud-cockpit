@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import {
+  updateServicePrice,
   updateServicePriceMonthly,
   updateQbInvoiceNo,
   updateItcloudInvoiceNo,
@@ -227,11 +228,24 @@ export function ServiceCard({
           </div>
           <div className="text-right">
             <p className="text-xs text-muted-foreground">PDSF</p>
-            <p className="tabular-nums">{cad.format(s.product.msrp / months)}/mois</p>
-            {months > 1 && (
-              <p className="text-xs tabular-nums text-muted-foreground">
-                {cad.format(s.product.msrp)}{suffix}
-              </p>
+            {itcloud ? (
+              <>
+                <p className="tabular-nums">{cad.format(s.product.msrp / months)}/mois</p>
+                {months > 1 && (
+                  <p className="text-xs tabular-nums text-muted-foreground">
+                    {cad.format(s.product.msrp)}{suffix}
+                  </p>
+                )}
+              </>
+            ) : (
+              // Un nom de domaine se paie a l'annee : l'afficher a 1,75 $/mois
+              // ne correspond a rien de reel pour Keven.
+              <>
+                <p className="tabular-nums">{cad.format(s.product.msrp)}{suffix}</p>
+                <p className="text-xs tabular-nums text-muted-foreground">
+                  {cad.format(s.product.msrp / months)}/mois
+                </p>
+              </>
             )}
           </div>
           {itcloud && (
@@ -246,16 +260,19 @@ export function ServiceCard({
             </div>
           )}
           <div className="text-right">
-            <p className="text-xs text-muted-foreground">Prix de vente u. /mois</p>
+            <p className="text-xs text-muted-foreground">
+              Prix de vente u.{itcloud ? " /mois" : suffix}
+            </p>
             <MoneyInput
               id={s.id}
-              value={s.unitPrice / months}
-              action={updateServicePriceMonthly}
-              label="Prix de vente mensuel"
+              value={itcloud ? s.unitPrice / months : s.unitPrice}
+              action={itcloud ? updateServicePriceMonthly : updateServicePrice}
+              label={itcloud ? "Prix de vente mensuel" : `Prix de vente ${suffix}`}
             />
             {months > 1 && (
               <p className="text-xs tabular-nums text-muted-foreground">
-                = {cad.format(s.unitPrice)}{suffix}
+                = {cad.format(itcloud ? s.unitPrice : s.unitPrice / months)}
+                {itcloud ? suffix : "/mois"}
               </p>
             )}
           </div>

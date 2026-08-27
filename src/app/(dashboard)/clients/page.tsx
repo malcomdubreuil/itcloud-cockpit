@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
-import { domaineDeNote } from "@/lib/domaine";
+import { domaineDeNote, domainePrincipal } from "@/lib/domaine";
 import { CYCLE_MONTHS, daysUntil, renewalUrgency } from "@/components/service-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -92,7 +92,7 @@ export default async function ClientsPage({
           where: { deletedAt: null, status: "ACTIF", billingMode: "INDIRECT", ...inDivision },
           select: {
             quantity: true, unitPrice: true, unitCost: true, renewalDate: true, notes: true,
-            product: { select: { billingCycle: true } },
+            product: { select: { billingCycle: true, name: true } },
           },
         },
       },
@@ -119,10 +119,15 @@ export default async function ClientsPage({
     const domaines = [
       ...new Set(c.services.map((x) => domaineDeNote(x.notes)).filter(Boolean)),
     ].sort();
+    // Côté Hébergement, Keven identifie un client par son site, pas par sa
+    // raison sociale. Un revendeur garde son nom : « domaine principal » n'a
+    // aucun sens pour Acxzon et ses 57 sites.
+    const principal = c.isReseller ? "" : domainePrincipal(c.services);
 
     return {
       ...c,
       domaines,
+      principal,
       serviceCount: c.services.length,
       monthly,
       profit,
@@ -237,17 +242,22 @@ export default async function ClientsPage({
                 />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
-                    <span className="truncate font-medium">{c.companyName}</span>
+                    <span className="truncate font-medium">
+                      {division === "ITCLOUD" ? c.companyName : c.principal || c.companyName}
+                    </span>
                     {c.status !== "ACTIF" && (
                       <Badge variant="secondary">{c.status === "INACTIF" ? "Inactif" : "Suspendu"}</Badge>
                     )}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    {c.domaines.length === 0
+                    {division === "ITCLOUD"
                       ? [c.contactName, c.clientCode, c.email].filter(Boolean).join(" · ") || "—"
-                      : c.domaines.length <= 2
-                        ? c.domaines.join(" · ")
-                        : `${c.domaines.length} domaines · ${c.domaines.slice(0, 2).join(", ")}…`}
+                      : [
+                          c.companyName,
+                          c.domaines.length > 1 ? `${c.domaines.length} domaines` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                   </span>
                 </span>
                 <span className="w-24 shrink-0 text-center">
