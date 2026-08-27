@@ -92,6 +92,18 @@ export default async function ProduitPage({ params }: Props) {
   });
   if (!product || product.tenantId !== session.user.tenantId) notFound();
 
+  // Coûts fixes rattachés : pour l'hébergement, le coût réel n'est pas par
+  // licence mais global (un serveur couvre 120 sites). Voir /couts.
+  const fixedCosts = await prisma.fixedCost.findMany({
+    where: { tenantId: session.user.tenantId, productId: product.id, deletedAt: null },
+    select: { id: true, label: true, amount: true, cycle: true, serverName: true },
+    orderBy: { label: "asc" },
+  });
+  const fixedMonthly = fixedCosts.reduce(
+    (t, c) => t + Number(c.amount) / (CYCLE_MONTHS[c.cycle] ?? 1),
+    0,
+  );
+
   const months = CYCLE_MONTHS[product.billingCycle] ?? 1;
   const active = product.services.filter((s) => s.status === "ACTIF");
 
@@ -107,6 +119,8 @@ export default async function ProduitPage({ params }: Props) {
       ((Number(s.unitPrice) - Number(s.unitCost)) * s.quantity) / months;
   }
 
+  profitMonthly -= fixedMonthly;
+
   const clientCount = new Set(active.map((s) => s.client.id)).size;
   const sign = profitMonthly >= 0 ? "+" : "";
 
@@ -118,6 +132,13 @@ export default async function ProduitPage({ params }: Props) {
       value: `${cad.format(revenueMonthly * 12)}/an`,
       sub: `${cad.format(revenueMonthly)}/mois`,
     },
+    ...(fixedMonthly > 0
+      ? [{
+          label: "Coûts fixes",
+          value: `${cad.format(fixedMonthly * 12)}/an`,
+          sub: `${cad.format(fixedMonthly)}/mois`,
+        }]
+      : []),
     {
       label: "Profit",
       value: `${sign}${cad.format(profitMonthly * 12)}/an`,
@@ -174,6 +195,27 @@ export default async function ProduitPage({ params }: Props) {
             : Number(product.msrp) / months + 2
         }
       />
+
+      {fixedCosts.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">
+            Coûts fixes rattachés ({fixedCosts.length})
+          </h2>
+          <Card className="py-0">
+            <CardContent className="divide-y px-0">
+              {fixedCosts.map((c) => (
+                <div key={c.id} className="flex flex-wrap items-center gap-x-4 px-4 py-2.5">
+                  <span className="min-w-0 flex-1 truncate">{c.label}</span>
+                  {c.serverName && <Badge variant="outline">{c.serverName}</Badge>}
+                  <span className="w-32 text-right text-sm tabular-nums">
+                    {cad.format(Number(c.amount) * 12 / (CYCLE_MONTHS[c.cycle] ?? 1))}/an
+                  </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">

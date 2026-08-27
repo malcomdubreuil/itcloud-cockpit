@@ -50,7 +50,7 @@ export default async function DashboardPage() {
   // Fenêtre max : seuil d'alerte le plus large (60 j) + bande jaune (30 j).
   const inMaxDays = new Date(Date.now() + 90 * 86_400_000);
 
-  const [activeServices, clientCount, suspendedCount, dueRaw] =
+  const [activeServices, clientCount, suspendedCount, dueRaw, fixedCosts] =
     await Promise.all([
       // KPI = ce que JE facture : la facturation directe (ITCloud) est exclue
       prisma.clientService.findMany({
@@ -86,6 +86,12 @@ export default async function DashboardPage() {
           product: { select: { name: true, billingCycle: true } },
         },
       }),
+      // Coûts fixes de la division : un montant global revendu réparti sur
+      // plusieurs clients. Sans eux, le profit affiché serait le revenu brut.
+      prisma.fixedCost.findMany({
+        where: { tenantId, division, deletedAt: null },
+        select: { amount: true, cycle: true },
+      }),
     ]);
 
   // KPI calculés en direct (les snapshots quotidiens arriveront en phase 3)
@@ -98,7 +104,14 @@ export default async function DashboardPage() {
     monthlyCost += (Number(s.unitCost) * s.quantity) / months;
     licenses += s.quantity;
   }
-  const monthlyProfit = mrr - monthlyCost;
+  // Les coûts fixes s'ajoutent au coût par licence : côté Hébergement le coût
+  // unitaire est nul et tout le coût réel vit ici ; côté ITCloud c'est
+  // l'inverse. Les deux mécanismes se cumulent proprement.
+  const monthlyFixed = fixedCosts.reduce(
+    (t, c) => t + Number(c.amount) / (CYCLE_MONTHS[c.cycle] ?? 1),
+    0,
+  );
+  const monthlyProfit = mrr - monthlyCost - monthlyFixed;
 
   // Chaque service utilise le seuil de SON CLIENT : rouge à ≤ seuil, jaune dans
   // les 30 j qui précèdent. Le seuil se règle par client (bouton « Alerte N j »).
@@ -125,6 +138,9 @@ export default async function DashboardPage() {
     { label: "Licences", value: String(licenses) },
     { label: "MRR", value: cad.format(mrr) },
     { label: "ARR", value: cad.format(mrr * 12) },
+    ...(monthlyFixed > 0
+      ? [{ label: "Coûts fixes", value: `${cad.format(monthlyFixed)}/mois` }]
+      : []),
     { label: "Profit mensuel", value: cad.format(monthlyProfit) },
     { label: "Profit annuel", value: cad.format(monthlyProfit * 12) },
     { label: "Services actifs", value: String(activeServices.length) },

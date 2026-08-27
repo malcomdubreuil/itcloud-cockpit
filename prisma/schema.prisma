@@ -27,6 +27,7 @@ model Tenant {
   suppliers      Supplier[]
   products       Product[]
   apiCredentials ApiCredential[]
+  fixedCosts     FixedCost[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -288,6 +289,7 @@ model Product {
 
   services       ClientService[]
   priceOverrides PriceOverride[]
+  fixedCosts     FixedCost[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -590,4 +592,33 @@ model DailyKpiSnapshot {
   createdAt     DateTime @default(now())
 
   @@unique([tenantId, date])
+}
+
+// Coût fixe d'exploitation : un montant global que Keven paie et qu'il revend
+// réparti sur plusieurs clients (un serveur, une licence illimitée, un
+// certificat wildcard…). À l'opposé de ClientService.unitCost, qui est un coût
+// PAR licence — inadapté à l'hébergement, où le même 200 $/mois couvre 120
+// sites. Rattachable à un produit et/ou à un serveur, ou laissé global à la
+// division.
+model FixedCost {
+  id           String       @id @default(uuid())
+  tenantId     String
+  division     String       // ITCLOUD / HEBERGEMENT — même code que Product.division
+  label        String
+  amount       Decimal      @db.Decimal(12, 4)
+  cycle        BillingCycle // le montant est exprimé à ce cycle
+  productId    String?      // rattachement optionnel à un produit
+  serverName   String?      // rattachement optionnel à un serveur (Acxzon, Pc Logic…)
+  note         String?      @db.Text
+  active       Boolean      @default(true)
+  deletedAt    DateTime?
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, division])
+  @@index([tenantId, productId])
 }
