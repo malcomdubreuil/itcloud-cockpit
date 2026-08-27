@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
+import { domaineDeNote } from "@/lib/domaine";
 import { CYCLE_MONTHS, daysUntil, renewalUrgency } from "@/components/service-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -112,14 +113,11 @@ export default async function ClientsPage({
         nextRenewal = s.renewalDate;
       }
     }
-    // Le domaine vit dans la note du service (« exemple.com · serveur X ») —
-    // c'est ce qui identifie le site aux yeux de Keven.
+    // Le domaine identifie le site aux yeux de Keven. Il est noyé dans la note
+    // avec le type d'article (« Certificat SSL - axe-id.com ») — d'où
+    // domaineDeNote, qui range le SSL sous son site plutôt qu'à part.
     const domaines = [
-      ...new Set(
-        c.services
-          .map((x) => (x.notes ?? "").split("·")[0].trim())
-          .filter((d) => d.includes(".")),
-      ),
+      ...new Set(c.services.map((x) => domaineDeNote(x.notes)).filter(Boolean)),
     ].sort();
 
     return {
