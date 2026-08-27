@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { ApplyPriceAll } from "@/components/apply-price-all";
+import { domaineDeNote } from "@/lib/domaine";
 import { PrixParServeur } from "@/components/prix-par-serveur";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -69,6 +70,7 @@ export default async function ProduitPage({ params }: Props) {
       sku: true,
       group: true,
       billingCycle: true,
+      division: true,
       msrp: true,
       partnerCost: true,
       suggestedPrice: true,
@@ -86,6 +88,7 @@ export default async function ProduitPage({ params }: Props) {
           billingMode: true,
           renewalDate: true,
           serverName: true,
+          notes: true,
           lastQbInvoiceNo: true,
           client: { select: { id: true, companyName: true } },
         },
@@ -265,9 +268,11 @@ export default async function ProduitPage({ params }: Props) {
                 >
                   <Link
                     href={`/clients/${s.client.id}`}
+                    title={s.client.companyName}
                     className="min-w-0 flex-1 basis-56 truncate font-medium hover:underline"
                   >
-                    {s.client.companyName}
+                    {(product.division === "ITCLOUD" ? "" : domaineDeNote(s.notes)) ||
+                      s.client.companyName}
                   </Link>
                   <div className="flex flex-wrap items-center gap-1.5 text-xs">
                     {s.status !== "ACTIF" && (
@@ -281,8 +286,9 @@ export default async function ProduitPage({ params }: Props) {
                     {s.quantity} lic.
                   </span>
                   <span className="w-28 text-right text-sm tabular-nums">
-                    {cad.format((Number(s.unitPrice) * s.quantity) / months)}
-                    /mois
+                    {product.division === "ITCLOUD"
+                      ? `${cad.format((Number(s.unitPrice) * s.quantity) / months)}/mois`
+                      : `${cad.format(Number(s.unitPrice) * s.quantity)}${months > 1 ? "/an" : "/mois"}`}
                   </span>
                   <span className="w-32 text-right text-xs tabular-nums text-muted-foreground">
                     {s.renewalDate
