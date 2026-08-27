@@ -218,8 +218,12 @@ export default async function DashboardPage() {
                       {days} j
                     </span>
                     <Link
-                      href={`/services?q=${encodeURIComponent(s.client.clientCode ?? s.client.companyName)}&tri=echeance`}
-                      title={s.client.companyName}
+                      // Vers la FICHE du client, pas une recherche dans les
+                      // services : c'est là qu'est « Facturer tous les
+                      // services », et c'est ce que Keven vient chercher en
+                      // cliquant une ligne à facturer.
+                      href={`/clients/${s.clientId}`}
+                      title={`Ouvrir la fiche de ${s.client.companyName}`}
                       className="min-w-0 flex-1 hover:underline"
                     >
                       <span className="block truncate text-sm font-medium">
