@@ -129,6 +129,14 @@ function score(a: string, b: string): number {
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
+/** Construit une date a MINUIT LOCAL. `new Date("2026-09-08T00:00:00Z")` donne
+ *  minuit UTC, soit 20 h la veille au Quebec — toutes les echeances
+ *  s'affichaient un jour trop tot. */
+function localDate(ymd: string): Date {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 /** Avance une date jusqu'au futur, par pas d'un cycle.
  *  Calcul direct plutot qu'une boucle bornee : certaines ancres du fichier
  *  remontent a 2021, et une boucle de 40 iterations laissait les services
@@ -296,7 +304,7 @@ async function main() {
     const add = (product: string, cycle: "MENSUEL" | "ANNUEL", price: number) => {
       plans.push({
         clientId: cl.id, client: cl.companyName, product, cycle, price,
-        renewal: rollForward(new Date(`${base}T00:00:00Z`), cycle),
+        renewal: rollForward(localDate(base), cycle),
         domaine: r.nom, serveur: r.serveur, facture: r.factureQb,
       });
     };

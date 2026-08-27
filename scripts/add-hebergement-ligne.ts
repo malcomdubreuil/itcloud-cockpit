@@ -23,6 +23,12 @@ function arg(name: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
+/** Minuit LOCAL : minuit UTC afficherait la veille au Quebec. */
+function localDate(ymd: string): Date {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 const P_HEBERG = "Hébergement Site Web";
 const P_DOMAINE = "Réservation nom de domaine";
 
@@ -126,7 +132,7 @@ async function main() {
         tenantId, clientId: cl.id, productId: produits.get(p.produit)!,
         matchKey, quantity: 1,
         unitPrice: p.prix.toFixed(4), unitCost: "0.0000",
-        renewalDate: new Date(`${echeance}T00:00:00Z`),
+        renewalDate: localDate(echeance),
         status: "ACTIF", billingMode: "INDIRECT",
         notes: `${domaine} · serveur ${serveur}`,
       },
