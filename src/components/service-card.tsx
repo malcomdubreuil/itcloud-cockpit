@@ -317,11 +317,9 @@ export function ServiceCard({
           {s.billingMode === "INDIRECT" && (s.status === "ACTIF" || s.status === "ANNULE" || s.status === "EXPIRE") && (
             <ServiceActions
               serviceId={s.id}
-              clientId={s.clientId}
               status={s.status}
               qbInvoiceNo={s.lastQbInvoiceNo}
               clientName={s.client?.companyName ?? ""}
-              productName={s.product.name}
             />
           )}
         </div>

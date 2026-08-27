@@ -9,6 +9,7 @@ import { domaineDeNote, domainePrincipal } from "@/lib/domaine";
 import { CYCLE_MONTHS, ServiceCard } from "@/components/service-card";
 import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { ResellerToggle } from "@/components/reseller-toggle";
+import { FacturerTout } from "@/components/facturer-tout";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -156,7 +157,13 @@ export default async function ClientPage({ params }: Props) {
             <Badge variant="secondary">{STATUS_LABEL[client.status]}</Badge>
           )}
           <UrgencyDaysToggle clientId={client.id} urgencyDays={client.urgencyDays} />
-          <ResellerToggle clientId={client.id} isReseller={client.isReseller} />
+          <FacturerTout
+            clientId={client.id}
+            nbServices={active.filter((s) => s.billingMode === "INDIRECT").length}
+          />
+          {division !== "ITCLOUD" && (
+            <ResellerToggle clientId={client.id} isReseller={client.isReseller} />
+          )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
           {client.contactName && <span>{client.contactName}</span>}

@@ -457,13 +457,15 @@ function revalidateBillingViews() {
   revalidatePath("/clients");
 }
 
-// « Facturé → suivant » : le client vient d'être refacturé (nouvelle facture
-// QuickBooks créée). On avance l'échéance d'un cycle et on enregistre le
-// nouveau numéro → le service sort des urgences. C'est le cœur du logiciel.
+// Facture UN SEUL service : avance son échéance et lui pose le numéro de
+// facture, sans toucher aux autres services du client. Le bouton « Facturé »
+// d'une ligne ne doit déplacer QUE cette ligne (décision de Keven, 2026-08-27)
+// — c'est le bouton « Facturer tous les services » en haut de la fiche client
+// qui fait la facture complète, via markClientBilled.
 export async function markServiceBilled(
   serviceId: string,
-  input: { qbInvoiceNo: string; renewalDate: string; itcloudInvoiceNo?: string },
-) {
+  input: { qbInvoiceNo: string },
+): Promise<{ count: number }> {
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");
   assertCan(session.user, "services:write");
@@ -471,64 +473,50 @@ export async function markServiceBilled(
   const qb = input.qbInvoiceNo.trim();
   if (!qb) throw new Error("Le numéro de facture QuickBooks est requis");
   if (qb.length > 100) throw new Error("Numéro trop long");
-  const newRenewal = new Date(`${input.renewalDate}T00:00:00`);
-  if (isNaN(newRenewal.getTime())) throw new Error("Date d'échéance invalide");
 
-  const service = await prisma.clientService.findUniqueOrThrow({
+  const s = await prisma.clientService.findUnique({
     where: { id: serviceId },
     select: {
-      id: true, tenantId: true, renewalDate: true,
-      lastQbInvoiceNo: true, lastItcloudInvoiceNo: true,
+      id: true, tenantId: true, clientId: true, renewalDate: true,
+      lastQbInvoiceNo: true, monthlyBilling: true, billingMode: true,
+      product: { select: { billingCycle: true } },
     },
   });
-  if (service.tenantId !== session.user.tenantId) throw new Error("Introuvable");
+  if (!s || s.tenantId !== session.user.tenantId) throw new Error("Service introuvable");
+  if (s.billingMode === "DIRECT") {
+    throw new Error("Ce service est facturé par ITCloud — rien à refacturer.");
+  }
 
-  const it = input.itcloudInvoiceNo?.trim() || service.lastItcloudInvoiceNo;
+  const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
+  const newRenewal = advanceMonths(s.renewalDate, months);
 
   await prisma.$transaction([
     prisma.clientService.update({
-      where: { id: serviceId },
-      data: {
-        renewalDate: newRenewal,
-        lastQbInvoiceNo: qb,
-        lastItcloudInvoiceNo: it,
-        status: "ACTIF", // une facturation réactive un service expiré
-      },
+      where: { id: s.id },
+      data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF" },
     }),
     prisma.serviceChange.create({
       data: {
         tenantId: session.user.tenantId,
-        serviceId: service.id,
+        serviceId: s.id,
         changeType: "RENOUVELLEMENT",
         field: "renewalDate",
         oldValue: {
-          renewalDate: service.renewalDate?.toISOString().slice(0, 10) ?? null,
-          qbInvoiceNo: service.lastQbInvoiceNo,
+          renewalDate: s.renewalDate?.toISOString().slice(0, 10) ?? null,
+          qbInvoiceNo: s.lastQbInvoiceNo,
         },
         newValue: {
-          renewalDate: input.renewalDate,
+          renewalDate: newRenewal.toISOString().slice(0, 10),
           qbInvoiceNo: qb,
+          portee: "ce service seulement",
         },
         source: "MANUEL",
-        userId: session.user.id,
       },
     }),
   ]);
 
-  await audit({
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    action: "service.billed",
-    entityType: "ClientService",
-    entityId: service.id,
-    before: {
-      renewalDate: service.renewalDate?.toISOString().slice(0, 10) ?? null,
-      qbInvoiceNo: service.lastQbInvoiceNo,
-    },
-    after: { renewalDate: input.renewalDate, qbInvoiceNo: qb },
-  });
-
   revalidateBillingViews();
+  return { count: 1 };
 }
 
 function advanceMonths(base: Date | null, months: number): Date {

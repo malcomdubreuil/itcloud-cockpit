@@ -61,7 +61,9 @@ export default async function ClientsPage({
     // Onglets : les revendeurs (Pclogic, Acxzon) portent des centaines de
     // services pour LEURS clients ; les melanger aux clients directs rendait
     // la liste illisible.
-    isReseller: vue === "revendeurs",
+    // Les revendeurs sont une notion propre a l'hebergement : cote ITCloud on
+    // ne segmente pas, tous les clients sont dans la meme liste.
+    ...(division === "ITCLOUD" ? {} : { isReseller: vue === "revendeurs" }),
     ...(statut && statut !== "TOUS" ? { status: statut as never } : {}),
     ...(q
       ? {
@@ -166,6 +168,7 @@ export default async function ClientsPage({
         </p>
       </div>
 
+      {division !== "ITCLOUD" && (
       <div className="flex gap-1 rounded-lg border bg-muted/40 p-1 text-sm w-fit">
         {[
           { code: "clients", label: "Mes clients" },
@@ -185,6 +188,7 @@ export default async function ClientsPage({
           </Link>
         ))}
       </div>
+      )}
 
       <form className="flex flex-wrap gap-2" action="/clients">
         <input type="hidden" name="vue" value={vue} />

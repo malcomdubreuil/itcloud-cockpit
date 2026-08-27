@@ -240,11 +240,9 @@ export default async function DashboardPage() {
                     </span>
                     <ServiceActions
                       serviceId={s.id}
-                      clientId={s.clientId}
                       status="ACTIF"
                       qbInvoiceNo={s.lastQbInvoiceNo}
                       clientName={s.client.companyName}
-                      productName={s.product.name}
                     />
                   </div>
                 );

@@ -42,9 +42,15 @@ export function SidebarNav({ division }: { division: string }) {
   const pathname = usePathname();
   // La synchronisation ITCloud n'a aucun sens du cote Hebergement : ces
   // produits sont maison et ne viennent d'aucun rapport ITCloud.
-  const items = NAV_ITEMS.filter(
-    (i) => i.href !== "/synchronisation" || division === "ITCLOUD",
-  );
+  const items = NAV_ITEMS.filter((i) => {
+    // La synchro ITCloud n'a aucun sens cote Hebergement : ces produits sont
+    // maison et ne viennent d'aucun rapport ITCloud.
+    if (i.href === "/synchronisation") return division === "ITCLOUD";
+    // Les couts fixes (un serveur, une licence illimitee) sont propres a
+    // l'hebergement : cote ITCloud le cout est par licence, sur le produit.
+    if (i.href === "/couts") return division !== "ITCLOUD";
+    return true;
+  });
 
   return (
     <nav className="flex flex-col gap-1 p-2">

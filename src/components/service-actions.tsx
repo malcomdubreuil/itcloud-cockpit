@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  markClientBilled,
+  markServiceBilled,
   cancelService,
   reactivateService,
 } from "@/app/(dashboard)/services/actions";
@@ -42,18 +42,14 @@ function servicesLabel(n: number): string {
 
 export function ServiceActions({
   serviceId,
-  clientId,
   status,
   qbInvoiceNo,
   clientName,
-  productName,
 }: {
   serviceId: string;
-  clientId: string;
   status: string;
   qbInvoiceNo: string | null;
   clientName: string;
-  productName: string;
 }) {
   const [pending, start] = useTransition();
   const [dialog, setDialog] = useState(false);
@@ -83,11 +79,12 @@ export function ServiceActions({
     }
     start(async () => {
       try {
-        const { count } = await markClientBilled(clientId, {
-          qbInvoiceNo: qb.trim(),
-        });
+        // Ce bouton ne facture QUE cette ligne : les dates et numéros des
+        // autres services du client ne bougent pas. La facture complète se
+        // fait par le bouton en haut de la fiche client.
+        await markServiceBilled(serviceId, { qbInvoiceNo: qb.trim() });
         setDialog(false);
-        toast.success(`Facturé — ${servicesLabel(count)}.`);
+        toast.success("Ce service est facturé.");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Échec de la facturation");
       }

@@ -53,6 +53,16 @@ export async function updateProductMsrpMonthly(
   const before = product.msrp.toString();
   if (before === value) return;
 
+  // Le PDSF se répercute sur les services qui étaient encore AU PDSF, c'est-
+  // à-dire ceux dont le prix n'a jamais été négocié. On ne touche pas aux
+  // autres : les prix par revendeur et les ententes particulières doivent
+  // survivre à un changement de tarif de référence. Pour tout aligner de
+  // force, il y a « Appliquer à tous les services » sur la fiche produit.
+  const suiveurs = await prisma.clientService.updateMany({
+    where: { productId, tenantId: session.user.tenantId, unitPrice: before },
+    data: { unitPrice: value },
+  });
+
   await prisma.product.update({
     where: { id: productId },
     // priceManual : prix saisi à la main → protégé des ré-imports
@@ -66,7 +76,7 @@ export async function updateProductMsrpMonthly(
     entityType: "Product",
     entityId: product.id,
     before: { msrp: before },
-    after: { msrp: value, priceManual: true },
+    after: { msrp: value, priceManual: true, servicesAlignes: suiveurs.count },
   });
 
   revalidatePath("/produits");
