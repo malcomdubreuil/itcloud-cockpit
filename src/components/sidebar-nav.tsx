@@ -36,12 +36,17 @@ const NAV_ITEMS = [
   { href: "/parametres", label: "Paramètres", icon: Settings },
 ];
 
-export function SidebarNav() {
+export function SidebarNav({ division }: { division: string }) {
   const pathname = usePathname();
+  // La synchronisation ITCloud n'a aucun sens du cote Hebergement : ces
+  // produits sont maison et ne viennent d'aucun rapport ITCloud.
+  const items = NAV_ITEMS.filter(
+    (i) => i.href !== "/synchronisation" || division === "ITCLOUD",
+  );
 
   return (
     <nav className="flex flex-col gap-1 p-2">
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      {items.map(({ href, label, icon: Icon }) => {
         const active = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link

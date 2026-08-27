@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { Cloud, LogOut } from "lucide-react";
 import { auth, signOut } from "@/auth";
 import { SidebarNav } from "@/components/sidebar-nav";
+import { DivisionSwitch } from "@/components/division-switch";
+import { DIVISIONS, currentDivision } from "@/lib/division";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -11,6 +13,7 @@ export default async function DashboardLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  const division = await currentDivision();
 
   return (
     <div className="flex min-h-screen">
@@ -19,11 +22,13 @@ export default async function DashboardLayout({
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Cloud className="h-4 w-4" />
           </div>
-          <span className="font-semibold">ITCloud Cockpit</span>
+          <span className="font-semibold">Cockpit</span>
         </div>
         <Separator />
+        <DivisionSwitch current={division} divisions={DIVISIONS} />
+        <Separator />
         <div className="flex-1 overflow-y-auto">
-          <SidebarNav />
+          <SidebarNav division={division} />
         </div>
         <Separator />
         <div className="p-3">

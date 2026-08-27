@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
+import { currentDivision, serviceDivisionFilter } from "@/lib/division";
 import { CYCLE_MONTHS, daysUntil, renewalUrgency } from "@/components/service-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,9 +46,16 @@ export default async function ClientsPage({
   const { q = "", statut = "ACTIF", tri = "nom", page: pageRaw } = await searchParams;
   const page = Math.max(1, parseInt(pageRaw ?? "1") || 1);
 
+  // Division active : un client appartient a la division ou il a des services.
+  // Les 48 clients presents des deux cotes apparaissent dans les deux listes,
+  // mais avec seulement les services (et les KPI) du cote courant.
+  const division = await currentDivision();
+  const inDivision = serviceDivisionFilter(division);
+
   const where = {
     tenantId,
     deletedAt: null,
+    services: { some: { deletedAt: null, ...inDivision } },
     ...(statut && statut !== "TOUS" ? { status: statut as never } : {}),
     ...(q
       ? {
@@ -75,7 +83,7 @@ export default async function ClientsPage({
         email: true, phone: true, status: true, urgencyDays: true,
         // Agrégats de facturation : indirect seulement (Direct = ITCloud facture)
         services: {
-          where: { deletedAt: null, status: "ACTIF", billingMode: "INDIRECT" },
+          where: { deletedAt: null, status: "ACTIF", billingMode: "INDIRECT", ...inDivision },
           select: {
             quantity: true, unitPrice: true, unitCost: true, renewalDate: true,
             product: { select: { billingCycle: true } },

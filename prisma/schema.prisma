@@ -274,6 +274,11 @@ model Product {
   // ITCloud l'ignore complètement, sinon ses services apparaîtraient pour
   // toujours dans « absents du rapport ITCloud ».
   itcloudManaged Boolean    @default(true)
+  // Division commerciale : deux « entreprises » cohabitent dans l'ERP et se
+  // basculent au bouton (ITCLOUD = licences, HEBERGEMENT = web). Champ distinct
+  // de itcloudManaged, qui dit seulement si la synchro ITCloud gere le produit.
+  // Volontairement une chaine et non un enum : une 3e division est prevue.
+  division     String       @default("ITCLOUD")
   billingCycle BillingCycle
   active       Boolean      @default(true)
   deletedAt    DateTime?

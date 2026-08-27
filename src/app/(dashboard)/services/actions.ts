@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { assertCan } from "@/application/policies/can";
 import { prisma } from "@/infrastructure/db/prisma";
+import { currentDivision, divisionLabel, serviceDivisionFilter } from "@/lib/division";
 import { audit } from "@/infrastructure/db/audit";
 
 // Prix de vente par client : chaque ClientService porte son unitPrice
@@ -532,6 +533,12 @@ export async function markClientBilled(
   if (!qb) throw new Error("Le numéro de facture QuickBooks est requis");
   if (qb.length > 100) throw new Error("Numéro trop long");
 
+  // Facturation cloisonnee par division (decision de Keven, 2026-08-26) :
+  // facturer l'hebergement d'un client n'avance PAS ses licences ITCloud, et
+  // inversement. Les 48 clients presents des deux cotes ont deux relations
+  // d'affaires distinctes, avec des echeances a des dates differentes.
+  const division = await currentDivision();
+
   const services = await prisma.clientService.findMany({
     where: {
       tenantId: session.user.tenantId,
@@ -539,6 +546,7 @@ export async function markClientBilled(
       status: "ACTIF",
       billingMode: "INDIRECT",
       deletedAt: null,
+      ...serviceDivisionFilter(division),
     },
     select: {
       id: true,
@@ -549,7 +557,9 @@ export async function markClientBilled(
     },
   });
   if (services.length === 0) {
-    throw new Error("Aucun service indirect actif à facturer pour ce client.");
+    throw new Error(
+      `Aucun service indirect actif à facturer pour ce client du côté ${divisionLabel(division)}.`,
+    );
   }
 
   for (const s of services) {

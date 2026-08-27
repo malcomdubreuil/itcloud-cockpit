@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ChevronLeft, ChevronRight, Wrench } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
+import { currentDivision, serviceDivisionFilter } from "@/lib/division";
 import { ServiceCard } from "@/components/service-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,9 +41,12 @@ export default async function ServicesPage({
   const page = Math.max(1, parseInt(pageRaw ?? "1") || 1);
   const byRenewal = tri === "echeance";
 
+  const division = await currentDivision();
+
   const where = {
     tenantId,
     deletedAt: null,
+    ...serviceDivisionFilter(division),
     ...(statut && statut !== "TOUS" ? { status: statut as never } : {}),
     // Direct = ITCloud facture le client : masqué par défaut (rien à refacturer)
     ...(facturation !== "TOUS" ? { billingMode: facturation as never } : {}),

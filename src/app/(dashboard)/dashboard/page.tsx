@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ArrowRight, Receipt } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
+import { currentDivision, serviceDivisionFilter } from "@/lib/division";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -42,6 +43,9 @@ export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const tenantId = session.user.tenantId;
+  // Division active (ITCloud / Hebergement) : chaque vue est cloisonnee.
+  const division = await currentDivision();
+  const inDivision = serviceDivisionFilter(division);
 
   // Fenêtre max : seuil d'alerte le plus large (60 j) + bande jaune (30 j).
   const inMaxDays = new Date(Date.now() + 90 * 86_400_000);
@@ -50,17 +54,21 @@ export default async function DashboardPage() {
     await Promise.all([
       // KPI = ce que JE facture : la facturation directe (ITCloud) est exclue
       prisma.clientService.findMany({
-        where: { tenantId, deletedAt: null, status: "ACTIF", billingMode: "INDIRECT" },
+        where: { tenantId, deletedAt: null, status: "ACTIF", billingMode: "INDIRECT", ...inDivision },
         select: {
           quantity: true, unitPrice: true, unitCost: true,
           product: { select: { billingCycle: true } },
         },
       }),
       prisma.client.count({
-        where: { tenantId, deletedAt: null, status: "ACTIF" },
+        where: {
+          tenantId, deletedAt: null, status: "ACTIF",
+          // Un client compte pour la division ou il a au moins un service.
+          services: { some: { deletedAt: null, ...inDivision } },
+        },
       }),
       prisma.clientService.count({
-        where: { tenantId, deletedAt: null, status: "SUSPENDU" },
+        where: { tenantId, deletedAt: null, status: "SUSPENDU", ...inDivision },
       }),
       // Refacturation : le seuil d'alerte (30/45/60 j) est réglé par client,
       // donc on ratisse large puis on filtre en mémoire.
@@ -68,7 +76,7 @@ export default async function DashboardPage() {
       prisma.clientService.findMany({
         where: {
           tenantId, deletedAt: null, status: "ACTIF", billingMode: "INDIRECT",
-          renewalDate: { not: null, lte: inMaxDays },
+          renewalDate: { not: null, lte: inMaxDays }, ...inDivision,
         },
         orderBy: { renewalDate: "asc" },
         select: {

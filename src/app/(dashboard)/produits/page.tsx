@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ChevronLeft, ChevronRight, PackageSearch } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
+import { currentDivision } from "@/lib/division";
 import { ProductActiveToggle } from "@/components/product-active-toggle";
 import { MoneyInput } from "@/components/money-input";
 import {
@@ -68,9 +69,14 @@ export default async function ProduitsPage({
   const showCatalog = vue === "catalogue";
   const page = Math.max(1, parseInt(pageRaw ?? "1") || 1);
 
+  // Division active : le catalogue ITCloud (4 000+ produits) n'a rien a faire
+  // du cote Hebergement, et inversement.
+  const division = await currentDivision();
+
   const where = {
     tenantId,
     deletedAt: null,
+    division,
     ...(showCatalog ? {} : { active: true }),
     ...(q ? { name: { contains: q } } : {}),
     ...(groupe ? { group: groupe } : {}),
@@ -90,10 +96,10 @@ export default async function ProduitsPage({
         },
       }),
       prisma.product.count({ where }),
-      prisma.product.count({ where: { tenantId, deletedAt: null, active: true } }),
-      prisma.product.count({ where: { tenantId, deletedAt: null } }),
+      prisma.product.count({ where: { tenantId, deletedAt: null, division, active: true } }),
+      prisma.product.count({ where: { tenantId, deletedAt: null, division } }),
       prisma.product.findMany({
-        where: { tenantId, deletedAt: null },
+        where: { tenantId, deletedAt: null, division },
         select: { group: true },
         distinct: ["group"],
         orderBy: { group: "asc" },

@@ -8,6 +8,7 @@ import {
   QuickBooksClient,
   type QboInvoice,
 } from "@/infrastructure/quickbooks/QuickBooksClient";
+import { currentDivision, serviceDivisionFilter } from "@/lib/division";
 import { markClientBilled } from "./actions";
 
 // Automatisation QuickBooks de la refacturation.
@@ -405,6 +406,9 @@ export async function billViaQuickBooks(
         clientId: service.clientId,
         deletedAt: null,
         status: "ACTIF",
+        // Meme cloisonnement que la facturation : on ne va pas chercher la
+        // date d'engagement d'un service de l'autre division.
+        ...serviceDivisionFilter(await currentDivision()),
       },
       select: { commitmentEndDate: true, product: { select: { name: true } } },
     })

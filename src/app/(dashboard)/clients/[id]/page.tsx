@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Mail, Phone } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
+import { currentDivision, serviceDivisionFilter } from "@/lib/division";
 import { CYCLE_MONTHS, ServiceCard } from "@/components/service-card";
 import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +54,7 @@ export default async function ClientPage({ params }: Props) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const { id } = await params;
+  const division = await currentDivision();
 
   const client = await prisma.client.findUnique({
     where: { id },
@@ -61,7 +63,10 @@ export default async function ClientPage({ params }: Props) {
       clientCode: true, email: true, phone: true, status: true,
       paymentMethod: true, billingType: true, urgencyDays: true,
       services: {
-        where: { deletedAt: null },
+        // Fiche cloisonnee : cote Hebergement on ne voit que les domaines et
+        // l'hebergement du client, cote ITCloud que ses licences. Ses KPI se
+        // recalculent en consequence.
+        where: { deletedAt: null, ...serviceDivisionFilter(division) },
         orderBy: [{ status: "asc" }, { renewalDate: "asc" }],
         select: {
           id: true, quantity: true, quantityManual: true, renewalDateManual: true, unitCost: true, unitPrice: true,
