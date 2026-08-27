@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, Mail, Phone } from "lucide-react";
+import { ArrowLeft, Globe, Mail, Phone } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
 import { CYCLE_MONTHS, ServiceCard } from "@/components/service-card";
 import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
+import { ResellerToggle } from "@/components/reseller-toggle";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -61,7 +62,7 @@ export default async function ClientPage({ params }: Props) {
     select: {
       id: true, tenantId: true, companyName: true, contactName: true,
       clientCode: true, email: true, phone: true, status: true,
-      paymentMethod: true, billingType: true, urgencyDays: true,
+      paymentMethod: true, billingType: true, urgencyDays: true, isReseller: true,
       services: {
         // Fiche cloisonnee : cote Hebergement on ne voit que les domaines et
         // l'hebergement du client, cote ITCloud que ses licences. Ses KPI se
@@ -94,6 +95,46 @@ export default async function ClientPage({ params }: Props) {
 
   const others = client.services.filter((s) => s.status !== "ACTIF");
 
+  const toCard = (s: (typeof client.services)[number]) => ({
+    id: s.id,
+    clientId: id,
+    quantity: s.quantity,
+    quantityManual: s.quantityManual,
+    renewalDateManual: s.renewalDateManual,
+    unitCost: Number(s.unitCost),
+    unitPrice: Number(s.unitPrice),
+    status: s.status,
+    billingMode: s.billingMode,
+    renewalDate: s.renewalDate,
+    lastQbInvoiceNo: s.lastQbInvoiceNo,
+    lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
+    notes: s.notes,
+    monthlyBilling: s.monthlyBilling,
+    urgencyDays: client.urgencyDays,
+    product: {
+      name: s.product.name,
+      billingCycle: s.product.billingCycle,
+      msrp: Number(s.product.msrp),
+    },
+  });
+
+  // Groupement par domaine : chez un revendeur (Pclogic 147 services, Acxzon
+  // 72), une liste plate est illisible — le domaine identifie le site, donc
+  // « le client du revendeur ». Utile aussi pour un client a plusieurs sites.
+  const domaineDe = (s: { notes: string | null }) => {
+    const d = (s.notes ?? "").split("·")[0].trim();
+    return d.includes(".") ? d : "";
+  };
+  const parDomaine = new Map<string, typeof active>();
+  for (const s of active) {
+    const d = domaineDe(s);
+    if (!parDomaine.has(d)) parDomaine.set(d, []);
+    parDomaine.get(d)!.push(s);
+  }
+  const domainesConnus = [...parDomaine.keys()].filter(Boolean);
+  const grouper = domainesConnus.length >= 2;
+  const groupes = [...parDomaine.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
   return (
     <div className="space-y-6">
       <div>
@@ -109,6 +150,7 @@ export default async function ClientPage({ params }: Props) {
             <Badge variant="secondary">{STATUS_LABEL[client.status]}</Badge>
           )}
           <UrgencyDaysToggle clientId={client.id} urgencyDays={client.urgencyDays} />
+          <ResellerToggle clientId={client.id} isReseller={client.isReseller} />
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
           {client.contactName && <span>{client.contactName}</span>}
@@ -168,37 +210,32 @@ export default async function ClientPage({ params }: Props) {
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">
           Services actifs ({active.length})
+          {grouper && (
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              · {domainesConnus.length} domaines
+            </span>
+          )}
         </h2>
         {active.length === 0 ? (
           <p className="text-sm text-muted-foreground">Aucun service actif.</p>
+        ) : grouper ? (
+          groupes.map(([domaine, liste]) => (
+            <div key={domaine || "sans-domaine"} className="space-y-2">
+              <h3 className="flex items-center gap-2 pt-2 text-sm font-medium">
+                <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                {domaine || "Sans domaine"}
+                <span className="text-xs font-normal text-muted-foreground">
+                  {liste.length} service{liste.length > 1 ? "s" : ""}
+                </span>
+              </h3>
+              {liste.map((s) => (
+                <ServiceCard division={division} key={s.id} service={toCard(s)} />
+              ))}
+            </div>
+          ))
         ) : (
           active.map((s) => (
-            <ServiceCard
-              division={division}
-              key={s.id}
-              service={{
-                id: s.id,
-                clientId: id,
-                quantity: s.quantity,
-                quantityManual: s.quantityManual,
-                renewalDateManual: s.renewalDateManual,
-                unitCost: Number(s.unitCost),
-                unitPrice: Number(s.unitPrice),
-                status: s.status,
-                billingMode: s.billingMode,
-                renewalDate: s.renewalDate,
-                lastQbInvoiceNo: s.lastQbInvoiceNo,
-                lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
-                notes: s.notes,
-                monthlyBilling: s.monthlyBilling,
-                urgencyDays: client.urgencyDays,
-                product: {
-                  name: s.product.name,
-                  billingCycle: s.product.billingCycle,
-                  msrp: Number(s.product.msrp),
-                },
-              }}
-            />
+            <ServiceCard division={division} key={s.id} service={toCard(s)} />
           ))
         )}
       </section>
@@ -212,28 +249,7 @@ export default async function ClientPage({ params }: Props) {
             <ServiceCard
               division={division}
               key={s.id}
-              service={{
-                id: s.id,
-                clientId: id,
-                quantity: s.quantity,
-                quantityManual: s.quantityManual,
-                renewalDateManual: s.renewalDateManual,
-                unitCost: Number(s.unitCost),
-                unitPrice: Number(s.unitPrice),
-                status: s.status,
-                billingMode: s.billingMode,
-                renewalDate: s.renewalDate,
-                lastQbInvoiceNo: s.lastQbInvoiceNo,
-                lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
-                notes: s.notes,
-                monthlyBilling: s.monthlyBilling,
-                urgencyDays: client.urgencyDays,
-                product: {
-                  name: s.product.name,
-                  billingCycle: s.product.billingCycle,
-                  msrp: Number(s.product.msrp),
-                },
-              }}
+              service={toCard(s)}
             />
           ))}
         </section>

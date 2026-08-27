@@ -31,6 +31,7 @@ type SearchParams = Promise<{
   q?: string;
   statut?: string;
   tri?: string;
+  vue?: string;
   page?: string;
 }>;
 
@@ -43,7 +44,7 @@ export default async function ClientsPage({
   if (!session?.user) redirect("/login");
   const tenantId = session.user.tenantId;
 
-  const { q = "", statut = "ACTIF", tri = "nom", page: pageRaw } = await searchParams;
+  const { q = "", statut = "ACTIF", tri = "nom", vue = "clients", page: pageRaw } = await searchParams;
   const page = Math.max(1, parseInt(pageRaw ?? "1") || 1);
 
   // Division active : un client appartient a la division ou il a des services.
@@ -56,6 +57,10 @@ export default async function ClientsPage({
     tenantId,
     deletedAt: null,
     services: { some: { deletedAt: null, ...inDivision } },
+    // Onglets : les revendeurs (Pclogic, Acxzon) portent des centaines de
+    // services pour LEURS clients ; les melanger aux clients directs rendait
+    // la liste illisible.
+    isReseller: vue === "revendeurs",
     ...(statut && statut !== "TOUS" ? { status: statut as never } : {}),
     ...(q
       ? {
@@ -80,12 +85,12 @@ export default async function ClientsPage({
       ...(byEcheance ? {} : { skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
       select: {
         id: true, companyName: true, contactName: true, clientCode: true,
-        email: true, phone: true, status: true, urgencyDays: true,
+        email: true, phone: true, status: true, urgencyDays: true, isReseller: true,
         // Agrégats de facturation : indirect seulement (Direct = ITCloud facture)
         services: {
           where: { deletedAt: null, status: "ACTIF", billingMode: "INDIRECT", ...inDivision },
           select: {
-            quantity: true, unitPrice: true, unitCost: true, renewalDate: true,
+            quantity: true, unitPrice: true, unitCost: true, renewalDate: true, notes: true,
             product: { select: { billingCycle: true } },
           },
         },
@@ -107,8 +112,19 @@ export default async function ClientsPage({
         nextRenewal = s.renewalDate;
       }
     }
+    // Le domaine vit dans la note du service (« exemple.com · serveur X ») —
+    // c'est ce qui identifie le site aux yeux de Keven.
+    const domaines = [
+      ...new Set(
+        c.services
+          .map((x) => (x.notes ?? "").split("·")[0].trim())
+          .filter((d) => d.includes(".")),
+      ),
+    ].sort();
+
     return {
       ...c,
+      domaines,
       serviceCount: c.services.length,
       monthly,
       profit,
@@ -147,7 +163,28 @@ export default async function ClientsPage({
         </p>
       </div>
 
+      <div className="flex gap-1 rounded-lg border bg-muted/40 p-1 text-sm w-fit">
+        {[
+          { code: "clients", label: "Mes clients" },
+          { code: "revendeurs", label: "Revendeurs" },
+        ].map((t) => (
+          <Link
+            key={t.code}
+            href={`/clients?vue=${t.code}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+            className={cn(
+              "rounded-md px-3 py-1.5 font-medium transition-colors",
+              vue === t.code
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </div>
+
       <form className="flex flex-wrap gap-2" action="/clients">
+        <input type="hidden" name="vue" value={vue} />
         <Input
           name="q"
           defaultValue={q}
@@ -208,7 +245,11 @@ export default async function ClientsPage({
                     )}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    {[c.contactName, c.clientCode, c.email].filter(Boolean).join(" · ") || "—"}
+                    {c.domaines.length === 0
+                      ? [c.contactName, c.clientCode, c.email].filter(Boolean).join(" · ") || "—"
+                      : c.domaines.length <= 2
+                        ? c.domaines.join(" · ")
+                        : `${c.domaines.length} domaines · ${c.domaines.slice(0, 2).join(", ")}…`}
                   </span>
                 </span>
                 <span className="w-24 shrink-0 text-center">

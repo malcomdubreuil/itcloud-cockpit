@@ -182,6 +182,26 @@ export async function setServiceMonthlyBilling(serviceId: string, value: boolean
 // Seuil d'alerte du CLIENT : nombre de jours avant l'échéance où ses services
 // passent au rouge (30, 45 ou 60). Réglé par client — certains doivent être
 // relancés plus tôt que d'autres.
+// Revendeur : Keven heberge pour lui et lui facture UNE facture couvrant tous
+// les sites de ses propres clients. Il reste un client — c'est lui qu'on
+// facture — mais sa fiche groupe ses services par domaine.
+export async function setClientReseller(clientId: string, value: boolean) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { tenantId: true },
+  });
+  if (!client || client.tenantId !== session.user.tenantId) {
+    throw new Error("Client introuvable");
+  }
+  await prisma.client.update({ where: { id: clientId }, data: { isReseller: value } });
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/clients");
+}
+
 export async function setClientUrgencyDays(clientId: string, days: number) {
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");

@@ -143,6 +143,11 @@ model Client {
   // Seuil d'alerte du client : jours avant échéance où ses services passent au
   // rouge (30, 45 ou 60). Réglé par client — certains se relancent plus tôt.
   urgencyDays   Int            @default(30)
+  // Revendeur : Keven héberge pour lui, et lui facture UNE facture couvrant
+  // tous les sites de ses propres clients (Pclogic 147 services, Acxzon 72).
+  // Il reste donc un client — c'est lui qu'on facture — mais sa fiche groupe
+  // ses services par domaine pour qu'on voie à travers.
+  isReseller    Boolean        @default(false)
   anniversary   DateTime?
   deletedAt     DateTime?
 
