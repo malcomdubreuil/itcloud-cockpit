@@ -17,6 +17,15 @@ import { PrismaClient } from "@prisma/client";
 //  - le « 2e SSL » : rien ne dit lequel des SSL d'un client est le deuxieme.
 //    On applique le tarif SSL de base ; a Keven d'ajuster les cas.
 //
+// DEUX GARDE-FOUS, decides par Keven le 2026-08-27 :
+//  - ON NE BAISSE JAMAIS un prix. Certains clients paient plus cher que la
+//    grille (79,99 \$ au lieu de 31,99 \$) : ce sont des tarifs negocies, les
+//    aligner reviendrait a leur faire un rabais sans le vouloir.
+//  - les DOMAINES SEULS (sans hebergement) sont laisses tranquilles : la ligne
+//    « Domaine sans Hebergement 31,99 \$ » designe probablement un client qui
+//    ne prend qu'un domaine, pas les domaines de rechange d'un client deja
+//    heberge (Bellemare en a 20). A trancher avec Keven avant d'y toucher.
+//
 // APERCU PAR DEFAUT — n'ecrit rien sans --apply.
 
 const APPLY = process.argv.includes("--apply");
@@ -74,8 +83,13 @@ async function main() {
     let quoi = "";
     if (s.product.name === P_DOMAINE) {
       const avecHeberg = heberges.has(`${s.clientId}|${domaineDe(s.notes)}`);
-      cible = avecHeberg ? g.domaine : g.domaineSeul;
-      quoi = `${P_DOMAINE} ${avecHeberg ? "(avec héberg.)" : "(SANS héberg.)"} · ${srv}`;
+      if (!avecHeberg) {
+        const k = "Domaine SEUL — laissé tel quel (règle des 31,99 $ à trancher)";
+        ignores.set(k, (ignores.get(k) ?? 0) + 1);
+        continue;
+      }
+      cible = g.domaine;
+      quoi = `${P_DOMAINE} (avec héberg.) · ${srv}`;
     } else if (s.product.name === P_SSL) {
       cible = g.ssl;
       quoi = `${P_SSL} · ${srv}`;
@@ -86,6 +100,11 @@ async function main() {
     }
     const avant = Number(s.unitPrice);
     if (Math.abs(avant - cible) < 0.005) continue;
+    if (cible < avant) {
+      const k = `Prix negocie PLUS HAUT que la grille — conservé (${avant.toFixed(2)} $ > ${cible.toFixed(2)} $)`;
+      ignores.set(k, (ignores.get(k) ?? 0) + 1);
+      continue;
+    }
     chg.push({ id: s.id, avant, apres: cible, qty: s.quantity, quoi });
   }
 
