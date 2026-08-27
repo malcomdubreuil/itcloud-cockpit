@@ -19,10 +19,10 @@ import { PrismaClient } from "@prisma/client";
 //
 // DEUX GARDE-FOUS, decides par Keven le 2026-08-27 :
 //  - ON NE BAISSE JAMAIS un prix. Certains clients paient plus cher que la
-//    grille (79,99 \$ au lieu de 31,99 \$) : ce sont des tarifs negocies, les
+//    grille (79,99 $ au lieu de 31,99 $) : ce sont des tarifs negocies, les
 //    aligner reviendrait a leur faire un rabais sans le vouloir.
 //  - les DOMAINES SEULS (sans hebergement) sont laisses tranquilles : la ligne
-//    « Domaine sans Hebergement 31,99 \$ » designe probablement un client qui
+//    « Domaine sans Hebergement 31,99 $ » designe probablement un client qui
 //    ne prend qu'un domaine, pas les domaines de rechange d'un client deja
 //    heberge (Bellemare en a 20). A trancher avec Keven avant d'y toucher.
 //
