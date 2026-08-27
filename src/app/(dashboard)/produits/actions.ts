@@ -154,10 +154,32 @@ export async function updateProductSuggestedMonthly(
 // Applique un prix de vente MENSUEL à TOUS les services actifs de ce produit
 // (chez tous les clients). Utile quand le tarif d'un produit change : on aligne
 // tout le monde d'un coup. Chaque changement est historisé (ServiceChange PRIX).
+/** Applique un prix aux services d'un produit, éventuellement limité à un
+ *  serveur / revendeur : les tarifs de Keven diffèrent d'un serveur à l'autre
+ *  pour un même produit (un domaine vaut 20,99 $ chez Acxzon et 24,99 $ chez
+ *  God). `serverName` null = tous les serveurs.
+ *  `price` est exprimé AU CYCLE du produit si `atCycle`, sinon au mois. */
+export async function applyPriceToServices(
+  productId: string,
+  price: number,
+  opts: { serverName?: string | null; atCycle?: boolean } = {},
+): Promise<{ updated: number }> {
+  return applyPrice(productId, price, opts);
+}
+
 export async function applyPriceToAllServices(
   productId: string,
   monthlyPrice: number,
 ): Promise<{ updated: number }> {
+  return applyPrice(productId, monthlyPrice, {});
+}
+
+async function applyPrice(
+  productId: string,
+  rawPrice: number,
+  opts: { serverName?: string | null; atCycle?: boolean },
+): Promise<{ updated: number }> {
+  const monthlyPrice = rawPrice;
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");
   assertCan(session.user, "services:write");
@@ -172,7 +194,7 @@ export async function applyPriceToAllServices(
   if (product.tenantId !== session.user.tenantId) throw new Error("Introuvable");
 
   const months = CYCLE_MONTHS[product.billingCycle] ?? 1;
-  const value = (monthlyPrice * months).toFixed(4);
+  const value = (opts.atCycle ? monthlyPrice : monthlyPrice * months).toFixed(4);
 
   const services = await prisma.clientService.findMany({
     where: {
@@ -180,6 +202,9 @@ export async function applyPriceToAllServices(
       productId,
       status: "ACTIF",
       deletedAt: null,
+      ...(opts.serverName !== undefined && opts.serverName !== null
+        ? { serverName: opts.serverName }
+        : {}),
     },
     select: { id: true, unitPrice: true },
   });

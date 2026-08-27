@@ -366,6 +366,10 @@ model ClientService {
   monthlyBilling Boolean     @default(false)
   // Seuil d'urgence (jours avant échéance) où le service passe au rouge : 30, 45 ou 60.
   urgencyDays  Int           @default(30)
+  // Serveur / revendeur qui porte le service (Acxzon, God, Pc Logic…). Les
+  // tarifs de Keven diffèrent d'un serveur à l'autre pour un même produit,
+  // d'où une vraie colonne plutôt qu'un bout de la note.
+  serverName   String?
 
   // Aide à la refacturation : derniers numéros de facture (éditables ;
   // celui d'ITCloud sera aussi alimenté par la sync invoice-items en phase 1)

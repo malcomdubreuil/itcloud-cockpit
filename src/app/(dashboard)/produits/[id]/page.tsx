@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { ApplyPriceAll } from "@/components/apply-price-all";
+import { PrixParServeur } from "@/components/prix-par-serveur";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -84,6 +85,7 @@ export default async function ProduitPage({ params }: Props) {
           status: true,
           billingMode: true,
           renewalDate: true,
+          serverName: true,
           lastQbInvoiceNo: true,
           client: { select: { id: true, companyName: true } },
         },
@@ -120,6 +122,25 @@ export default async function ProduitPage({ params }: Props) {
   }
 
   profitMonthly -= fixedMonthly;
+
+  // Grille par serveur / revendeur : les tarifs de Keven diffèrent d'un
+  // serveur à l'autre pour un même produit.
+  const parServeur = new Map<string, { nb: number; prix: Set<number> }>();
+  for (const s of active) {
+    const nom = s.serverName?.trim();
+    if (!nom) continue;
+    const e = parServeur.get(nom) ?? { nb: 0, prix: new Set<number>() };
+    e.nb++;
+    e.prix.add(Number(s.unitPrice));
+    parServeur.set(nom, e);
+  }
+  const lignesServeur = [...parServeur.entries()]
+    .map(([serveur, e]) => ({
+      serveur,
+      nb: e.nb,
+      prix: [...e.prix].sort((a, b) => a - b),
+    }))
+    .sort((a, b) => b.nb - a.nb);
 
   const clientCount = new Set(active.map((s) => s.client.id)).size;
   const sign = profitMonthly >= 0 ? "+" : "";
@@ -216,6 +237,12 @@ export default async function ProduitPage({ params }: Props) {
           </Card>
         </section>
       )}
+
+      <PrixParServeur
+        productId={product.id}
+        lignes={lignesServeur}
+        suffix={months > 1 ? "/an" : "/mois"}
+      />
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">
