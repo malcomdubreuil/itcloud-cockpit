@@ -10,6 +10,7 @@ import { CYCLE_MONTHS, ServiceCard } from "@/components/service-card";
 import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { ResellerToggle } from "@/components/reseller-toggle";
 import { FacturerTout } from "@/components/facturer-tout";
+import { FacturerDomaine } from "@/components/facturer-domaine";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -157,10 +158,15 @@ export default async function ClientPage({ params }: Props) {
             <Badge variant="secondary">{STATUS_LABEL[client.status]}</Badge>
           )}
           <UrgencyDaysToggle clientId={client.id} urgencyDays={client.urgencyDays} />
-          <FacturerTout
-            clientId={client.id}
-            nbServices={active.filter((s) => s.billingMode === "INDIRECT").length}
-          />
+          {/* Chez un revendeur, « facturer tout » toucherait la centaine de
+              sites de ses propres clients : la facturation s'y fait site par
+              site, avec le bouton de chaque domaine. */}
+          {!client.isReseller && (
+            <FacturerTout
+              clientId={client.id}
+              nbServices={active.filter((s) => s.billingMode === "INDIRECT").length}
+            />
+          )}
           {division !== "ITCLOUD" && (
             <ResellerToggle clientId={client.id} isReseller={client.isReseller} />
           )}
@@ -240,6 +246,11 @@ export default async function ClientPage({ params }: Props) {
                 <span className="text-xs font-normal text-muted-foreground">
                   {liste.length} service{liste.length > 1 ? "s" : ""}
                 </span>
+                <FacturerDomaine
+                  clientId={client.id}
+                  domaine={domaine}
+                  nbServices={liste.filter((x) => x.billingMode === "INDIRECT").length}
+                />
               </h3>
               {liste.map((s) => (
                 <ServiceCard division={division} key={s.id} service={toCard(s)} />

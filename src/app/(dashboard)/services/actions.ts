@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { assertCan } from "@/application/policies/can";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, divisionLabel, serviceDivisionFilter } from "@/lib/division";
+import { domaineDeNote } from "@/lib/domaine";
 import { audit } from "@/infrastructure/db/audit";
 
 // Prix de vente par client : chaque ClientService porte son unitPrice
@@ -523,6 +524,86 @@ function advanceMonths(base: Date | null, months: number): Date {
   const d = base ? new Date(base) : new Date();
   d.setMonth(d.getMonth() + months);
   return d;
+}
+
+// Facture TOUS les services d'UN SEUL SITE (un domaine) d'un client.
+//
+// Cote hebergement, l'unite de facturation est le SITE, pas le client : chez un
+// revendeur comme Acxzon (72 services) ou Pclogic (147), facturer « tout le
+// client » deplacerait les dates et les numeros de la centaine de sites de ses
+// propres clients. Facturer demersbicycle.qc.ca ne doit toucher que son
+// hebergement et son nom de domaine. (Decision de Keven, 2026-08-27.)
+export async function markDomainBilled(
+  clientId: string,
+  domaine: string,
+  input: { qbInvoiceNo: string },
+): Promise<{ count: number }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+
+  const qb = input.qbInvoiceNo.trim();
+  if (!qb) throw new Error("Le numéro de facture QuickBooks est requis");
+  if (qb.length > 100) throw new Error("Numéro trop long");
+  const cible = domaine.trim().toLowerCase();
+  if (!cible) throw new Error("Domaine requis");
+
+  const division = await currentDivision();
+  const tous = await prisma.clientService.findMany({
+    where: {
+      tenantId: session.user.tenantId,
+      clientId,
+      status: "ACTIF",
+      billingMode: "INDIRECT",
+      deletedAt: null,
+      ...serviceDivisionFilter(division),
+    },
+    select: {
+      id: true, renewalDate: true, lastQbInvoiceNo: true, monthlyBilling: true,
+      notes: true,
+      product: { select: { billingCycle: true } },
+    },
+  });
+
+  // Le domaine vit dans la note ; on filtre en mémoire car la reconnaissance
+  // (« Certificat SSL - x.com », « x.com Elementor Pro ») n'est pas exprimable
+  // en SQL. Le SSL et l'Elementor du site suivent donc bien leur domaine.
+  const services = tous.filter((s) => domaineDeNote(s.notes) === cible);
+  if (services.length === 0) {
+    throw new Error(`Aucun service actif à facturer pour ${cible}.`);
+  }
+
+  for (const s of services) {
+    const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
+    const newRenewal = advanceMonths(s.renewalDate, months);
+    await prisma.$transaction([
+      prisma.clientService.update({
+        where: { id: s.id },
+        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF" },
+      }),
+      prisma.serviceChange.create({
+        data: {
+          tenantId: session.user.tenantId,
+          serviceId: s.id,
+          changeType: "RENOUVELLEMENT",
+          field: "renewalDate",
+          oldValue: {
+            renewalDate: s.renewalDate?.toISOString().slice(0, 10) ?? null,
+            qbInvoiceNo: s.lastQbInvoiceNo,
+          },
+          newValue: {
+            renewalDate: newRenewal.toISOString().slice(0, 10),
+            qbInvoiceNo: qb,
+            portee: `site ${cible}`,
+          },
+          source: "MANUEL",
+        },
+      }),
+    ]);
+  }
+
+  revalidateBillingViews();
+  return { count: services.length };
 }
 
 // Facture TOUT le client : une facture QuickBooks couvre tous les services du
