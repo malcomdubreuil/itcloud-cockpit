@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { ExternalLink, Loader2, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,9 @@ export function FacturerGroupe({
   const [manuel, setManuel] = useState(false);
   const [resultat, setResultat] = useState<{ doc: string; url: string; n: number } | null>(null);
   const [pending, start] = useTransition();
+  // Verrou synchrone : useTransition ne bloque pas assez vite pour empecher un
+  // double-clic de creer DEUX factures dans QuickBooks. C'est deja arrive.
+  const envoiEnCours = useRef(false);
 
   const ouvrir = async () => {
     setChargement(true);
@@ -84,23 +87,47 @@ export function FacturerGroupe({
       return n;
     });
 
-  const dupliquer = () =>
+  const dupliquer = () => {
+    if (envoiEnCours.current) return;
+    envoiEnCours.current = true;
     start(async () => {
       try {
         const r = await billGroupViaQuickBooks([...coches], { txnDate });
         if (r.status === "billed") {
           setResultat({ doc: r.newDocNumber, url: r.invoiceUrl, n: r.servicesBilled });
-          toast.success(`Facture ${r.newDocNumber} créée — vérifie-la puis envoie-la.`);
+          toast.success(
+            `Facture #${r.newDocNumber} créée dans QuickBooks (non envoyée) — ${r.servicesBilled} service${r.servicesBilled > 1 ? "s" : ""} mis à jour. Vérifie-la puis envoie-la.`,
+            {
+              duration: 20000,
+              action: {
+                label: "Ouvrir dans QuickBooks",
+                onClick: () => window.open(r.invoiceUrl, "_blank", "noopener,noreferrer"),
+              },
+            },
+          );
         } else {
-          // QuickBooks a créé la facture mais n'a pas renvoyé de numéro : on ne
-          // touche à rien côté ERP, Keven va voir la facture et décide.
+          // QuickBooks a cree la facture sans numero (numerotation
+          // personnalisee) : on ne touche a rien cote ERP, Keven l'ouvre et
+          // revient saisir le numero final.
           setResultat({ doc: "(sans numéro)", url: r.invoiceUrl, n: 0 });
-          toast.warning("Facture créée sans numéro — ouvre-la dans QuickBooks.");
+          toast.success(
+            "Brouillon créé dans QuickBooks (sans numéro — ta numérotation est personnalisée). Ouvre-le : il recevra son numéro à l'enregistrement. Reviens ensuite saisir le numéro final ici.",
+            {
+              duration: 20000,
+              action: {
+                label: "Ouvrir dans QuickBooks",
+                onClick: () => window.open(r.invoiceUrl, "_blank", "noopener,noreferrer"),
+              },
+            },
+          );
         }
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Échec de la duplication");
+      } finally {
+        envoiEnCours.current = false;
       }
     });
+  };
 
   const facturerManuel = () => {
     if (!qb.trim()) return toast.error("Entre le numéro de facture QuickBooks.");
