@@ -5,7 +5,8 @@ import { auth } from "@/auth";
 import { assertCan } from "@/application/policies/can";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, divisionLabel, serviceDivisionFilter } from "@/lib/division";
-import { domaineDeNote } from "@/lib/domaine";
+import { domaineDeNote, domainePrincipal } from "@/lib/domaine";
+import { cleDeGroupe, type MotifGroupe } from "@/lib/groupe-facturation";
 import { audit } from "@/infrastructure/db/audit";
 
 // Prix de vente par client : chaque ClientService porte son unitPrice
@@ -524,6 +525,140 @@ function advanceMonths(base: Date | null, months: number): Date {
   const d = base ? new Date(base) : new Date();
   d.setMonth(d.getMonth() + months);
   return d;
+}
+
+// Aperçu du GROUPE de facturation d'un service : tous ceux qui partent avec
+// lui sur la même facture. Lecture seule — sert à remplir la fenêtre de
+// confirmation avant d'écrire quoi que ce soit.
+export async function previewGroupeFacturation(serviceId: string): Promise<{
+  motif: MotifGroupe;
+  facture: string | null;
+  titre: string;
+  services: {
+    id: string;
+    domaine: string;
+    produit: string;
+    montant: number;
+    echeance: string | null;
+    nouvelleEcheance: string;
+  }[];
+}> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+
+  const base = await prisma.clientService.findUnique({
+    where: { id: serviceId },
+    select: { id: true, tenantId: true, clientId: true },
+  });
+  if (!base || base.tenantId !== session.user.tenantId) throw new Error("Service introuvable");
+
+  const division = await currentDivision();
+  const tous = await prisma.clientService.findMany({
+    where: {
+      tenantId: session.user.tenantId,
+      clientId: base.clientId,
+      status: "ACTIF",
+      billingMode: "INDIRECT",
+      deletedAt: null,
+      ...serviceDivisionFilter(division),
+    },
+    select: {
+      id: true, notes: true, lastQbInvoiceNo: true, renewalDate: true,
+      quantity: true, unitPrice: true, monthlyBilling: true,
+      product: { select: { name: true, billingCycle: true } },
+    },
+  });
+
+  const cible = cleDeGroupe(tous.find((x) => x.id === serviceId) ?? tous[0]);
+  const groupe = tous.filter((x) => cleDeGroupe(x).cle === cible.cle);
+
+  return {
+    motif: cible.motif,
+    facture: groupe[0]?.lastQbInvoiceNo?.trim() || null,
+    titre: domainePrincipal(groupe) || "Sans domaine",
+    services: groupe
+      .map((s) => {
+        const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
+        return {
+          id: s.id,
+          domaine: domaineDeNote(s.notes) || "—",
+          produit: s.product.name,
+          montant: Number(s.unitPrice) * s.quantity,
+          echeance: s.renewalDate?.toISOString().slice(0, 10) ?? null,
+          nouvelleEcheance: advanceMonths(s.renewalDate, months).toISOString().slice(0, 10),
+        };
+      })
+      .sort((a, b) => a.produit.localeCompare(b.produit) || a.domaine.localeCompare(b.domaine)),
+  };
+}
+
+// Facture EXACTEMENT les services choisis dans la fenêtre de confirmation.
+// C'est l'UI qui décide lesquels (cases à cocher) ; le serveur revalide qu'ils
+// appartiennent bien au tenant, à la division active, et qu'ils sont
+// facturables. Keven voit toujours la liste avant que ça écrive.
+export async function markServicesBilled(
+  serviceIds: string[],
+  input: { qbInvoiceNo: string },
+): Promise<{ count: number }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+
+  const qb = input.qbInvoiceNo.trim();
+  if (!qb) throw new Error("Le numéro de facture QuickBooks est requis");
+  if (qb.length > 100) throw new Error("Numéro trop long");
+  const ids = [...new Set(serviceIds)].filter(Boolean);
+  if (ids.length === 0) throw new Error("Aucun service sélectionné");
+
+  const division = await currentDivision();
+  const services = await prisma.clientService.findMany({
+    where: {
+      id: { in: ids },
+      tenantId: session.user.tenantId,
+      status: "ACTIF",
+      billingMode: "INDIRECT",
+      deletedAt: null,
+      ...serviceDivisionFilter(division),
+    },
+    select: {
+      id: true, renewalDate: true, lastQbInvoiceNo: true, monthlyBilling: true,
+      product: { select: { billingCycle: true } },
+    },
+  });
+  if (services.length === 0) throw new Error("Aucun service facturable dans la sélection.");
+
+  for (const s of services) {
+    const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
+    const newRenewal = advanceMonths(s.renewalDate, months);
+    await prisma.$transaction([
+      prisma.clientService.update({
+        where: { id: s.id },
+        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF" },
+      }),
+      prisma.serviceChange.create({
+        data: {
+          tenantId: session.user.tenantId,
+          serviceId: s.id,
+          changeType: "RENOUVELLEMENT",
+          field: "renewalDate",
+          oldValue: {
+            renewalDate: s.renewalDate?.toISOString().slice(0, 10) ?? null,
+            qbInvoiceNo: s.lastQbInvoiceNo,
+          },
+          newValue: {
+            renewalDate: newRenewal.toISOString().slice(0, 10),
+            qbInvoiceNo: qb,
+            portee: `groupe de ${services.length} service(s)`,
+          },
+          source: "MANUEL",
+        },
+      }),
+    ]);
+  }
+
+  revalidateBillingViews();
+  return { count: services.length };
 }
 
 // Facture TOUS les services d'UN SEUL SITE (un domaine) d'un client.

@@ -5,12 +5,13 @@ import { ArrowLeft, Globe, Mail, Phone } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
-import { domaineDeNote, domainePrincipal } from "@/lib/domaine";
+import { domainePrincipal } from "@/lib/domaine";
 import { CYCLE_MONTHS, ServiceCard } from "@/components/service-card";
 import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { ResellerToggle } from "@/components/reseller-toggle";
 import { FacturerTout } from "@/components/facturer-tout";
-import { FacturerDomaine } from "@/components/facturer-domaine";
+import { FacturerGroupe } from "@/components/facturer-groupe";
+import { grouperPourFacturation } from "@/lib/groupe-facturation";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -128,15 +129,12 @@ export default async function ClientPage({ params }: Props) {
     ? ""
     : domainePrincipal(client.services);
 
-  const parDomaine = new Map<string, typeof active>();
-  for (const s of active) {
-    const d = domaineDeNote(s.notes);
-    if (!parDomaine.has(d)) parDomaine.set(d, []);
-    parDomaine.get(d)!.push(s);
-  }
-  const domainesConnus = [...parDomaine.keys()].filter(Boolean);
-  const grouper = domainesConnus.length >= 2;
-  const groupes = [...parDomaine.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  // Groupe de facturation : les services partis sur la MÊME facture QuickBooks
+  // se retrouvent ensemble. Chez un revendeur, c'est ce qui fait apparaître le
+  // vrai client final — Demers Bicycle et ses 9 services, plutôt que 8 groupes
+  // de domaines éparpillés parmi les 57 sites d'Acxzon.
+  const groupes = grouperPourFacturation(active);
+  const grouper = division !== "ITCLOUD" && groupes.length >= 2;
 
   return (
     <div className="space-y-6">
@@ -231,28 +229,27 @@ export default async function ClientPage({ params }: Props) {
           Services actifs ({active.length})
           {grouper && (
             <span className="ml-2 text-sm font-normal text-muted-foreground">
-              · {domainesConnus.length} domaines
+              · {groupes.length} groupes de facturation
             </span>
           )}
         </h2>
         {active.length === 0 ? (
           <p className="text-sm text-muted-foreground">Aucun service actif.</p>
         ) : grouper ? (
-          groupes.map(([domaine, liste]) => (
-            <div key={domaine || "sans-domaine"} className="space-y-2">
-              <h3 className="flex items-center gap-2 pt-2 text-sm font-medium">
+          groupes.map((g) => (
+            <div key={g.cle} className="space-y-2">
+              <h3 className="flex flex-wrap items-center gap-2 pt-2 text-sm font-medium">
                 <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-                {domaine || "Sans domaine"}
+                {g.titre}
                 <span className="text-xs font-normal text-muted-foreground">
-                  {liste.length} service{liste.length > 1 ? "s" : ""}
+                  {g.services.length} service{g.services.length > 1 ? "s" : ""}
+                  {g.facture ? ` · facture ${g.facture}` : ""}
                 </span>
-                <FacturerDomaine
-                  clientId={client.id}
-                  domaine={domaine}
-                  nbServices={liste.filter((x) => x.billingMode === "INDIRECT").length}
-                />
+                {g.services.some((x) => x.billingMode === "INDIRECT") && (
+                  <FacturerGroupe serviceId={g.services[0].id} label="Facturer ce groupe" compact />
+                )}
               </h3>
-              {liste.map((s) => (
+              {g.services.map((s) => (
                 <ServiceCard division={division} key={s.id} service={toCard(s)} />
               ))}
             </div>

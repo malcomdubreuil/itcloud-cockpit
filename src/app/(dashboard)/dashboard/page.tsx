@@ -5,7 +5,9 @@ import { ArrowRight, Receipt } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
-import { domaineDeNote } from "@/lib/domaine";
+import { domaineDeNote, domainePrincipal } from "@/lib/domaine";
+import { cleDeGroupe } from "@/lib/groupe-facturation";
+import { LigneAFacturer } from "@/components/ligne-a-facturer";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -14,8 +16,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
-import { ServiceActions } from "@/components/service-actions";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -31,10 +31,6 @@ const cad = new Intl.NumberFormat("fr-CA", {
   maximumFractionDigits: 0,
 });
 
-const cadExact = new Intl.NumberFormat("fr-CA", {
-  style: "currency",
-  currency: "CAD",
-});
 
 function daysUntil(d: Date): number {
   return Math.ceil((d.getTime() - Date.now()) / 86_400_000);
@@ -130,7 +126,17 @@ export default async function DashboardPage() {
     if (ra !== rb) return ra - rb;
     return a.renewalDate!.getTime() - b.renewalDate!.getTime();
   });
-  const toBill = sorted.slice(0, 15);
+  // Repli : les services partis sur la MÊME facture d'un MÊME client forment
+  // une seule ligne dépliable. Sans ça, les 9 services de Demers Bicycle
+  // occupent 9 rangées et poussent les autres dossiers hors de l'écran.
+  const parGroupe = new Map<string, typeof sorted>();
+  for (const s of sorted) {
+    const cle = `${s.clientId}|${cleDeGroupe(s).cle}`;
+    const l = parGroupe.get(cle);
+    if (l) l.push(s);
+    else parGroupe.set(cle, [s]);
+  }
+  const groupes = [...parGroupe.entries()].slice(0, 15);
   const redCount = dueSoon.filter(isRed).length;
   const yellowTotal = dueSoon.length;
 
@@ -180,7 +186,7 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        {toBill.length === 0 ? (
+        {groupes.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
               Rien à facturer pour le moment. 🎉
@@ -189,66 +195,38 @@ export default async function DashboardPage() {
         ) : (
           <Card className="py-0">
             <CardContent className="divide-y px-0">
-              {toBill.map((s) => {
-                const days = daysUntil(s.renewalDate!);
-                const urgent = days <= s.client.urgencyDays;
-                const months = CYCLE_MONTHS[s.product.billingCycle] ?? 1;
-                const amount = Number(s.unitPrice) * s.quantity;
+              {groupes.map(([cle, liste]) => {
+                const premier = liste[0];
                 return (
-                  <div
-                    key={s.id}
-                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50"
-                  >
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "h-2.5 w-2.5 shrink-0 rounded-full",
-                        urgent ? "bg-red-500" : "bg-yellow-400",
-                      )}
-                    />
-                    <span className="w-24 shrink-0 text-sm tabular-nums">
-                      {s.renewalDate!.toLocaleDateString("fr-CA")}
-                    </span>
-                    <span
-                      className={cn(
-                        "w-14 shrink-0 text-sm tabular-nums",
-                        urgent ? "font-medium text-red-600 dark:text-red-400" : "text-yellow-600 dark:text-yellow-400",
-                      )}
-                    >
-                      {days} j
-                    </span>
-                    <Link
-                      // Vers la FICHE du client, pas une recherche dans les
-                      // services : c'est là qu'est « Facturer tous les
-                      // services », et c'est ce que Keven vient chercher en
-                      // cliquant une ligne à facturer.
-                      href={`/clients/${s.clientId}`}
-                      title={`Ouvrir la fiche de ${s.client.companyName}`}
-                      className="min-w-0 flex-1 hover:underline"
-                    >
-                      <span className="block truncate text-sm font-medium">
-                        {(division === "ITCLOUD" ? "" : domaineDeNote(s.notes)) ||
-                          s.client.companyName}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {s.product.name}
-                        {s.quantity > 1 && ` × ${s.quantity}`}
-                        {!s.lastQbInvoiceNo && " · aucune facture QB notée"}
-                      </span>
-                    </Link>
-                    <span className="shrink-0 text-right text-sm tabular-nums">
-                      {cadExact.format(amount)}
-                      <span className="block text-xs text-muted-foreground">
-                        {cadExact.format(amount / months)}/mois
-                      </span>
-                    </span>
-                    <ServiceActions
-                      serviceId={s.id}
-                      status="ACTIF"
-                      qbInvoiceNo={s.lastQbInvoiceNo}
-                      clientName={s.client.companyName}
-                    />
-                  </div>
+                  <LigneAFacturer
+                    key={cle}
+                    clientId={premier.clientId}
+                    clientName={premier.client.companyName}
+                    titre={
+                      (division === "ITCLOUD" ? "" : domainePrincipal(liste)) ||
+                      premier.client.companyName
+                    }
+                    facture={premier.lastQbInvoiceNo?.trim() || null}
+                    services={liste.map((s) => {
+                      const months = CYCLE_MONTHS[s.product.billingCycle] ?? 1;
+                      const montant = Number(s.unitPrice) * s.quantity;
+                      const jours = daysUntil(s.renewalDate!);
+                      return {
+                        id: s.id,
+                        titre:
+                          (division === "ITCLOUD" ? "" : domaineDeNote(s.notes)) ||
+                          s.client.companyName,
+                        produit: s.product.name,
+                        quantite: s.quantity,
+                        montant,
+                        montantMensuel: montant / months,
+                        echeance: s.renewalDate!.toLocaleDateString("fr-CA"),
+                        jours,
+                        urgent: jours <= s.client.urgencyDays,
+                        qbInvoiceNo: s.lastQbInvoiceNo,
+                      };
+                    })}
+                  />
                 );
               })}
             </CardContent>
