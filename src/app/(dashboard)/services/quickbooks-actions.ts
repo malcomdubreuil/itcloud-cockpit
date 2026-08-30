@@ -9,7 +9,7 @@ import {
   type QboInvoice,
 } from "@/infrastructure/quickbooks/QuickBooksClient";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
-import { markClientBilled } from "./actions";
+import { markClientBilled, markServicesBilled } from "./actions";
 
 // Automatisation QuickBooks de la refacturation.
 // Le flux de l'utilisateur : retrouver sa dernière facture d'un client, la
@@ -373,6 +373,129 @@ function qbInvoiceUrl(invoiceId: string): string {
 // N'ENVOIE JAMAIS au client. Ne plante pas si QuickBooks ne retourne pas de
 // numéro (numérotation personnalisée) : le brouillon existe alors et il faut
 // le finaliser côté QuickBooks.
+// Duplique la facture source d'un GROUPE et facture les services choisis.
+//
+// C'est billViaQuickBooks appliqué à un ensemble : Demers Bicycle, ce sont 9
+// services partis sur la facture 13076-881. On duplique CETTE facture (dates
+// avancées d'un cycle, nouveau numéro généré par l'ERP), puis on pose le
+// nouveau numéro et la nouvelle échéance sur les 9 services — et sur eux
+// seulement, pas sur les 63 autres sites du revendeur.
+//
+// La facture créée reste un BROUILLON NON ENVOYÉ : Keven la vérifie et
+// l'envoie lui-même. Voir [[always-preview-invoice-before-send]].
+export async function billGroupViaQuickBooks(
+  serviceIds: string[],
+  input: { txnDate: string },
+): Promise<BillResult> {
+  const user = await requireUser();
+  const ids = [...new Set(serviceIds)].filter(Boolean);
+  if (ids.length === 0) throw new Error("Aucun service sélectionné.");
+  if (isNaN(new Date(`${input.txnDate}T00:00:00`).getTime())) {
+    throw new Error("Date de facture invalide");
+  }
+
+  const division = await currentDivision();
+  const services = await prisma.clientService.findMany({
+    where: {
+      id: { in: ids },
+      tenantId: user.tenantId,
+      status: "ACTIF",
+      billingMode: "INDIRECT",
+      deletedAt: null,
+      ...serviceDivisionFilter(division),
+    },
+    select: {
+      id: true, clientId: true, lastQbInvoiceNo: true, monthlyBilling: true,
+    },
+  });
+  if (services.length === 0) throw new Error("Aucun service facturable dans la sélection.");
+
+  // Un groupe = un client, une facture source. Si la sélection en mélange
+  // plusieurs, on refuse : dupliquer « la » facture n'aurait plus de sens.
+  const clients = new Set(services.map((s) => s.clientId));
+  if (clients.size > 1) {
+    throw new Error("La sélection couvre plusieurs clients — facture-les séparément.");
+  }
+  const sources = new Set(
+    services.map((s) => s.lastQbInvoiceNo?.trim()).filter(Boolean) as string[],
+  );
+  if (sources.size === 0) {
+    throw new Error("Aucun numéro de facture source à dupliquer dans cette sélection.");
+  }
+  if (sources.size > 1) {
+    throw new Error(
+      `La sélection vient de ${sources.size} factures différentes (${[...sources].join(", ")}) — facture-les séparément.`,
+    );
+  }
+  const docNumber = [...sources][0];
+
+  const client = new QuickBooksClient(user.tenantId);
+  const src = await client.getInvoiceByDocNumber(docNumber);
+  if (!src) {
+    throw new Error(`Facture source ${docNumber} introuvable dans QuickBooks.`);
+  }
+
+  // Règle 2 : l'ERP génère le numéro AVANT la création.
+  const newNumber = await client.getNextDocNumber();
+
+  const clientServices: SvcCommitment[] = (
+    await prisma.clientService.findMany({
+      where: {
+        tenantId: user.tenantId,
+        clientId: [...clients][0],
+        deletedAt: null,
+        status: "ACTIF",
+        ...serviceDivisionFilter(division),
+      },
+      select: { commitmentEndDate: true, product: { select: { name: true } } },
+    })
+  ).map((x) => ({
+    productName: x.product.name,
+    commitmentEndDate: x.commitmentEndDate,
+  }));
+
+  // Quantité 1 : la facture source porte déjà une ligne par service du groupe,
+  // il ne faut pas les multiplier une seconde fois.
+  const created = await client.createInvoice(
+    buildDuplicatePayload(
+      src,
+      input.txnDate,
+      1,
+      newNumber,
+      services.every((s) => s.monthlyBilling) ? "month" : "year",
+      clientServices,
+    ),
+  );
+
+  await audit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    action: "service.invoice_created_qb",
+    entityType: "ClientService",
+    entityId: services[0].id,
+    before: { sourceDocNumber: docNumber },
+    after: {
+      quickbooksInvoiceId: created.Id,
+      docNumber: created.DocNumber ?? newNumber,
+      txnDate: input.txnDate,
+      servicesDuGroupe: services.length,
+    },
+  });
+
+  const newDoc = created.DocNumber?.trim() || newNumber;
+  const { count } = await markServicesBilled(
+    services.map((s) => s.id),
+    { qbInvoiceNo: newDoc },
+  );
+
+  return {
+    status: "billed",
+    newDocNumber: newDoc,
+    invoiceUrl: qbInvoiceUrl(created.Id),
+    servicesBilled: count,
+  };
+}
+
 export async function billViaQuickBooks(
   serviceId: string,
   input: { txnDate: string },
