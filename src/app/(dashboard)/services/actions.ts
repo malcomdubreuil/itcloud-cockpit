@@ -696,6 +696,82 @@ export async function previewGroupeFacturation(serviceId: string): Promise<{
   };
 }
 
+// Même fenêtre de confirmation, mais pour TOUT un client : c'est le bouton
+// « Facturer tous les services » de la fiche. Avant, ce bouton demandait juste
+// un numéro de facture à taper ; il passe maintenant par le même chemin que le
+// tableau de bord — récupérer la facture source, la dupliquer dans QuickBooks,
+// avancer les dates.
+//
+// La duplication n'est proposée que si TOUS les services partent de la MÊME
+// facture source : dupliquer une facture ne peut pas couvrir des services qui
+// venaient de deux factures différentes. Sinon on ne montre que la saisie
+// manuelle, et la fenêtre le dit.
+export async function previewClientFacturation(clientId: string): Promise<{
+  motif: MotifGroupe;
+  facture: string | null;
+  titre: string;
+  services: {
+    id: string;
+    domaine: string;
+    produit: string;
+    montant: number;
+    echeance: string | null;
+    nouvelleEcheance: string;
+  }[];
+}> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { id: true, tenantId: true, companyName: true },
+  });
+  if (!client || client.tenantId !== session.user.tenantId) {
+    throw new Error("Client introuvable");
+  }
+
+  const division = await currentDivision();
+  const services = await prisma.clientService.findMany({
+    where: {
+      tenantId: session.user.tenantId,
+      clientId,
+      status: "ACTIF",
+      billingMode: "INDIRECT",
+      deletedAt: null,
+      ...serviceDivisionFilter(division),
+    },
+    select: {
+      id: true, notes: true, lastQbInvoiceNo: true, renewalDate: true,
+      quantity: true, unitPrice: true, monthlyBilling: true,
+      product: { select: { name: true, billingCycle: true } },
+    },
+  });
+  if (!services.length) throw new Error("Aucun service à facturer pour ce client");
+
+  const factures = new Set(services.map((s) => s.lastQbInvoiceNo?.trim() || ""));
+  const facture = factures.size === 1 && !factures.has("") ? [...factures][0] : null;
+
+  return {
+    motif: "client",
+    facture,
+    titre: domainePrincipal(services) || client.companyName,
+    services: services
+      .map((s) => {
+        const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
+        return {
+          id: s.id,
+          domaine: domaineDeNote(s.notes) || "—",
+          produit: s.product.name,
+          montant: Number(s.unitPrice) * s.quantity,
+          echeance: s.renewalDate?.toISOString().slice(0, 10) ?? null,
+          nouvelleEcheance: advanceMonths(s.renewalDate, months).toISOString().slice(0, 10),
+        };
+      })
+      .sort((a, b) => a.produit.localeCompare(b.produit) || a.domaine.localeCompare(b.domaine)),
+  };
+}
+
 // Facture EXACTEMENT les services choisis dans la fenêtre de confirmation.
 // C'est l'UI qui décide lesquels (cases à cocher) ; le serveur revalide qu'ils
 // appartiennent bien au tenant, à la division active, et qu'ils sont

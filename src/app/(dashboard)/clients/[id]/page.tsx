@@ -9,7 +9,6 @@ import { domainePrincipal } from "@/lib/domaine";
 import { CYCLE_MONTHS, ServiceCard } from "@/components/service-card";
 import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { ResellerToggle } from "@/components/reseller-toggle";
-import { FacturerTout } from "@/components/facturer-tout";
 import { FacturerGroupe } from "@/components/facturer-groupe";
 import { AjouterService } from "@/components/ajouter-service";
 import { grouperPourFacturation } from "@/lib/groupe-facturation";
@@ -95,6 +94,9 @@ export default async function ClientPage({ params }: Props) {
   });
 
   const active = client.services.filter((s) => s.status === "ACTIF");
+  // Ce que « Facturer tous les services » couvrira : les DIRECT sont facturés
+  // par ITCloud, ils ne passent jamais par une facture de Keven.
+  const nbFacturables = active.filter((s) => s.billingMode === "INDIRECT").length;
   let monthly = 0;
   let profit = 0;
   let licenses = 0;
@@ -168,10 +170,10 @@ export default async function ClientPage({ params }: Props) {
           {/* Chez un revendeur, « facturer tout » toucherait la centaine de
               sites de ses propres clients : la facturation s'y fait site par
               site, avec le bouton de chaque domaine. */}
-          {!client.isReseller && (
-            <FacturerTout
+          {!client.isReseller && nbFacturables > 0 && (
+            <FacturerGroupe
               clientId={client.id}
-              nbServices={active.filter((s) => s.billingMode === "INDIRECT").length}
+              label={`Facturer tous les services (${nbFacturables})`}
             />
           )}
           {division !== "ITCLOUD" && (

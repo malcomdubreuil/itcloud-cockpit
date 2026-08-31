@@ -25,7 +25,10 @@ export type ServiceGroupable = {
   product: { name: string };
 };
 
-export type MotifGroupe = "facture" | "domaine" | "echeance" | "isole";
+// « client » n'est jamais produit par cleDeGroupe : c'est le motif du bouton
+// « Facturer tous les services » de la fiche client, qui prend le client en
+// entier au lieu d'un seul groupe.
+export type MotifGroupe = "facture" | "domaine" | "echeance" | "isole" | "client";
 
 export type GroupeFacturation<T extends ServiceGroupable> = {
   cle: string;
@@ -91,4 +94,5 @@ export const LIBELLE_MOTIF: Record<MotifGroupe, string> = {
   domaine: "même domaine — aucun n° de facture",
   echeance: "même échéance — aucun n° de facture ni domaine",
   isole: "service isolé",
+  client: "tous les services du client",
 };

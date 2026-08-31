@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   markServicesBilled,
+  previewClientFacturation,
   previewGroupeFacturation,
 } from "@/app/(dashboard)/services/actions";
 import {
@@ -32,10 +33,15 @@ type Source = Awaited<ReturnType<typeof previewLastQbInvoice>>;
 
 export function FacturerGroupe({
   serviceId,
+  clientId,
   label = "Facturé",
   compact = false,
 }: {
-  serviceId: string;
+  /** Le groupe auquel ce service appartient (tableau de bord, fiche client). */
+  serviceId?: string;
+  /** TOUS les services indirects du client — bouton « Facturer tous les
+      services » de la fiche. L'un des deux est requis. */
+  clientId?: string;
   label?: string;
   compact?: boolean;
 }) {
@@ -55,7 +61,9 @@ export function FacturerGroupe({
   const ouvrir = async () => {
     setChargement(true);
     try {
-      const a = await previewGroupeFacturation(serviceId);
+      const a = clientId
+        ? await previewClientFacturation(clientId)
+        : await previewGroupeFacturation(serviceId!);
       setApercu(a);
       setCoches(new Set(a.services.map((s) => s.id)));
       setQb("");
@@ -73,7 +81,11 @@ export function FacturerGroupe({
   const voirSource = () =>
     start(async () => {
       try {
-        setSource(await previewLastQbInvoice(serviceId));
+        // Tout le groupe partage la meme facture source : n'importe laquelle
+        // de ses lignes la retrouve.
+        const ref = apercu?.services[0]?.id ?? serviceId;
+        if (!ref) return;
+        setSource(await previewLastQbInvoice(ref));
       } catch (e) {
         setSource({ ok: false, reason: e instanceof Error ? e.message : "Erreur QuickBooks" });
       }
@@ -299,6 +311,15 @@ export function FacturerGroupe({
                       </p>
                     )}
                   </div>
+                )}
+
+                {!apercu.facture && (
+                  <p className="mt-4 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                    Ces services ne viennent pas tous de la{" "}
+                    <strong>même facture QuickBooks</strong> — l&apos;ERP ne peut
+                    donc pas en dupliquer une seule pour les couvrir. Fais la
+                    facture dans QuickBooks, puis entre son numéro ci-dessous.
+                  </p>
                 )}
 
                 {/* ── Chemin 2 : numéro saisi à la main ── */}
