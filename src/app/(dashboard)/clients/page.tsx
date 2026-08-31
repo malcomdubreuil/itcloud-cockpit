@@ -76,6 +76,11 @@ export default async function ClientsPage({
             { contactName: { contains: q } },
             { clientCode: { contains: q } },
             { email: { contains: q } },
+            // Cote Hebergement, la ligne s'INTITULE par le domaine
+            // (« dianerenaudcpa.com ») et la raison sociale n'est qu'en
+            // sous-titre : chercher ce qu'on lit a l'ecran doit marcher.
+            // Le domaine vit dans la note du service, d'ou ce detour.
+            { services: { some: { deletedAt: null, ...inDivision, notes: { contains: q } } } },
           ],
         }
       : {}),
@@ -170,7 +175,11 @@ export default async function ClientsPage({
           {total} clients — la pastille indique l&apos;urgence de la prochaine
           facturation. Clique un client pour ouvrir sa fiche.
           {q && division !== "ITCLOUD" && (
-            <> La recherche couvre <strong>tes clients et les revendeurs</strong>.</>
+            <>
+              {" "}
+              La recherche couvre{" "}
+              <strong>tes clients, les revendeurs et les noms de domaine</strong>.
+            </>
           )}
         </p>
       </div>
