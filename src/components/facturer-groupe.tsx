@@ -216,11 +216,22 @@ export function FacturerGroupe({
                   {apercu.services.length > 1 ? "s" : ""}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  <strong>{apercu.titre}</strong> · regroupés par{" "}
-                  {LIBELLE_MOTIF[apercu.motif as MotifGroupe]}
-                  {apercu.facture ? ` ${apercu.facture}` : ""}. Décoche ce qui ne
-                  doit pas être facturé — rien ne bouge tant que tu n&apos;as pas
-                  confirmé.
+                  <strong>{apercu.titre}</strong> ·{" "}
+                  {apercu.motif === "client" ? (
+                    <>
+                      {LIBELLE_MOTIF.client}
+                      {apercu.facture && (
+                        <> · dernière facture {apercu.facture}</>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      regroupés par {LIBELLE_MOTIF[apercu.motif as MotifGroupe]}
+                      {apercu.facture ? ` ${apercu.facture}` : ""}
+                    </>
+                  )}
+                  . Décoche ce qui ne doit pas être facturé — rien ne bouge tant
+                  que tu n&apos;as pas confirmé.
                 </p>
 
                 <div className="mt-4 divide-y rounded-md border">
