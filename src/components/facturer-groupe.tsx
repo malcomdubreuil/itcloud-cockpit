@@ -237,6 +237,11 @@ export function FacturerGroupe({
                 <div className="mt-4 divide-y rounded-md border">
                   {apercu.services.map((s) => {
                     const coche = coches.has(s.id);
+                    // Cote ITCloud il n'y a pas de domaine dans la note : la
+                    // colonne large afficherait « — » sur toutes les lignes.
+                    // On y met alors le produit, qui devient l'identite de la
+                    // ligne.
+                    const sansDomaine = s.domaine === "—";
                     return (
                       <label
                         key={s.id}
@@ -250,10 +255,10 @@ export function FacturerGroupe({
                           className="h-4 w-4 shrink-0"
                         />
                         <span className={`min-w-0 flex-1 basis-48 truncate ${coche ? "" : "line-through opacity-50"}`}>
-                          {s.domaine}
+                          {sansDomaine ? s.produit : s.domaine}
                         </span>
                         <span className="w-52 truncate text-xs text-muted-foreground">
-                          {s.produit}
+                          {sansDomaine ? "" : s.produit}
                         </span>
                         <span className="w-24 text-right tabular-nums">
                           {cad.format(s.montant)}
