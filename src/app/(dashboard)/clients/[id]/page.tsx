@@ -11,6 +11,7 @@ import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { ResellerToggle } from "@/components/reseller-toggle";
 import { FacturerTout } from "@/components/facturer-tout";
 import { FacturerGroupe } from "@/components/facturer-groupe";
+import { AjouterService } from "@/components/ajouter-service";
 import { grouperPourFacturation } from "@/lib/groupe-facturation";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -76,7 +77,7 @@ export default async function ClientPage({ params }: Props) {
         select: {
           id: true, quantity: true, quantityManual: true, renewalDateManual: true, unitCost: true, unitPrice: true,
           status: true, billingMode: true, renewalDate: true,
-          lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true,
+          lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true, serverName: true,
           monthlyBilling: true,
           product: { select: { name: true, billingCycle: true, msrp: true } },
         },
@@ -84,6 +85,14 @@ export default async function ClientPage({ params }: Props) {
     },
   });
   if (!client || client.tenantId !== session.user.tenantId) notFound();
+
+  // Produits disponibles pour ajouter un service sous ce client : ceux de la
+  // division active, actifs. Le prix se remplira depuis leur PDSF.
+  const produitsDispo = await prisma.product.findMany({
+    where: { tenantId: session.user.tenantId, division, deletedAt: null, active: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, msrp: true, partnerCost: true, billingCycle: true },
+  });
 
   const active = client.services.filter((s) => s.status === "ACTIF");
   let monthly = 0;
@@ -223,6 +232,19 @@ export default async function ClientPage({ params }: Props) {
           </Card>
         ))}
       </div>
+
+      <AjouterService
+        clientId={client.id}
+        hebergement={division !== "ITCLOUD"}
+        serveurSuggere={active.find((s) => s.serverName)?.serverName ?? null}
+        produits={produitsDispo.map((p) => ({
+          id: p.id,
+          name: p.name,
+          msrp: Number(p.msrp),
+          partnerCost: Number(p.partnerCost),
+          cycle: p.billingCycle,
+        }))}
+      />
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">

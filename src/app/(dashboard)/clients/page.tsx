@@ -63,7 +63,11 @@ export default async function ClientsPage({
     // la liste illisible.
     // Les revendeurs sont une notion propre a l'hebergement : cote ITCloud on
     // ne segmente pas, tous les clients sont dans la meme liste.
-    ...(division === "ITCLOUD" ? {} : { isReseller: vue === "revendeurs" }),
+    // ET quand on CHERCHE, on cherche des DEUX cotes : chercher un client sans
+    // savoir d'avance s'il est chez un revendeur n'aurait aucun sens.
+    ...(division === "ITCLOUD" || q
+      ? {}
+      : { isReseller: vue === "revendeurs" }),
     ...(statut && statut !== "TOUS" ? { status: statut as never } : {}),
     ...(q
       ? {
@@ -165,6 +169,9 @@ export default async function ClientsPage({
         <p className="text-sm text-muted-foreground">
           {total} clients — la pastille indique l&apos;urgence de la prochaine
           facturation. Clique un client pour ouvrir sa fiche.
+          {q && division !== "ITCLOUD" && (
+            <> La recherche couvre <strong>tes clients et les revendeurs</strong>.</>
+          )}
         </p>
       </div>
 
@@ -251,6 +258,9 @@ export default async function ClientsPage({
                     </span>
                     {c.status !== "ACTIF" && (
                       <Badge variant="secondary">{c.status === "INACTIF" ? "Inactif" : "Suspendu"}</Badge>
+                    )}
+                    {division !== "ITCLOUD" && c.isReseller && (
+                      <Badge variant="outline">Revendeur</Badge>
                     )}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">

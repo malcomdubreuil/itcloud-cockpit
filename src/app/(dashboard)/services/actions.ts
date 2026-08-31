@@ -527,6 +527,109 @@ function advanceMonths(base: Date | null, months: number): Date {
   return d;
 }
 
+// Ajoute un service à un client depuis sa fiche : Keven choisit un produit
+// dans la liste, le prix et le coût se remplissent tout seuls depuis ce
+// produit, et il n'a plus qu'à saisir l'échéance, éventuellement le numéro de
+// facture et une note (le domaine, côté hébergement).
+export async function addServiceToClient(
+  clientId: string,
+  input: {
+    productId: string;
+    renewalDate: string;
+    quantity?: number;
+    unitPrice?: number;
+    qbInvoiceNo?: string;
+    notes?: string;
+    serverName?: string;
+  },
+): Promise<{ id: string }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+  const tenantId = session.user.tenantId;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.renewalDate)) {
+    throw new Error("Échéance requise (AAAA-MM-JJ)");
+  }
+  const quantity = Math.max(1, Math.trunc(input.quantity ?? 1));
+
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, tenantId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!client) throw new Error("Client introuvable");
+
+  const division = await currentDivision();
+  const product = await prisma.product.findFirst({
+    where: { id: input.productId, tenantId, division, deletedAt: null },
+    select: { id: true, name: true, msrp: true, partnerCost: true, billingCycle: true },
+  });
+  if (!product) throw new Error("Produit introuvable dans cette division");
+
+  // Le prix est stocké AU CYCLE du produit. Par défaut on prend le PDSF ; le
+  // coût vient du produit (côté hébergement il est à 0, les vrais coûts sont
+  // dans les coûts fixes).
+  const unitPrice = Number.isFinite(input.unitPrice) && (input.unitPrice as number) >= 0
+    ? (input.unitPrice as number)
+    : Number(product.msrp);
+
+  // Minuit LOCAL : minuit UTC afficherait la veille au Québec.
+  const [y, m, d] = input.renewalDate.split("-").map(Number);
+  const renewalDate = new Date(y, m - 1, d);
+
+  const notes = input.notes?.trim() || null;
+  const serverName = input.serverName?.trim() || null;
+
+  // matchKey préfixée MANUEL : la synchro ITCloud rapproche par
+  // « codeClient|produit|cycle » et signale les services ERP absents du
+  // rapport. Un préfixe qui n'est pas un code client ITCloud garde donc les
+  // ajouts manuels hors de cette liste.
+  const base = `MANUEL|${notes || product.name}|${product.name}`;
+  let matchKey = base.slice(0, 191);
+  for (let n = 2; await prisma.clientService.findFirst({ where: { tenantId, matchKey }, select: { id: true } }); n++) {
+    matchKey = `${base} (${n})`.slice(0, 191);
+  }
+
+  const svc = await prisma.clientService.create({
+    data: {
+      tenantId,
+      clientId,
+      productId: product.id,
+      matchKey,
+      quantity,
+      unitPrice: unitPrice.toFixed(4),
+      unitCost: product.partnerCost.toString(),
+      renewalDate,
+      status: "ACTIF",
+      billingMode: "INDIRECT",
+      notes,
+      serverName,
+      lastQbInvoiceNo: input.qbInvoiceNo?.trim() || null,
+    },
+    select: { id: true },
+  });
+
+  await prisma.serviceChange.create({
+    data: {
+      tenantId,
+      serviceId: svc.id,
+      changeType: "CREATION",
+      field: "ajout manuel",
+      newValue: {
+        produit: product.name,
+        prix: unitPrice,
+        echeance: input.renewalDate,
+        note: notes,
+      },
+      source: "MANUEL",
+    },
+  });
+
+  revalidatePath(`/clients/${clientId}`);
+  revalidateBillingViews();
+  return { id: svc.id };
+}
+
 // Aperçu du GROUPE de facturation d'un service : tous ceux qui partent avec
 // lui sur la même facture. Lecture seule — sert à remplir la fenêtre de
 // confirmation avant d'écrire quoi que ce soit.

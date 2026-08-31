@@ -80,25 +80,33 @@ export function LigneAFacturer({
       <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50">
         <Pastille urgent={premier.urgent} />
         <Dates echeance={premier.echeance} jours={premier.jours} urgent={premier.urgent} />
+        {/* La flèche déplie, le NOM ouvre la fiche du client : avant, le nom
+            faisait partie du bouton de dépliage et n'était donc pas cliquable
+            sur une ligne groupée, contrairement aux lignes simples. */}
         <button
           type="button"
           onClick={() => setOuvert((o) => !o)}
           aria-expanded={ouvert}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+          aria-label={ouvert ? "Replier le groupe" : "Déplier le groupe"}
+          className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           {ouvert ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <ChevronDown className="h-4 w-4" />
           ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <ChevronRight className="h-4 w-4" />
           )}
-          <span className="min-w-0">
-            <span className="block truncate text-sm font-medium">{titre}</span>
-            <span className="block truncate text-xs text-muted-foreground">
-              {services.length} services{facture ? ` · facture ${facture}` : ""} ·{" "}
-              {clientName}
-            </span>
-          </span>
         </button>
+        <Link
+          href={`/clients/${clientId}`}
+          title={`Ouvrir la fiche de ${clientName}`}
+          className="min-w-0 flex-1 hover:underline"
+        >
+          <span className="block truncate text-sm font-medium">{titre}</span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {services.length} services{facture ? ` · facture ${facture}` : ""} ·{" "}
+            {clientName}
+          </span>
+        </Link>
         <Montant
           total={total}
           mensuel={services.reduce((t, s) => t + s.montantMensuel, 0)}
