@@ -148,6 +148,10 @@ model Client {
   // Il reste donc un client — c'est lui qu'on facture — mais sa fiche groupe
   // ses services par domaine pour qu'on voie à travers.
   isReseller    Boolean        @default(false)
+  // Division d'appartenance. Utile surtout pour un client SANS service (créé à
+  // la main) : sa division vient de là. Un client qui a des services apparaît
+  // de toute façon du côté de ces services. Défaut ITCLOUD (source historique).
+  division      String         @default("ITCLOUD")
   anniversary   DateTime?
   deletedAt     DateTime?
 

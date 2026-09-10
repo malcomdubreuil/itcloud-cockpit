@@ -7,6 +7,7 @@ import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
 import { domaineDeNote, domainePrincipal } from "@/lib/domaine";
 import { CYCLE_MONTHS, daysUntil, renewalUrgency } from "@/components/service-card";
+import { NewClientButton } from "@/components/new-client-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -57,33 +58,46 @@ export default async function ClientsPage({
   const where = {
     tenantId,
     deletedAt: null,
-    services: { some: { deletedAt: null, ...inDivision } },
-    // Onglets : les revendeurs (Pclogic, Acxzon) portent des centaines de
-    // services pour LEURS clients ; les melanger aux clients directs rendait
-    // la liste illisible.
-    // Les revendeurs sont une notion propre a l'hebergement : cote ITCloud on
-    // ne segmente pas, tous les clients sont dans la meme liste.
-    // ET quand on CHERCHE, on cherche des DEUX cotes : chercher un client sans
-    // savoir d'avance s'il est chez un revendeur n'aurait aucun sens.
-    ...(division === "ITCLOUD" || q
-      ? {}
-      : { isReseller: vue === "revendeurs" }),
-    ...(statut && statut !== "TOUS" ? { status: statut as never } : {}),
-    ...(q
-      ? {
-          OR: [
-            { companyName: { contains: q } },
-            { contactName: { contains: q } },
-            { clientCode: { contains: q } },
-            { email: { contains: q } },
-            // Cote Hebergement, la ligne s'INTITULE par le domaine
-            // (« dianerenaudcpa.com ») et la raison sociale n'est qu'en
-            // sous-titre : chercher ce qu'on lit a l'ecran doit marcher.
-            // Le domaine vit dans la note du service, d'ou ce detour.
-            { services: { some: { deletedAt: null, ...inDivision, notes: { contains: q } } } },
-          ],
-        }
-      : {}),
+    AND: [
+      // Un client appartient a la division ou il a des services. Exception : un
+      // client cree a la main SANS service reste visible du cote ou il a ete
+      // cree (champ division), sinon il serait introuvable en attendant son
+      // premier service.
+      {
+        OR: [
+          { services: { some: { deletedAt: null, ...inDivision } } },
+          { division, services: { none: { deletedAt: null } } },
+        ],
+      },
+      // Onglets : les revendeurs (Pclogic, Acxzon) portent des centaines de
+      // services pour LEURS clients ; les melanger aux clients directs rendait
+      // la liste illisible.
+      // Les revendeurs sont une notion propre a l'hebergement : cote ITCloud on
+      // ne segmente pas, tous les clients sont dans la meme liste.
+      // ET quand on CHERCHE, on cherche des DEUX cotes : chercher un client sans
+      // savoir d'avance s'il est chez un revendeur n'aurait aucun sens.
+      ...(division === "ITCLOUD" || q
+        ? []
+        : [{ isReseller: vue === "revendeurs" }]),
+      ...(statut && statut !== "TOUS" ? [{ status: statut as never }] : []),
+      ...(q
+        ? [
+            {
+              OR: [
+                { companyName: { contains: q } },
+                { contactName: { contains: q } },
+                { clientCode: { contains: q } },
+                { email: { contains: q } },
+                // Cote Hebergement, la ligne s'INTITULE par le domaine
+                // (« dianerenaudcpa.com ») et la raison sociale n'est qu'en
+                // sous-titre : chercher ce qu'on lit a l'ecran doit marcher.
+                // Le domaine vit dans la note du service, d'ou ce detour.
+                { services: { some: { deletedAt: null, ...inDivision, notes: { contains: q } } } },
+              ],
+            },
+          ]
+        : []),
+    ],
   };
 
   // Tri par échéance : l'agrégat (prochaine échéance) n'est pas triable en
@@ -169,19 +183,22 @@ export default async function ClientsPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Clients</h1>
-        <p className="text-sm text-muted-foreground">
-          {total} clients — la pastille indique l&apos;urgence de la prochaine
-          facturation. Clique un client pour ouvrir sa fiche.
-          {q && division !== "ITCLOUD" && (
-            <>
-              {" "}
-              La recherche couvre{" "}
-              <strong>tes clients, les revendeurs et les noms de domaine</strong>.
-            </>
-          )}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Clients</h1>
+          <p className="text-sm text-muted-foreground">
+            {total} clients — la pastille indique l&apos;urgence de la prochaine
+            facturation. Clique un client pour ouvrir sa fiche.
+            {q && division !== "ITCLOUD" && (
+              <>
+                {" "}
+                La recherche couvre{" "}
+                <strong>tes clients, les revendeurs et les noms de domaine</strong>.
+              </>
+            )}
+          </p>
+        </div>
+        <NewClientButton />
       </div>
 
       {division !== "ITCLOUD" && (
