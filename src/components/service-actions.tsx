@@ -43,14 +43,19 @@ function servicesLabel(n: number): string {
 export function ServiceActions({
   serviceId,
   status,
+  billingMode = "INDIRECT",
   qbInvoiceNo,
   clientName,
 }: {
   serviceId: string;
   status: string;
+  /** DIRECT = facturé par ITCloud : pas de bouton « Facturé », mais on garde
+   *  l'annulation (retirer le produit du client). */
+  billingMode?: string;
   qbInvoiceNo: string | null;
   clientName: string;
 }) {
+  const canBill = billingMode === "INDIRECT";
   const [pending, start] = useTransition();
   const [dialog, setDialog] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -180,9 +185,11 @@ export function ServiceActions({
 
   return (
     <div className="flex items-center gap-1">
-      <Button size="sm" disabled={pending} onClick={openBilling}>
-        <Receipt className="h-3.5 w-3.5" /> Facturé
-      </Button>
+      {canBill && (
+        <Button size="sm" disabled={pending} onClick={openBilling}>
+          <Receipt className="h-3.5 w-3.5" /> Facturé
+        </Button>
+      )}
 
       {confirmCancel ? (
         <span className="flex items-center gap-1">
