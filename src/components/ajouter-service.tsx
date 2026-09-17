@@ -41,11 +41,14 @@ export function AjouterService({
   produits,
   hebergement,
   serveurSuggere,
+  internal = false,
 }: {
   clientId: string;
   produits: ProduitDispo[];
   hebergement: boolean;
   serveurSuggere: string | null;
+  /** Client interne (mon entreprise) : prix forcé à 0, champs prix/facture masqués. */
+  internal?: boolean;
 }) {
   const [ouvert, setOuvert] = useState(false);
   const [productId, setProductId] = useState("");
@@ -68,8 +71,12 @@ export function AjouterService({
 
   const ajouter = () => {
     if (!productId) return toast.error("Choisis un produit.");
-    const parsed = parseFloat(prix.replace(",", "."));
-    if (!Number.isFinite(parsed) || parsed < 0) return toast.error("Prix invalide");
+    // Client interne : prix toujours 0 (le serveur le force aussi).
+    let parsed = 0;
+    if (!internal) {
+      parsed = parseFloat(prix.replace(",", "."));
+      if (!Number.isFinite(parsed) || parsed < 0) return toast.error("Prix invalide");
+    }
     start(async () => {
       try {
         await addServiceToClient(clientId, {
@@ -121,19 +128,21 @@ export function AjouterService({
           ))}
         </select>
 
-        <label className="flex items-center gap-1 text-xs text-muted-foreground">
-          Prix
-          <input
-            className={cn(champ, "w-24 text-right tabular-nums")}
-            inputMode="decimal"
-            value={prix}
-            disabled={pending}
-            placeholder="0,00"
-            onChange={(e) => setPrix(e.target.value)}
-            aria-label="Prix de vente"
-          />
-          {produit ? SUFFIXE[produit.cycle] ?? "" : ""}
-        </label>
+        {!internal && (
+          <label className="flex items-center gap-1 text-xs text-muted-foreground">
+            Prix
+            <input
+              className={cn(champ, "w-24 text-right tabular-nums")}
+              inputMode="decimal"
+              value={prix}
+              disabled={pending}
+              placeholder="0,00"
+              onChange={(e) => setPrix(e.target.value)}
+              aria-label="Prix de vente"
+            />
+            {produit ? SUFFIXE[produit.cycle] ?? "" : ""}
+          </label>
+        )}
 
         <label className="flex items-center gap-1 text-xs text-muted-foreground">
           Échéance
@@ -167,14 +176,16 @@ export function AjouterService({
             aria-label="Serveur"
           />
         )}
-        <input
-          className={cn(champ, "w-44")}
-          placeholder="N° facture (optionnel)"
-          value={facture}
-          disabled={pending}
-          onChange={(e) => setFacture(e.target.value)}
-          aria-label="Numéro de facture QuickBooks"
-        />
+        {!internal && (
+          <input
+            className={cn(champ, "w-44")}
+            placeholder="N° facture (optionnel)"
+            value={facture}
+            disabled={pending}
+            onChange={(e) => setFacture(e.target.value)}
+            aria-label="Numéro de facture QuickBooks"
+          />
+        )}
         <Button size="sm" onClick={ajouter} disabled={pending}>
           {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           Ajouter

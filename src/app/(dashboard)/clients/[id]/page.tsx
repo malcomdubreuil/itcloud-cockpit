@@ -9,6 +9,7 @@ import { domainePrincipal } from "@/lib/domaine";
 import { CYCLE_MONTHS, ServiceCard } from "@/components/service-card";
 import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { ResellerToggle } from "@/components/reseller-toggle";
+import { InternalToggle } from "@/components/internal-toggle";
 import { FacturerGroupe } from "@/components/facturer-groupe";
 import { AjouterService } from "@/components/ajouter-service";
 import { grouperPourFacturation } from "@/lib/groupe-facturation";
@@ -66,7 +67,7 @@ export default async function ClientPage({ params }: Props) {
     select: {
       id: true, tenantId: true, companyName: true, contactName: true,
       clientCode: true, email: true, phone: true, status: true,
-      paymentMethod: true, billingType: true, urgencyDays: true, isReseller: true,
+      paymentMethod: true, billingType: true, urgencyDays: true, isReseller: true, internal: true,
       services: {
         // Fiche cloisonnee : cote Hebergement on ne voit que les domaines et
         // l'hebergement du client, cote ITCloud que ses licences. Ses KPI se
@@ -126,6 +127,7 @@ export default async function ClientPage({ params }: Props) {
     notes: s.notes,
     monthlyBilling: s.monthlyBilling,
     urgencyDays: client.urgencyDays,
+    internal: client.internal,
     product: {
       name: s.product.name,
       billingCycle: s.product.billingCycle,
@@ -170,7 +172,7 @@ export default async function ClientPage({ params }: Props) {
           {/* Chez un revendeur, « facturer tout » toucherait la centaine de
               sites de ses propres clients : la facturation s'y fait site par
               site, avec le bouton de chaque domaine. */}
-          {!client.isReseller && nbFacturables > 0 && (
+          {!client.isReseller && !client.internal && nbFacturables > 0 && (
             <FacturerGroupe
               clientId={client.id}
               label={`Facturer tous les services (${nbFacturables})`}
@@ -179,6 +181,7 @@ export default async function ClientPage({ params }: Props) {
           {division !== "ITCLOUD" && (
             <ResellerToggle clientId={client.id} isReseller={client.isReseller} />
           )}
+          <InternalToggle clientId={client.id} internal={client.internal} />
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
           {client.contactName && <span>{client.contactName}</span>}
@@ -208,20 +211,25 @@ export default async function ClientPage({ params }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className={`grid grid-cols-2 gap-4 ${client.internal ? "lg:grid-cols-2" : "lg:grid-cols-4"}`}>
         {[
           { label: "Services actifs", value: String(active.length) },
           { label: "Licences", value: String(licenses) },
-          {
-            label: "Revenu",
-            value: `${cad.format(monthly * 12)}/an`,
-            sub: `${cad.format(monthly)}/mois`,
-          },
-          {
-            label: "Profit",
-            value: `${profit >= 0 ? "+" : ""}${cad.format(profit * 12)}/an`,
-            sub: `${profit >= 0 ? "+" : ""}${cad.format(profit)}/mois`,
-          },
+          // Client interne (mon entreprise) : pas de revenu/profit à afficher.
+          ...(client.internal
+            ? []
+            : [
+                {
+                  label: "Revenu",
+                  value: `${cad.format(monthly * 12)}/an`,
+                  sub: `${cad.format(monthly)}/mois`,
+                },
+                {
+                  label: "Profit",
+                  value: `${profit >= 0 ? "+" : ""}${cad.format(profit * 12)}/an`,
+                  sub: `${profit >= 0 ? "+" : ""}${cad.format(profit)}/mois`,
+                },
+              ]),
         ].map(({ label, value, sub }) => (
           <Card key={label}>
             <CardHeader className="pb-2">
@@ -238,6 +246,7 @@ export default async function ClientPage({ params }: Props) {
       <AjouterService
         clientId={client.id}
         hebergement={division !== "ITCLOUD"}
+        internal={client.internal}
         serveurSuggere={active.find((s) => s.serverName)?.serverName ?? null}
         produits={produitsDispo.map((p) => ({
           id: p.id,
@@ -269,7 +278,7 @@ export default async function ClientPage({ params }: Props) {
                   {g.services.length} service{g.services.length > 1 ? "s" : ""}
                   {g.facture ? ` · facture ${g.facture}` : ""}
                 </span>
-                {g.services.some((x) => x.billingMode === "INDIRECT") && (
+                {!client.internal && g.services.some((x) => x.billingMode === "INDIRECT") && (
                   <FacturerGroupe serviceId={g.services[0].id} label="Facturer ce groupe" compact />
                 )}
               </h3>

@@ -44,6 +44,7 @@ export function ServiceActions({
   serviceId,
   status,
   billingMode = "INDIRECT",
+  internal = false,
   qbInvoiceNo,
   clientName,
 }: {
@@ -52,10 +53,13 @@ export function ServiceActions({
   /** DIRECT = facturé par ITCloud : pas de bouton « Facturé », mais on garde
    *  l'annulation (retirer le produit du client). */
   billingMode?: string;
+  /** Client interne (mon entreprise) : jamais de facturation. */
+  internal?: boolean;
   qbInvoiceNo: string | null;
   clientName: string;
 }) {
-  const canBill = billingMode === "INDIRECT";
+  // On ne facture pas un client interne, ni un service DIRECT (facturé par ITCloud).
+  const canBill = billingMode === "INDIRECT" && !internal;
   const [pending, start] = useTransition();
   const [dialog, setDialog] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);

@@ -100,6 +100,8 @@ export type ServiceCardData = {
   notes: string | null;
   monthlyBilling: boolean;
   urgencyDays: number;
+  /** Client interne (mon entreprise) : on masque tous les prix et la facturation. */
+  internal?: boolean;
   product: { name: string; billingCycle: string; msrp: number };
   client?: { id: string; companyName: string };
 };
@@ -226,6 +228,9 @@ export function ServiceCard({
               action={updateServiceQuantity}
             />
           </div>
+          {/* Client interne (mon entreprise) : aucun prix affiché. */}
+          {!s.internal && (
+          <>
           <div className="text-right">
             <p className="text-xs text-muted-foreground">PDSF</p>
             {itcloud ? (
@@ -313,12 +318,15 @@ export function ServiceCard({
               </>
             )}
           </div>
+          </>
+          )}
 
           {(s.status === "ACTIF" || s.status === "ANNULE" || s.status === "EXPIRE") && (
             <ServiceActions
               serviceId={s.id}
               status={s.status}
               billingMode={s.billingMode}
+              internal={s.internal}
               qbInvoiceNo={s.lastQbInvoiceNo}
               clientName={s.client?.companyName ?? ""}
             />

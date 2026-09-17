@@ -71,3 +71,46 @@ export async function createClient(formData: FormData): Promise<void> {
   revalidatePath("/clients");
   redirect(`/clients/${created.id}`);
 }
+
+// Marque un client comme « interne » (ma propre entreprise, ex. GOD-INFO). En
+// l'activant, on met à 0 le prix de vente de TOUS ses services (on ne se
+// facture pas). Réversible (désactiver ne remet pas les anciens prix).
+export async function setClientInternal(clientId: string, value: boolean): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "clients:write");
+  const tenantId = session.user.tenantId;
+
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, tenantId, deletedAt: null },
+    select: { id: true, internal: true },
+  });
+  if (!client) throw new Error("Client introuvable");
+
+  await prisma.client.update({
+    where: { id: clientId },
+    data: { internal: value },
+  });
+
+  // À l'activation : on remet à 0 le prix de vente de ses services (interne =
+  // pas de facturation). Le coût reste inchangé.
+  if (value) {
+    await prisma.clientService.updateMany({
+      where: { tenantId, clientId, deletedAt: null },
+      data: { unitPrice: "0" },
+    });
+  }
+
+  await audit({
+    tenantId,
+    userId: session.user.id,
+    action: "client.set_internal",
+    entityType: "Client",
+    entityId: clientId,
+    before: { internal: client.internal },
+    after: { internal: value },
+  });
+
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/clients");
+}

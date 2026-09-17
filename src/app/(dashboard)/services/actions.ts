@@ -555,7 +555,7 @@ export async function addServiceToClient(
 
   const client = await prisma.client.findFirst({
     where: { id: clientId, tenantId, deletedAt: null },
-    select: { id: true },
+    select: { id: true, internal: true },
   });
   if (!client) throw new Error("Client introuvable");
 
@@ -569,9 +569,13 @@ export async function addServiceToClient(
   // Le prix est stocké AU CYCLE du produit. Par défaut on prend le PDSF ; le
   // coût vient du produit (côté hébergement il est à 0, les vrais coûts sont
   // dans les coûts fixes).
-  const unitPrice = Number.isFinite(input.unitPrice) && (input.unitPrice as number) >= 0
-    ? (input.unitPrice as number)
-    : Number(product.msrp);
+  // Client interne (mon entreprise) : on ne se facture pas → prix 0. Sinon prix
+  // fourni, à défaut le PDSF du produit.
+  const unitPrice = client.internal
+    ? 0
+    : Number.isFinite(input.unitPrice) && (input.unitPrice as number) >= 0
+      ? (input.unitPrice as number)
+      : Number(product.msrp);
 
   // Minuit LOCAL : minuit UTC afficherait la veille au Québec.
   const [y, m, d] = input.renewalDate.split("-").map(Number);

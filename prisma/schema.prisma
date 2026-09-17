@@ -152,6 +152,10 @@ model Client {
   // la main) : sa division vient de là. Un client qui a des services apparaît
   // de toute façon du côté de ces services. Défaut ITCLOUD (source historique).
   division      String         @default("ITCLOUD")
+  // Client interne = ma propre entreprise (GOD-INFO). On ne se facture pas :
+  // prix des services forcés à 0, affichage des prix masqué, pas de bouton
+  // « Facturé ». Les services restent listables et annulables.
+  internal      Boolean        @default(false)
   anniversary   DateTime?
   deletedAt     DateTime?
 
