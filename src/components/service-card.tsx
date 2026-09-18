@@ -117,6 +117,8 @@ export function ServiceCard({
   // ITCloud (ces produits ne viennent pas d'ITCloud) et le cout unitaire (les
   // couts d'hebergement sont globaux, pas par licence — voir la page Couts).
   const itcloud = division === "ITCLOUD";
+  // Note remplie = à prendre en compte à la prochaine facture → mise en évidence.
+  const hasNote = !!s.notes?.trim();
   const months = CYCLE_MONTHS[s.product.billingCycle] ?? 1;
   const suffix = CYCLE_SUFFIX[s.product.billingCycle] ?? "";
   const margin = s.unitPrice > 0 ? ((s.unitPrice - s.unitCost) / s.unitPrice) * 100 : null;
@@ -203,7 +205,11 @@ export function ServiceCard({
               </span>
             )}
             <span className="inline-flex min-w-0 flex-1 basis-52 items-center gap-1.5 text-xs text-muted-foreground">
-              Note
+              {hasNote ? (
+                <span className="font-medium text-amber-600 dark:text-amber-400">Note</span>
+              ) : (
+                "Note"
+              )}
               <InlineTextInput
                 id={s.id}
                 value={s.notes ?? ""}
@@ -212,7 +218,7 @@ export function ServiceCard({
                 placeholder="note…"
                 copyButton={false}
                 className="min-w-0 flex-1"
-                inputClassName="w-full min-w-32"
+                inputClassName={cn("w-full min-w-32", hasNote && "note-breathe")}
               />
             </span>
           </div>

@@ -125,3 +125,16 @@
     @apply bg-background text-foreground font-sans;
   }
 }
+/* Champ Note rempli : légère « respiration » ambrée pour rappeler d'en tenir
+   compte à la prochaine facture — visible mais pas agressant. */
+@keyframes note-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+  50%      { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.22); }
+}
+.note-breathe {
+  border-color: rgba(245, 158, 11, 0.55);
+  animation: note-breathe 2.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .note-breathe { animation: none; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.28); }
+}
