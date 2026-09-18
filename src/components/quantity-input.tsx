@@ -56,7 +56,7 @@ export function QuantityInput({
       disabled={pending}
       title={
         locked
-          ? "Quantité fixée à la main : la synchronisation ITCloud ne la modifiera pas."
+          ? "Quantité modifiée à la main (bleu jusqu'à la prochaine facture) : la synchronisation ITCloud ne la modifiera pas."
           : "Quantité venant d'ITCloud. La modifier la fige (la synchro ne l'écrasera plus)."
       }
       onBlur={(e) => save(e.target.value)}
@@ -68,9 +68,13 @@ export function QuantityInput({
         }
       }}
       className={cn(
-        "h-7 w-14 rounded-md border bg-transparent px-2 text-right text-sm tabular-nums",
+        "h-7 w-14 rounded-md border px-2 text-right text-sm tabular-nums",
         "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
-        locked ? "border-primary/50 font-medium" : "border-input",
+        // Quantité changée à la main = fond bleu, jusqu'à la prochaine facture
+        // (la facturation remet quantityManual à false).
+        locked
+          ? "border-blue-400 bg-blue-100 font-medium text-blue-900 dark:border-blue-600 dark:bg-blue-900/50 dark:text-blue-100"
+          : "border-input bg-transparent",
         pending && "opacity-50",
       )}
     />

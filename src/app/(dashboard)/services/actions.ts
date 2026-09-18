@@ -495,7 +495,7 @@ export async function markServiceBilled(
   await prisma.$transaction([
     prisma.clientService.update({
       where: { id: s.id },
-      data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF" },
+      data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF", quantityManual: false },
     }),
     prisma.serviceChange.create({
       data: {
@@ -817,7 +817,7 @@ export async function markServicesBilled(
     await prisma.$transaction([
       prisma.clientService.update({
         where: { id: s.id },
-        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF" },
+        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF", quantityManual: false },
       }),
       prisma.serviceChange.create({
         data: {
@@ -897,7 +897,7 @@ export async function markDomainBilled(
     await prisma.$transaction([
       prisma.clientService.update({
         where: { id: s.id },
-        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF" },
+        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF", quantityManual: false },
       }),
       prisma.serviceChange.create({
         data: {
@@ -975,7 +975,7 @@ export async function markClientBilled(
     await prisma.$transaction([
       prisma.clientService.update({
         where: { id: s.id },
-        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF" },
+        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF", quantityManual: false },
       }),
       prisma.serviceChange.create({
         data: {
