@@ -28,23 +28,24 @@ model Tenant {
   products       Product[]
   apiCredentials ApiCredential[]
   fixedCosts     FixedCost[]
+  recurringTasks RecurringTask[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model User {
-  id           String    @id @default(uuid())
-  tenantId     String
-  email        String    @unique
-  passwordHash String
-  name         String
-  roleId       String
-  mfaEnabled   Boolean   @default(false)
-  mfaSecretEnc String?   // TOTP chiffré AES-256-GCM
-  mfaKeyVersion Int?     // version de clé du chiffrement du secret
-  lastLoginAt  DateTime?
-  deletedAt    DateTime?
+  id            String    @id @default(uuid())
+  tenantId      String
+  email         String    @unique
+  passwordHash  String
+  name          String
+  roleId        String
+  mfaEnabled    Boolean   @default(false)
+  mfaSecretEnc  String? // TOTP chiffré AES-256-GCM
+  mfaKeyVersion Int? // version de clé du chiffrement du secret
+  lastLoginAt   DateTime?
+  deletedAt     DateTime?
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   role   Role   @relation(fields: [roleId], references: [id])
@@ -64,7 +65,7 @@ model Role {
   id          String @id @default(uuid())
   tenantId    String
   name        String // Admin, Gestionnaire, Comptable, Lecture
-  permissions Json   // ex. ["clients:read","invoices:write"] ou ["*"]
+  permissions Json // ex. ["clients:read","invoices:write"] ou ["*"]
 
   users User[]
 
@@ -77,8 +78,8 @@ model Role {
 model ApiCredential {
   id         String    @id @default(uuid())
   tenantId   String
-  provider   String    // "ITCLOUD"
-  keyEnc     String    // AES-256-GCM
+  provider   String // "ITCLOUD"
+  keyEnc     String // AES-256-GCM
   keyVersion Int       @default(1)
   lastUsedAt DateTime?
   rotatedAt  DateTime?
@@ -94,8 +95,8 @@ model ApiCredential {
 model AuditLog {
   id         String   @id @default(uuid())
   tenantId   String
-  userId     String?  // null si action système (sync)
-  action     String   // "client.update", "sync.run", "auth.login"…
+  userId     String? // null si action système (sync)
+  action     String // "client.update", "sync.run", "auth.login"…
   entityType String?
   entityId   String?
   before     Json?
@@ -136,7 +137,7 @@ model Client {
   contactName   String?
   phone         String?
   email         String?
-  clientCode    String?        // code client ITCloud — pivot du rapprochement
+  clientCode    String? // code client ITCloud — pivot du rapprochement
   paymentMethod PaymentMethod?
   billingType   BillingType?
   status        ClientStatus   @default(ACTIF)
@@ -162,6 +163,7 @@ model Client {
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   services         ClientService[]
+  recurringTasks   RecurringTask[]
   invoices         Invoice[]
   notes            Note[]
   comments         Comment[]
@@ -215,7 +217,7 @@ model Document {
   fileName     String
   mimeType     String
   size         Int
-  storagePath  String    // relatif au répertoire de stockage hors racine web
+  storagePath  String // relatif au répertoire de stockage hors racine web
   uploadedById String
   deletedAt    DateTime?
   createdAt    DateTime  @default(now())
@@ -258,7 +260,7 @@ enum BillingCycle {
 model Supplier {
   id       String  @id @default(uuid())
   tenantId String
-  name     String  // Microsoft, Bitdefender, Acronis, Azure…
+  name     String // Microsoft, Bitdefender, Acronis, Azure…
   group    String?
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id])
@@ -271,31 +273,31 @@ model Supplier {
 }
 
 model Product {
-  id           String       @id @default(uuid())
-  tenantId     String
-  supplierId   String
-  group        String?      // mappé sur BACKUP, ANTIVIRUS, LICENCE, CLOUD (alertes)
-  name         String
-  description  String?      @db.Text
-  sku          String       // clé de rapprochement avec l'API
-  msrp         Decimal      @db.Decimal(12, 4) // PDSF
-  partnerCost  Decimal      @db.Decimal(12, 4) // coût partenaire (niveau courant)
+  id             String       @id @default(uuid())
+  tenantId       String
+  supplierId     String
+  group          String? // mappé sur BACKUP, ANTIVIRUS, LICENCE, CLOUD (alertes)
+  name           String
+  description    String?      @db.Text
+  sku            String // clé de rapprochement avec l'API
+  msrp           Decimal      @db.Decimal(12, 4) // PDSF
+  partnerCost    Decimal      @db.Decimal(12, 4) // coût partenaire (niveau courant)
   // Prix vendant suggéré (au cycle du produit). NULL = défaut PDSF + 2 $/mois.
-  suggestedPrice Decimal?   @db.Decimal(12, 4)
+  suggestedPrice Decimal?     @db.Decimal(12, 4)
   // PDSF/coût saisis à la main : ni la synchro ni un ré-import ne les écrasent.
-  priceManual  Boolean      @default(false)
+  priceManual    Boolean      @default(false)
   // false = produit maison (hébergement, domaines, SSL…) : la synchronisation
   // ITCloud l'ignore complètement, sinon ses services apparaîtraient pour
   // toujours dans « absents du rapport ITCloud ».
-  itcloudManaged Boolean    @default(true)
+  itcloudManaged Boolean      @default(true)
   // Division commerciale : deux « entreprises » cohabitent dans l'ERP et se
   // basculent au bouton (ITCLOUD = licences, HEBERGEMENT = web). Champ distinct
   // de itcloudManaged, qui dit seulement si la synchro ITCloud gere le produit.
   // Volontairement une chaine et non un enum : une 3e division est prevue.
-  division     String       @default("ITCLOUD")
-  billingCycle BillingCycle
-  active       Boolean      @default(true)
-  deletedAt    DateTime?
+  division       String       @default("ITCLOUD")
+  billingCycle   BillingCycle
+  active         Boolean      @default(true)
+  deletedAt      DateTime?
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
   supplier Supplier @relation(fields: [supplierId], references: [id])
@@ -316,7 +318,7 @@ model PriceOverride {
   id            String   @id @default(uuid())
   tenantId      String
   productId     String
-  clientId      String?  // null = prix par défaut du tenant
+  clientId      String? // null = prix par défaut du tenant
   price         Decimal  @db.Decimal(12, 4)
   effectiveFrom DateTime @default(now())
 
@@ -347,37 +349,37 @@ enum BillingMode {
 }
 
 model ClientService {
-  id           String        @id @default(uuid())
-  tenantId     String
-  clientId     String
-  productId    String
-  matchKey     String        // clientCode|sku|billingCycle (rapprochement §5.4)
-  externalId   String?       // si l'API expose un jour un id stable
-  licenseKey   String?
-  assignedUser String?
-  quantity     Int
+  id                String        @id @default(uuid())
+  tenantId          String
+  clientId          String
+  productId         String
+  matchKey          String // clientCode|sku|billingCycle (rapprochement §5.4)
+  externalId        String? // si l'API expose un jour un id stable
+  licenseKey        String?
+  assignedUser      String?
+  quantity          Int
   // Quantité fixée à la main : la synchronisation ITCloud ne l'écrase plus.
-  quantityManual Boolean     @default(false)
+  quantityManual    Boolean       @default(false)
   // Échéance fixée à la main : ni la synchro ni un recalcul ne l'écrasent.
-  renewalDateManual Boolean  @default(false)
-  unitCost     Decimal       @db.Decimal(12, 4) // snapshot coût au moment T
-  unitPrice    Decimal       @db.Decimal(12, 4) // snapshot prix de vente
-  purchaseDate DateTime?
-  renewalDate  DateTime?
+  renewalDateManual Boolean       @default(false)
+  unitCost          Decimal       @db.Decimal(12, 4) // snapshot coût au moment T
+  unitPrice         Decimal       @db.Decimal(12, 4) // snapshot prix de vente
+  purchaseDate      DateTime?
+  renewalDate       DateTime?
   // Fin de la période d'engagement chez ITCloud (commitmentEndDate).
   commitmentEndDate DateTime?
-  status       ServiceStatus @default(ACTIF)
-  billingMode  BillingMode   @default(INDIRECT)
-  missingSince DateTime?     // 1re sync SUCCES où l'item est absent (§7.2)
+  status            ServiceStatus @default(ACTIF)
+  billingMode       BillingMode   @default(INDIRECT)
+  missingSince      DateTime? // 1re sync SUCCES où l'item est absent (§7.2)
   // Facturation au mois : quand true, la refacturation avance les dates de
   // +1 mois (au lieu du cycle du produit) — service annuel refacturé mensuellement.
-  monthlyBilling Boolean     @default(false)
+  monthlyBilling    Boolean       @default(false)
   // Seuil d'urgence (jours avant échéance) où le service passe au rouge : 30, 45 ou 60.
-  urgencyDays  Int           @default(30)
+  urgencyDays       Int           @default(30)
   // Serveur / revendeur qui porte le service (Acxzon, God, Pc Logic…). Les
   // tarifs de Keven diffèrent d'un serveur à l'autre pour un même produit,
   // d'où une vraie colonne plutôt qu'un bout de la note.
-  serverName   String?
+  serverName        String?
 
   // Aide à la refacturation : derniers numéros de facture (éditables ;
   // celui d'ITCloud sera aussi alimenté par la sync invoice-items en phase 1)
@@ -385,7 +387,7 @@ model ClientService {
   lastItcloudInvoiceNo String? // dernière facture ITCloud pour ce service
   notes                String? @db.Text // notes libres par service (ex-colonne M du fichier Excel)
 
-  deletedAt    DateTime?
+  deletedAt DateTime?
 
   client  Client  @relation(fields: [clientId], references: [id])
   product Product @relation(fields: [productId], references: [id])
@@ -452,19 +454,19 @@ enum SyncStatus {
 }
 
 model SyncRun {
-  id           String     @id @default(uuid())
+  id           String      @id @default(uuid())
   tenantId     String
   trigger      SyncTrigger
-  endpoint     String     // services-report, invoice-items-report, azure…
+  endpoint     String // services-report, invoice-items-report, azure…
   status       SyncStatus
   startedAt    DateTime
   finishedAt   DateTime?
-  itemsFetched Int        @default(0)
-  itemsCreated Int        @default(0)
-  itemsUpdated Int        @default(0)
-  itemsFlagged Int        @default(0)
-  errorMessage String?    @db.Text
-  rawPayload   Json?      // rétention 30 jours
+  itemsFetched Int         @default(0)
+  itemsCreated Int         @default(0)
+  itemsUpdated Int         @default(0)
+  itemsFlagged Int         @default(0)
+  errorMessage String?     @db.Text
+  rawPayload   Json? // rétention 30 jours
 
   changes          ServiceChange[]
   azureConsumption AzureConsumption[]
@@ -503,7 +505,7 @@ model Invoice {
   id          String        @id @default(uuid())
   tenantId    String
   clientId    String
-  number      String        // attribué via InvoiceSequence (SELECT … FOR UPDATE)
+  number      String // attribué via InvoiceSequence (SELECT … FOR UPDATE)
   periodStart DateTime
   periodEnd   DateTime
   subtotal    Decimal       @db.Decimal(12, 2)
@@ -618,17 +620,17 @@ model DailyKpiSnapshot {
 // sites. Rattachable à un produit et/ou à un serveur, ou laissé global à la
 // division.
 model FixedCost {
-  id           String       @id @default(uuid())
-  tenantId     String
-  division     String       // ITCLOUD / HEBERGEMENT — même code que Product.division
-  label        String
-  amount       Decimal      @db.Decimal(12, 4)
-  cycle        BillingCycle // le montant est exprimé à ce cycle
-  productId    String?      // rattachement optionnel à un produit
-  serverName   String?      // rattachement optionnel à un serveur (Acxzon, Pc Logic…)
-  note         String?      @db.Text
-  active       Boolean      @default(true)
-  deletedAt    DateTime?
+  id         String       @id @default(uuid())
+  tenantId   String
+  division   String // ITCLOUD / HEBERGEMENT — même code que Product.division
+  label      String
+  amount     Decimal      @db.Decimal(12, 4)
+  cycle      BillingCycle // le montant est exprimé à ce cycle
+  productId  String? // rattachement optionnel à un produit
+  serverName String? // rattachement optionnel à un serveur (Acxzon, Pc Logic…)
+  note       String?      @db.Text
+  active     Boolean      @default(true)
+  deletedAt  DateTime?
 
   tenant  Tenant   @relation(fields: [tenantId], references: [id])
   product Product? @relation(fields: [productId], references: [id])
@@ -638,4 +640,41 @@ model FixedCost {
 
   @@index([tenantId, division])
   @@index([tenantId, productId])
+}
+
+// ─────────────────────── Tâches récurrentes (3e division) ───────────────────
+// Revenus récurrents facturés à la main : mise à jour de site web, entretien
+// sécurité Office 365… Volontairement DANS SA PROPRE TABLE, séparée des
+// produits/services ITCloud et Hébergement : rien à synchroniser, rien à
+// rapprocher — juste un montant, une période en jours et une échéance.
+model RecurringTask {
+  id       String @id @default(uuid())
+  tenantId String
+  clientId String
+
+  title      String // « Mise à jour site web », « Entretien sécurité Office 365 »
+  // Montant facturé à CHAQUE occurrence (pas au mois : au cycle de la tâche).
+  price      Decimal @db.Decimal(12, 4)
+  // Période en JOURS : 30 = mensuel, 365 = annuel. Libre pour les cas à part.
+  periodDays Int     @default(30)
+
+  // Prochaine échéance : c'est elle qui donne la couleur d'urgence et qui
+  // avance de periodDays à chaque facturation.
+  nextDueDate     DateTime?
+  lastQbInvoiceNo String? // dernière facture QuickBooks (source à dupliquer)
+  lastBilledAt    DateTime?
+  notes           String?   @db.Text
+
+  active    Boolean   @default(true)
+  deletedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  client Client @relation(fields: [clientId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, nextDueDate])
+  @@index([tenantId, clientId])
+  @@index([tenantId, active])
 }

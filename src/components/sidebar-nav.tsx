@@ -12,6 +12,7 @@ import {
   Package,
   Receipt,
   RefreshCw,
+  Repeat,
   Search,
   Settings,
   Shield,
@@ -22,6 +23,7 @@ import { cn } from "@/lib/utils";
 
 // Sidebar (doc §10) — l'ordre suit le document d'architecture.
 const NAV_ITEMS = [
+  { href: "/taches", label: "Tâches récurrentes", icon: Repeat },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/produits", label: "Produits", icon: Package },
@@ -43,6 +45,11 @@ export function SidebarNav({ division }: { division: string }) {
   // La synchronisation ITCloud n'a aucun sens du cote Hebergement : ces
   // produits sont maison et ne viennent d'aucun rapport ITCloud.
   const items = NAV_ITEMS.filter((i) => {
+    // Division Tâches : onglet dédié à ses propres tables. On n'y montre QUE
+    // les tâches — le reste (produits, services, synchro) appartient aux deux
+    // autres divisions et n'aurait rien à afficher ici.
+    if (division === "TACHES") return i.href === "/taches";
+    if (i.href === "/taches") return false;
     // La synchro ITCloud n'a aucun sens cote Hebergement : ces produits sont
     // maison et ne viennent d'aucun rapport ITCloud.
     if (i.href === "/synchronisation") return division === "ITCLOUD";

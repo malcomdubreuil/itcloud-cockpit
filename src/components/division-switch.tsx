@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Cloud, Globe, Loader2 } from "lucide-react";
+import { Cloud, Globe, Loader2, Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { setDivision } from "@/app/(dashboard)/division-actions";
 import type { DivisionCode } from "@/lib/division";
@@ -11,7 +11,7 @@ import type { DivisionCode } from "@/lib/division";
 // barre laterale (dashboard, clients, services, produits) ne montre que la
 // division choisie. Le choix est memorise dans un cookie.
 
-const ICONS = { ITCLOUD: Cloud, HEBERGEMENT: Globe } as const;
+const ICONS = { ITCLOUD: Cloud, HEBERGEMENT: Globe, TACHES: Repeat } as const;
 
 export function DivisionSwitch({
   current,
@@ -27,7 +27,12 @@ export function DivisionSwitch({
     if (code === current || pending) return;
     start(async () => {
       await setDivision(code);
-      router.refresh();
+      // La division Tâches n'a qu'une page : y aller directement (rester sur
+      // /services ou /produits afficherait une page vide). Et en sortir ramène
+      // au tableau de bord, qui n'existe pas côté Tâches.
+      if (code === "TACHES") router.push("/taches");
+      else if (current === "TACHES") router.push("/dashboard");
+      else router.refresh();
     });
   };
 

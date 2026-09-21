@@ -9,6 +9,10 @@ import { cookies } from "next/headers";
 export const DIVISIONS = [
   { code: "ITCLOUD", label: "ITCloud", short: "Licences & services infonuagiques" },
   { code: "HEBERGEMENT", label: "Hébergement", short: "Sites web, domaines et SSL" },
+  // 3e division : revenus récurrents facturés à la main (mise à jour de site,
+  // entretien sécurité…). Elle a SES PROPRES TABLES (RecurringTask) — rien de
+  // commun avec les produits/services des deux autres.
+  { code: "TACHES", label: "Tâches", short: "Tâches récurrentes et entretien" },
 ] as const;
 
 export type DivisionCode = (typeof DIVISIONS)[number]["code"];
