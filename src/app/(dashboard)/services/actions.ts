@@ -648,6 +648,8 @@ export async function previewGroupeFacturation(serviceId: string): Promise<{
     montant: number;
     echeance: string | null;
     nouvelleEcheance: string;
+    /** Facture d ou vient CE service : sert a choisir le modele quand la selection en melange plusieurs. */
+    facture: string | null;
   }[];
 }> {
   const session = await auth();
@@ -694,6 +696,7 @@ export async function previewGroupeFacturation(serviceId: string): Promise<{
           montant: Number(s.unitPrice) * s.quantity,
           echeance: s.renewalDate?.toISOString().slice(0, 10) ?? null,
           nouvelleEcheance: advanceMonths(s.renewalDate, months).toISOString().slice(0, 10),
+          facture: s.lastQbInvoiceNo?.trim() || null,
         };
       })
       .sort((a, b) => a.produit.localeCompare(b.produit) || a.domaine.localeCompare(b.domaine)),
@@ -721,6 +724,8 @@ export async function previewClientFacturation(clientId: string): Promise<{
     montant: number;
     echeance: string | null;
     nouvelleEcheance: string;
+    /** Facture d ou vient CE service : sert a choisir le modele quand la selection en melange plusieurs. */
+    facture: string | null;
   }[];
 }> {
   const session = await auth();
@@ -770,6 +775,7 @@ export async function previewClientFacturation(clientId: string): Promise<{
           montant: Number(s.unitPrice) * s.quantity,
           echeance: s.renewalDate?.toISOString().slice(0, 10) ?? null,
           nouvelleEcheance: advanceMonths(s.renewalDate, months).toISOString().slice(0, 10),
+          facture: s.lastQbInvoiceNo?.trim() || null,
         };
       })
       .sort((a, b) => a.produit.localeCompare(b.produit) || a.domaine.localeCompare(b.domaine)),

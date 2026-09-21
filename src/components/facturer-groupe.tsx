@@ -50,6 +50,9 @@ export function FacturerGroupe({
   const [qb, setQb] = useState("");
   const [txnDate, setTxnDate] = useState(todayIso());
   const [source, setSource] = useState<Source | null>(null);
+  // Facture d'origine choisie comme modèle : quand les services cochés
+  // viennent de plusieurs factures, c'est Keven qui tranche.
+  const [sourceChoisie, setSourceChoisie] = useState<string | null>(null);
   const [chargement, setChargement] = useState(false);
   const [manuel, setManuel] = useState(false);
   const [resultat, setResultat] = useState<{ doc: string; url: string; n: number } | null>(null);
@@ -71,6 +74,8 @@ export function FacturerGroupe({
       setManuel(false);
       setResultat(null);
       setSource(null);
+      // Une seule facture d'origine : choisie d'office. Sinon on attend le choix.
+      setSourceChoisie(a.facture ?? null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Impossible de charger le groupe");
     } finally {
@@ -81,9 +86,12 @@ export function FacturerGroupe({
   const voirSource = () =>
     start(async () => {
       try {
-        // Tout le groupe partage la meme facture source : n'importe laquelle
-        // de ses lignes la retrouve.
-        const ref = apercu?.services[0]?.id ?? serviceId;
+        // On previsualise la facture CHOISIE : on part d'un service qui en
+        // vient (sinon n'importe lequel du groupe).
+        const ref =
+          apercu?.services.find((s) => s.facture === sourceChoisie)?.id ??
+          apercu?.services[0]?.id ??
+          serviceId;
         if (!ref) return;
         setSource(await previewLastQbInvoice(ref));
       } catch (e) {
@@ -104,11 +112,19 @@ export function FacturerGroupe({
     envoiEnCours.current = true;
     start(async () => {
       try {
-        const r = await billGroupViaQuickBooks([...coches], { txnDate });
+        const r = await billGroupViaQuickBooks(aDupliquer.map((s) => s.id), {
+          txnDate,
+          sourceDocNumber: sourceChoisie ?? undefined,
+          filterLines: !complet,
+        });
         if (r.status === "billed") {
           setResultat({ doc: r.newDocNumber, url: r.invoiceUrl, n: r.servicesBilled });
+          const lignes =
+            r.linesKept !== undefined && r.linesTotal !== undefined && r.linesKept !== r.linesTotal
+              ? ` — ${r.linesKept} ligne${r.linesKept > 1 ? "s" : ""} sur ${r.linesTotal} reprises`
+              : "";
           toast.success(
-            `Facture #${r.newDocNumber} créée dans QuickBooks (non envoyée) — ${r.servicesBilled} service${r.servicesBilled > 1 ? "s" : ""} mis à jour. Vérifie-la puis envoie-la.`,
+            `Facture #${r.newDocNumber} créée dans QuickBooks (non envoyée)${lignes} — ${r.servicesBilled} service${r.servicesBilled > 1 ? "s" : ""} mis à jour. Vérifie-la puis envoie-la.`,
             {
               duration: 20000,
               action: {
@@ -154,13 +170,26 @@ export function FacturerGroupe({
     });
   };
 
-  const total = apercu
-    ? apercu.services.filter((s) => coches.has(s.id)).reduce((t, s) => t + s.montant, 0)
-    : 0;
-  // Dupliquer copie TOUTES les lignes de la facture source : si Keven en a
-  // décoché, la facture ne correspondrait plus à ce qu'on avance. Dans ce cas
-  // il fait sa facture lui-même et entre le numéro.
-  const selectionComplete = apercu ? coches.size === apercu.services.length : false;
+  const cochesListe = apercu ? apercu.services.filter((s) => coches.has(s.id)) : [];
+  const total = cochesListe.reduce((t, s) => t + s.montant, 0);
+
+  // Factures d'origine présentes dans la sélection, avec le nombre de services
+  // de chacune : c'est ce qu'on propose quand elles diffèrent.
+  const sourcesCochees = new Map<string, number>();
+  for (const s of cochesListe) {
+    if (s.facture) sourcesCochees.set(s.facture, (sourcesCochees.get(s.facture) ?? 0) + 1);
+  }
+  const plusieursSources = sourcesCochees.size > 1;
+
+  // On ne duplique QUE les services venant de la facture modèle : marquer
+  // facturés des services absents de cette facture serait faux.
+  const aDupliquer = sourceChoisie
+    ? cochesListe.filter((s) => s.facture === sourceChoisie)
+    : [];
+  // Sélection complète du groupe d'origine = comportement d'avant (aucun
+  // filtrage des lignes). Sinon on ne garde que les lignes des services cochés.
+  const complet = !!apercu && aDupliquer.length === apercu.services.length;
+  const exclus = cochesListe.length - aDupliquer.length;
 
   return (
     <>
@@ -257,8 +286,22 @@ export function FacturerGroupe({
                         <span className={`min-w-0 flex-1 basis-48 truncate ${coche ? "" : "line-through opacity-50"}`}>
                           {sansDomaine ? s.produit : s.domaine}
                         </span>
-                        <span className="w-52 truncate text-xs text-muted-foreground">
+                        <span className="w-44 truncate text-xs text-muted-foreground">
                           {sansDomaine ? "" : s.produit}
+                        </span>
+                        <span
+                          className={`w-28 truncate text-xs tabular-nums ${
+                            sourceChoisie && s.facture && s.facture !== sourceChoisie
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-muted-foreground"
+                          }`}
+                          title={
+                            s.facture
+                              ? `Vient de la facture ${s.facture}`
+                              : "Aucune facture d'origine notée"
+                          }
+                        >
+                          {s.facture ?? "— aucune"}
                         </span>
                         <span className="w-24 text-right tabular-nums">
                           {cad.format(s.montant)}
@@ -277,26 +320,81 @@ export function FacturerGroupe({
                   <strong className="tabular-nums">{cad.format(total)}</strong>
                 </p>
 
-                {/* ── Chemin 1 : dupliquer la facture source ── */}
-                {apercu.facture && (
+                {/* ── Chemin 1 : dupliquer une facture d'origine ── */}
+                {sourcesCochees.size > 0 && (
                   <div className="mt-4 rounded-md border bg-muted/40 p-3">
                     <p className="text-sm font-medium">
-                      Dupliquer la facture {apercu.facture} dans QuickBooks
+                      Dupliquer dans QuickBooks
                     </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      L&apos;ERP reprend cette facture, avance ses dates d&apos;un
-                      cycle, génère le nouveau numéro, et le pose sur les services
-                      ci-dessus. La facture reste un <strong>brouillon non
-                      envoyé</strong>.
+
+                    {/* Plusieurs factures d'origine : Keven choisit le modèle. */}
+                    {plusieursSources && (
+                      <div className="mt-2">
+                        <p className="text-xs text-muted-foreground">
+                          Les services cochés viennent de{" "}
+                          <strong>{sourcesCochees.size} factures différentes</strong>.
+                          Laquelle sert de modèle ?
+                        </p>
+                        <div className="mt-1.5 flex flex-wrap gap-2">
+                          {[...sourcesCochees.entries()].map(([num, n]) => (
+                            <label
+                              key={num}
+                              className={`flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+                                sourceChoisie === num
+                                  ? "border-primary bg-background font-medium"
+                                  : "border-input text-muted-foreground hover:text-foreground"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="source-facture"
+                                checked={sourceChoisie === num}
+                                disabled={pending}
+                                onChange={() => {
+                                  setSourceChoisie(num);
+                                  setSource(null);
+                                }}
+                                className="h-3.5 w-3.5"
+                              />
+                              {num}
+                              <span className="text-muted-foreground">
+                                ({n} service{n > 1 ? "s" : ""})
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      L&apos;ERP reprend la facture{" "}
+                      <strong>{sourceChoisie ?? "choisie"}</strong>, avance ses
+                      dates d&apos;un cycle, génère le nouveau numéro et le pose
+                      sur les services concernés. La facture reste un{" "}
+                      <strong>brouillon non envoyé</strong>.
                     </p>
-                    {!selectionComplete && (
-                      <p className="mt-2 text-xs text-destructive">
-                        Tu as décoché des lignes : la facture dupliquée
-                        contiendrait quand même toutes celles de{" "}
-                        {apercu.facture}. Fais-la toi-même dans QuickBooks et
-                        entre son numéro ci-dessous.
+
+                    {!complet && aDupliquer.length > 0 && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Facturation partielle : seules les lignes des{" "}
+                        <strong>{aDupliquer.length} service
+                        {aDupliquer.length > 1 ? "s" : ""} coché
+                        {aDupliquer.length > 1 ? "s" : ""}</strong> seront
+                        reprises — vérifie le brouillon avant de l&apos;envoyer.
                       </p>
                     )}
+
+                    {exclus > 0 && (
+                      <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                        {exclus} service{exclus > 1 ? "s" : ""} coché
+                        {exclus > 1 ? "s" : ""} ne vien{exclus > 1 ? "nent" : "t"} pas
+                        de {sourceChoisie ?? "cette facture"} :{" "}
+                        {exclus > 1 ? "ils ne seront pas facturés" : "il ne sera pas facturé"}{" "}
+                        par cette duplication. Refais l&apos;opération pour l&apos;autre
+                        facture, ou entre un numéro à la main.
+                      </p>
+                    )}
+
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <label className="text-xs text-muted-foreground">
                         Date de la facture{" "}
@@ -310,12 +408,16 @@ export function FacturerGroupe({
                       </label>
                       <Button
                         onClick={dupliquer}
-                        disabled={pending || !selectionComplete || coches.size === 0}
+                        disabled={pending || !sourceChoisie || aDupliquer.length === 0}
                       >
                         {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-                        Dupliquer et facturer {coches.size}
+                        Dupliquer et facturer {aDupliquer.length}
                       </Button>
-                      <Button variant="outline" onClick={voirSource} disabled={pending}>
+                      <Button
+                        variant="outline"
+                        onClick={voirSource}
+                        disabled={pending || !sourceChoisie}
+                      >
                         Voir la facture source
                       </Button>
                     </div>
@@ -329,12 +431,12 @@ export function FacturerGroupe({
                   </div>
                 )}
 
-                {!apercu.facture && (
+                {sourcesCochees.size === 0 && (
                   <p className="mt-4 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-                    Ces services ne viennent pas tous de la{" "}
-                    <strong>même facture QuickBooks</strong> — l&apos;ERP ne peut
-                    donc pas en dupliquer une seule pour les couvrir. Fais la
-                    facture dans QuickBooks, puis entre son numéro ci-dessous.
+                    Aucun des services cochés n&apos;a de{" "}
+                    <strong>facture QuickBooks d&apos;origine</strong> — il n&apos;y
+                    a donc rien à dupliquer. Fais la facture dans QuickBooks, puis
+                    entre son numéro ci-dessous.
                   </p>
                 )}
 

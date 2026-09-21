@@ -12,6 +12,7 @@ import { currentDivision, serviceDivisionFilter } from "@/lib/division";
 import { markClientBilled, markServicesBilled } from "./actions";
 import {
   buildDuplicatePayload,
+  duplicateLineStats,
   qbInvoiceUrl,
   type SvcCommitment,
 } from "@/infrastructure/quickbooks/duplicate";
@@ -119,6 +120,10 @@ export type BillResult =
       newDocNumber: string;
       invoiceUrl: string;
       servicesBilled: number;
+      /** Lignes reprises de la facture source / total qu'elle portait —
+       *  renseigné quand on ne facture qu'une partie du groupe. */
+      linesKept?: number;
+      linesTotal?: number;
     }
   | { status: "draft_no_number"; invoiceId: string; invoiceUrl: string };
 
@@ -139,7 +144,14 @@ export type BillResult =
 // l'envoie lui-même. Voir [[always-preview-invoice-before-send]].
 export async function billGroupViaQuickBooks(
   serviceIds: string[],
-  input: { txnDate: string },
+  input: {
+    txnDate: string;
+    /** Facture d'origine à dupliquer, quand la sélection en mélange plusieurs. */
+    sourceDocNumber?: string;
+    /** Ne garder que les lignes des services sélectionnés (facturation
+     *  partielle). Absent = toutes les lignes de la source, comme avant. */
+    filterLines?: boolean;
+  },
 ): Promise<BillResult> {
   const user = await requireUser();
   const ids = [...new Set(serviceIds)].filter(Boolean);
@@ -160,12 +172,13 @@ export async function billGroupViaQuickBooks(
     },
     select: {
       id: true, clientId: true, lastQbInvoiceNo: true, monthlyBilling: true,
+      product: { select: { name: true } },
     },
   });
   if (services.length === 0) throw new Error("Aucun service facturable dans la sélection.");
 
-  // Un groupe = un client, une facture source. Si la sélection en mélange
-  // plusieurs, on refuse : dupliquer « la » facture n'aurait plus de sens.
+  // Un groupe = un client. Mélanger plusieurs clients n'a pas de sens : une
+  // facture va à UN client.
   const clients = new Set(services.map((s) => s.clientId));
   if (clients.size > 1) {
     throw new Error("La sélection couvre plusieurs clients — facture-les séparément.");
@@ -176,12 +189,20 @@ export async function billGroupViaQuickBooks(
   if (sources.size === 0) {
     throw new Error("Aucun numéro de facture source à dupliquer dans cette sélection.");
   }
-  if (sources.size > 1) {
+  // Plusieurs factures d'origine : l'utilisateur choisit laquelle sert de
+  // modèle (l'ERP ne devine pas). Sans choix explicite, on n'invente rien.
+  const choisi = input.sourceDocNumber?.trim();
+  if (choisi && !sources.has(choisi)) {
     throw new Error(
-      `La sélection vient de ${sources.size} factures différentes (${[...sources].join(", ")}) — facture-les séparément.`,
+      `La facture ${choisi} ne correspond à aucun service sélectionné.`,
     );
   }
-  const docNumber = [...sources][0];
+  if (!choisi && sources.size > 1) {
+    throw new Error(
+      `La sélection vient de ${sources.size} factures différentes (${[...sources].join(", ")}) — choisis laquelle dupliquer.`,
+    );
+  }
+  const docNumber = choisi || [...sources][0];
 
   const client = new QuickBooksClient(user.tenantId);
   const src = await client.getInvoiceByDocNumber(docNumber);
@@ -208,6 +229,18 @@ export async function billGroupViaQuickBooks(
     commitmentEndDate: x.commitmentEndDate,
   }));
 
+  // Facturation partielle : on ne garde que les lignes des services cochés.
+  // Sans ce filtre, la facture dupliquée porterait aussi les lignes décochées.
+  const keepProducts = input.filterLines
+    ? [...new Set(services.map((s) => s.product.name))]
+    : undefined;
+  const stats = duplicateLineStats(src, keepProducts);
+  if (stats.kept === 0) {
+    throw new Error(
+      `Aucune ligne de la facture ${docNumber} ne correspond aux services sélectionnés — fais la facture dans QuickBooks et entre son numéro.`,
+    );
+  }
+
   // Quantité 1 : la facture source porte déjà une ligne par service du groupe,
   // il ne faut pas les multiplier une seconde fois.
   const created = await client.createInvoice(
@@ -218,6 +251,7 @@ export async function billGroupViaQuickBooks(
       newNumber,
       services.every((s) => s.monthlyBilling) ? "month" : "year",
       clientServices,
+      keepProducts,
     ),
   );
 
@@ -233,6 +267,8 @@ export async function billGroupViaQuickBooks(
       docNumber: created.DocNumber ?? newNumber,
       txnDate: input.txnDate,
       servicesDuGroupe: services.length,
+      lignes: `${stats.kept}/${stats.total}`,
+      partielle: !!keepProducts,
     },
   });
 
@@ -247,6 +283,8 @@ export async function billGroupViaQuickBooks(
     newDocNumber: newDoc,
     invoiceUrl: qbInvoiceUrl(created.Id),
     servicesBilled: count,
+    linesKept: stats.kept,
+    linesTotal: stats.total,
   };
 }
 

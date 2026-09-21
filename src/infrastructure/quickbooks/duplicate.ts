@@ -130,6 +130,64 @@ function matchService(
 const detailType = (l: unknown) =>
   (l as { DetailType?: string })?.DetailType ?? "";
 
+/** Une ligne de produit correspond-elle à l'un des noms donnés ? Sert à ne
+ *  garder que les services cochés quand on facture une partie d'un groupe. */
+function lineMatchesNames(line: Record<string, unknown>, names: string[]): boolean {
+  const detail = line.SalesItemLineDetail as
+    | { ItemRef?: { name?: string } }
+    | undefined;
+  const candidates = [
+    typeof line.Description === "string" ? line.Description : "",
+    detail?.ItemRef?.name ?? "",
+  ]
+    .map(normalizeLabel)
+    .filter(Boolean);
+  if (candidates.length === 0) return false;
+
+  return names.some((n) => {
+    const p = normalizeLabel(n);
+    if (!p) return false;
+    return candidates.some((c) => c === p || c.includes(p) || p.includes(c));
+  });
+}
+
+/** Découpe les lignes de la facture source : chaque ligne de PRODUIT emporte
+ *  avec elle les lignes descriptives qui la suivent (période, engagement). */
+function groupLines(src: QboInvoice): {
+  leading: unknown[];
+  groups: { product: unknown; extras: unknown[] }[];
+} {
+  const rawLines = (Array.isArray(src.Line) ? src.Line : []).filter(
+    (l) => detailType(l) && detailType(l) !== "SubTotalLineDetail",
+  );
+  const leading: unknown[] = [];
+  const groups: { product: unknown; extras: unknown[] }[] = [];
+  for (const l of rawLines) {
+    if (detailType(l) === "SalesItemLineDetail") {
+      groups.push({ product: l, extras: [] });
+    } else if (groups.length === 0) {
+      leading.push(l); // lignes avant tout produit (rare)
+    } else {
+      groups[groups.length - 1].extras.push(l);
+    }
+  }
+  return { leading, groups };
+}
+
+/** Combien de lignes de produit de la facture source correspondent aux noms
+ *  donnés — pour annoncer « 3 lignes gardées sur 10 » avant d'écrire. */
+export function duplicateLineStats(
+  src: QboInvoice,
+  keepProducts?: string[],
+): { total: number; kept: number } {
+  const { groups } = groupLines(src);
+  if (!keepProducts?.length) return { total: groups.length, kept: groups.length };
+  const kept = groups.filter((g) =>
+    lineMatchesNames(g.product as Record<string, unknown>, keepProducts),
+  ).length;
+  return { total: groups.length, kept };
+}
+
 // Construit le corps d'une nouvelle facture en dupliquant l'ancienne. Règles :
 // - une LIGNE par licence (on duplique la ligne produit, on n'augmente pas la
 //   quantité) quand la source a une seule ligne produit et que quantity > 1 ;
@@ -143,24 +201,20 @@ export function buildDuplicatePayload(
   docNumber: string,
   unit: "year" | "month",
   clientServices: SvcCommitment[] = [],
+  /** Noms de produits à CONSERVER : sert à facturer une partie seulement d'un
+   *  groupe (les lignes des services décochés sont retirées). Vide/absent =
+   *  toutes les lignes de la source sont reprises, comme avant. */
+  keepProducts?: string[],
 ): Record<string, unknown> {
-  const rawLines = (Array.isArray(src.Line) ? src.Line : []).filter(
-    (l) => detailType(l) && detailType(l) !== "SubTotalLineDetail",
-  );
   // On regroupe chaque ligne de produit avec les lignes descriptives qui la
   // suivent (date d'engagement / période) : elles restent COLLÉES sous leur
   // produit. Une facture sans ligne d'engagement n'en reçoit pas.
-  const leading: unknown[] = [];
-  const groups: { product: unknown; extras: unknown[] }[] = [];
-  for (const l of rawLines) {
-    if (detailType(l) === "SalesItemLineDetail") {
-      groups.push({ product: l, extras: [] });
-    } else if (groups.length === 0) {
-      leading.push(l); // lignes avant tout produit (rare)
-    } else {
-      groups[groups.length - 1].extras.push(l);
-    }
-  }
+  const { leading, groups: allGroups } = groupLines(src);
+  const groups = keepProducts?.length
+    ? allGroups.filter((g) =>
+        lineMatchesNames(g.product as Record<string, unknown>, keepProducts),
+      )
+    : allGroups;
 
   const lines: Record<string, unknown>[] = leading.map((l) => cleanLine(l, unit));
   for (const g of groups) {
