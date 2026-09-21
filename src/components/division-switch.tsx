@@ -38,7 +38,9 @@ export function DivisionSwitch({
 
   return (
     <div className="p-2">
-      <div className="flex gap-1 rounded-lg border bg-muted/40 p-1">
+      {/* Liste VERTICALE : à trois divisions (et plus), des onglets côte à côte
+          débordent de la barre latérale — « Hébergement » ne peut pas rétrécir. */}
+      <div className="flex flex-col gap-1 rounded-lg border bg-muted/40 p-1">
         {divisions.map(({ code, label }) => {
           const Icon = ICONS[code] ?? Cloud;
           const active = code === current;
@@ -51,7 +53,7 @@ export function DivisionSwitch({
               aria-pressed={active}
               title={`Basculer vers ${label}`}
               className={cn(
-                "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
                 active
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -59,7 +61,7 @@ export function DivisionSwitch({
               )}
             >
               {pending && active ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
               ) : (
                 <Icon className="h-3.5 w-3.5 shrink-0" />
               )}
