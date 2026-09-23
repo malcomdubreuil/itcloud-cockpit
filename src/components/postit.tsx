@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GripVertical, Lock, LockOpen, Palette, Trash2 } from "lucide-react";
+import {
+  GripVertical,
+  Lock,
+  LockOpen,
+  Minus,
+  Palette,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import {
   CLASSES_COULEUR,
   COULEURS,
@@ -12,8 +20,11 @@ import {
   LARGEUR_MIN,
   PAS,
   PASTILLE_COULEUR,
+  TAILLES,
   TITRE_MAX,
   aligner,
+  tailleValide,
+  tailleVoisine,
   borner,
   estCouleur,
   type CouleurCode,
@@ -37,6 +48,7 @@ export type PostitData = {
   title: string | null;
   content: string;
   color: string;
+  fontSize: number;
   x: number;
   y: number;
   width: number;
@@ -56,6 +68,7 @@ type Props = {
   onDevant: (id: string) => number;
   onContenu: (id: string, v: { titre: string; contenu: string }) => void;
   onCouleur: (id: string, couleur: CouleurCode) => void;
+  onTaille: (id: string, taille: number) => void;
   onVerrou: (id: string) => void;
   onSupprimer: (id: string) => void;
   /** Signale que ce post-it est en cours de manipulation (saisie ou geste).
@@ -72,6 +85,7 @@ export function Postit({
   onDevant,
   onContenu,
   onCouleur,
+  onTaille,
   onVerrou,
   onSupprimer,
   onOccupe,
@@ -88,6 +102,7 @@ export function Postit({
   } | null>(null);
 
   const couleur: CouleurCode = estCouleur(note.color) ? note.color : "JAUNE";
+  const taille = tailleValide(note.fontSize);
 
   // Ce qui vient du serveur reprend la main seulement si ça a réellement
   // changé ailleurs — sinon on écraserait ce qui est en train d'être tapé.
@@ -288,7 +303,8 @@ export function Postit({
           maxLength={TITRE_MAX}
           placeholder="Titre"
           aria-label="Titre du post-it"
-          className="min-w-0 flex-1 cursor-text bg-transparent text-sm font-semibold placeholder:font-normal placeholder:opacity-35 focus-visible:outline-none"
+          style={{ fontSize: taille + 2 }}
+          className="min-w-0 flex-1 cursor-text bg-transparent font-semibold placeholder:font-normal placeholder:opacity-35 focus-visible:outline-none"
         />
 
         <button
@@ -332,7 +348,39 @@ export function Postit({
       </div>
 
       {palette && (
-        <div className="grid shrink-0 grid-cols-8 gap-1 border-b border-black/10 px-1.5 py-1.5 dark:border-white/10">
+        <div className="shrink-0 space-y-1.5 border-b border-black/10 px-1.5 py-1.5 dark:border-white/10">
+          {/* Taille du texte. Rangee ici plutot que dans le bandeau : deux
+              boutons de plus la-haut le rendraient illisible, et couleur et
+              taille sont deux reglages d'apparence — ils vont ensemble. */}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="Réduire le texte"
+              title="Réduire le texte"
+              disabled={taille === TAILLES[0]}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => onTaille(note.id, tailleVoisine(taille, -1))}
+              className="rounded p-1 opacity-60 hover:bg-black/5 hover:opacity-100 disabled:opacity-20"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <span className="min-w-12 text-center text-xs tabular-nums opacity-70">
+              {taille} px
+            </span>
+            <button
+              type="button"
+              aria-label="Agrandir le texte"
+              title="Agrandir le texte"
+              disabled={taille === TAILLES[TAILLES.length - 1]}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => onTaille(note.id, tailleVoisine(taille, 1))}
+              className="rounded p-1 opacity-60 hover:bg-black/5 hover:opacity-100 disabled:opacity-20"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-8 gap-1">
           {COULEURS.map((c) => (
             <button
               key={c.code}
@@ -350,7 +398,8 @@ export function Postit({
                 c.code === couleur && "ring-2 ring-foreground ring-offset-1",
               )}
             />
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
@@ -372,7 +421,8 @@ export function Postit({
         }}
         placeholder="Écrire…"
         spellCheck
-        className="min-h-0 flex-1 resize-none bg-transparent px-2.5 py-2 text-sm leading-relaxed placeholder:opacity-35 focus-visible:outline-none"
+        style={{ fontSize: taille }}
+        className="min-h-0 flex-1 resize-none bg-transparent px-2.5 py-2 leading-relaxed placeholder:opacity-35 focus-visible:outline-none"
       />
 
       {/* ── Poignée de redimensionnement ── */}

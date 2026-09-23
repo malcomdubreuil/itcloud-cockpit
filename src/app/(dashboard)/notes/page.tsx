@@ -20,8 +20,8 @@ export default async function NotesPage() {
       where: { tenantId, deletedAt: null },
       orderBy: { z: "asc" },
       select: {
-        id: true, title: true, content: true, color: true, x: true, y: true,
-        width: true, height: true, z: true, locked: true,
+        id: true, title: true, content: true, color: true, fontSize: true,
+        x: true, y: true, width: true, height: true, z: true, locked: true,
       },
     }),
     // Les 20 derniers jetés : assez pour rattraper une erreur, pas assez pour

@@ -9,6 +9,7 @@ import { Postit, type PostitData } from "@/components/postit";
 import {
   basculerVerrou,
   changerCouleur,
+  changerTaille,
   creerPostit,
   deplacerPostit,
   enregistrerContenu,
@@ -207,6 +208,14 @@ export function TableauPostits({
     [echec],
   );
 
+  const tailleTexte = useCallback(
+    (id: string, t: number) => {
+      setNotes((v) => v.map((n) => (n.id === id ? { ...n, fontSize: t } : n)));
+      changerTaille(id, t).catch(echec);
+    },
+    [echec],
+  );
+
   const verrou = useCallback(
     (id: string) => {
       setNotes((v) =>
@@ -359,6 +368,7 @@ export function TableauPostits({
                 onDevant={devant}
                 onContenu={contenu}
                 onCouleur={couleur}
+                onTaille={tailleTexte}
                 onVerrou={verrou}
                 onSupprimer={jeter}
                 onOccupe={marquerOccupe}

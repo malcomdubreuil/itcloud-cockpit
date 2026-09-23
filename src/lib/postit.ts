@@ -110,3 +110,22 @@ export function positionSuivante(nb: number): { x: number; y: number } {
 export const LONGUEUR_MAX = 10000;
 /** Longueur du titre : la colonne fait 191 caracteres. */
 export const TITRE_MAX = 180;
+
+// ── Taille du texte ──────────────────────────────────────────────────────
+
+/** Paliers plutot qu'une valeur libre : un pas a la fois, tous lisibles, et
+ *  aucune combinaison batarde a 13,5 px. Le haut de l'echelle sert aux
+ *  tableaux muraux qu'on lit a plusieurs metres. */
+export const TAILLES = [12, 14, 16, 20, 24, 32, 40] as const;
+
+export const TAILLE_DEFAUT = 14;
+
+export function tailleValide(v: number): number {
+  return TAILLES.includes(v as (typeof TAILLES)[number]) ? v : TAILLE_DEFAUT;
+}
+
+/** Palier voisin, borne aux extremites. */
+export function tailleVoisine(actuelle: number, sens: 1 | -1): number {
+  const i = TAILLES.indexOf(tailleValide(actuelle) as (typeof TAILLES)[number]);
+  return TAILLES[borner(i + sens, 0, TAILLES.length - 1)];
+}

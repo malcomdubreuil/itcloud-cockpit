@@ -13,6 +13,7 @@ import {
   LONGUEUR_MAX,
   TITRE_MAX,
   aligner,
+  tailleValide,
   borner,
   estCouleur,
   positionSuivante,
@@ -55,6 +56,7 @@ export type PostitDTO = {
   title: string | null;
   content: string;
   color: string;
+  fontSize: number;
   x: number;
   y: number;
   width: number;
@@ -91,8 +93,8 @@ export async function creerPostit(couleur?: string): Promise<PostitDTO> {
       z: (dessus?.z ?? 0) + 1,
     },
     select: {
-      id: true, title: true, content: true, color: true, x: true, y: true,
-      width: true, height: true, z: true, locked: true,
+      id: true, title: true, content: true, color: true, fontSize: true,
+      x: true, y: true, width: true, height: true, z: true, locked: true,
     },
   });
 
@@ -159,6 +161,19 @@ export async function changerCouleur(id: string, couleur: string): Promise<void>
   if (!estCouleur(couleur)) throw new Error("Couleur inconnue");
 
   await prisma.stickyNote.update({ where: { id }, data: { color: couleur } });
+  revalidatePath("/notes");
+}
+
+/** Taille du texte. Comme la couleur : un reglage d'apparence, donc on
+ *  revalide — les autres ecrans doivent le voir. */
+export async function changerTaille(id: string, taille: number): Promise<void> {
+  const user = await requireUser();
+  await assertMien(id, user.tenantId);
+
+  await prisma.stickyNote.update({
+    where: { id },
+    data: { fontSize: tailleValide(taille) },
+  });
   revalidatePath("/notes");
 }
 

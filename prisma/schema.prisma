@@ -807,6 +807,10 @@ model StickyNote {
   // sombre — sans migrer les donnees.
   color   String  @default("JAUNE")
 
+  // Taille du texte en pixels. Par note et non globale : sur un tableau
+  // mural, l'interet est qu'une note urgente soit grosse et un detail petit.
+  fontSize Int @default(14)
+
   // Position et taille sur le tableau, en pixels depuis le coin haut-gauche.
   x      Int @default(40)
   y      Int @default(40)
