@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  CheckSquare,
   GripVertical,
   Lock,
   LockOpen,
   Minus,
+  List,
   Palette,
   Plus,
+  SquareCheck,
   Trash2,
 } from "lucide-react";
 import {
@@ -29,6 +32,14 @@ import {
   estCouleur,
   type CouleurCode,
 } from "@/lib/postit";
+import {
+  CASE_VIDE,
+  PUCE,
+  basculerCoche,
+  basculerPrefixe,
+  continuerListe,
+  type Prefixe,
+} from "@/lib/liste";
 import { cn } from "@/lib/utils";
 
 // Un post-it. Il se déplace par son bandeau, se redimensionne par le coin
@@ -95,6 +106,11 @@ export function Postit({
   const [palette, setPalette] = useState(false);
   const [titre, setTitre] = useState(note.title ?? "");
   const [texte, setTexte] = useState(note.content);
+  const corps = useRef<HTMLTextAreaElement>(null);
+  // Selection a restaurer apres qu'un bouton de liste a reecrit le texte :
+  // React remplace la valeur du champ, ce qui renvoie le curseur a la fin.
+  const selection = useRef<[number, number] | null>(null);
+  const [corpsActif, setCorpsActif] = useState(false);
   const geste = useRef<{
     mode: "deplacer" | "redimensionner";
     x0: number;
@@ -125,6 +141,54 @@ export function Postit({
     const t = setTimeout(enregistrer, DELAI_SAUVEGARDE);
     return () => clearTimeout(t);
   }, [sale, enregistrer]);
+
+  useEffect(() => {
+    const sel = selection.current;
+    if (!sel || !corps.current) return;
+    selection.current = null;
+    corps.current.setSelectionRange(sel[0], sel[1]);
+  }, [texte]);
+
+  // ── Listes ─────────────────────────────────────────────────────────────
+
+  const appliquer = useCallback(
+    (
+      calcul: (e: {
+        texte: string;
+        debut: number;
+        fin: number;
+      }) => { texte: string; debut: number; fin: number } | null,
+    ) => {
+      const el = corps.current;
+      if (!el) return;
+      const r = calcul({
+        texte: el.value,
+        debut: el.selectionStart,
+        fin: el.selectionEnd,
+      });
+      if (!r) return;
+      selection.current = [r.debut, r.fin];
+      setTexte(r.texte);
+    },
+    [],
+  );
+
+  const auClavierCorps = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key !== "Enter" || e.shiftKey) return;
+      const el = e.currentTarget;
+      const r = continuerListe({
+        texte: el.value,
+        debut: el.selectionStart,
+        fin: el.selectionEnd,
+      });
+      if (!r) return; // pas dans une liste : Entrée normale
+      e.preventDefault();
+      selection.current = [r.debut, r.fin];
+      setTexte(r.texte);
+    },
+    [],
+  );
 
   // ── Geste ──────────────────────────────────────────────────────────────
 
@@ -426,13 +490,17 @@ export function Postit({
 
       {/* ── Corps ── */}
       <textarea
+        ref={corps}
         value={texte}
         onChange={(e) => setTexte(e.target.value)}
+        onKeyDown={auClavierCorps}
         onFocus={() => {
+          setCorpsActif(true);
           onOccupe(note.id, true);
           onDevant(note.id);
         }}
         onBlur={() => {
+          setCorpsActif(false);
           if (sale) enregistrer();
           onOccupe(note.id, false);
         }}
@@ -445,6 +513,55 @@ export function Postit({
         style={{ fontSize: taille }}
         className="min-h-0 flex-1 resize-none bg-transparent px-2.5 py-2 leading-relaxed placeholder:opacity-35 focus-visible:outline-none"
       />
+
+      {/* ── Barre de liste ──────────────────────────────────────────────
+          Elle n'apparaît que pendant la saisie : un post-it au repos doit
+          montrer son contenu, pas des outils. `onMouseDown` empêche le
+          bouton de voler le focus au texte — sinon la barre disparaîtrait
+          avant même que le clic soit traité. */}
+      {corpsActif && (
+        <div
+          className="flex shrink-0 items-center gap-0.5 border-t border-black/10 px-1 py-0.5 dark:border-white/10"
+          onMouseDown={(e) => e.preventDefault()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {(
+            [
+              {
+                icone: List,
+                titre: "Liste à puces",
+                act: () =>
+                  appliquer((e) => basculerPrefixe(e, PUCE as Prefixe)),
+              },
+              {
+                icone: SquareCheck,
+                titre: "Liste à cocher",
+                act: () =>
+                  appliquer((e) => basculerPrefixe(e, CASE_VIDE as Prefixe)),
+              },
+              {
+                icone: CheckSquare,
+                titre: "Cocher / décocher cette ligne",
+                act: () => appliquer(basculerCoche),
+              },
+            ] as const
+          ).map(({ icone: Icone, titre: t, act }) => (
+            <button
+              key={t}
+              type="button"
+              aria-label={t}
+              title={t}
+              onClick={act}
+              className="rounded p-1 opacity-55 hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+            >
+              <Icone className="h-3.5 w-3.5" />
+            </button>
+          ))}
+          <span className="ml-1 text-[10px] opacity-40">
+            Entrée continue la liste
+          </span>
+        </div>
+      )}
 
       {/* ── Poignée de redimensionnement ── */}
       {!note.locked && (
