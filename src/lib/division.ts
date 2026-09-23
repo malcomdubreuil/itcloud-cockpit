@@ -13,6 +13,9 @@ export const DIVISIONS = [
   // entretien sécurité…). Elle a SES PROPRES TABLES (RecurringTask) — rien de
   // commun avec les produits/services des deux autres.
   { code: "TACHES", label: "Tâches", short: "Tâches récurrentes et entretien" },
+  // 4e division : liste de diffusion. Tables dédiées (MailingContact...),
+  // aucun lien avec la facturation — le désabonnement ne coupe QUE le marketing.
+  { code: "DIFFUSION", label: "Diffusion", short: "Liste de diffusion et infolettres" },
 ] as const;
 
 export type DivisionCode = (typeof DIVISIONS)[number]["code"];

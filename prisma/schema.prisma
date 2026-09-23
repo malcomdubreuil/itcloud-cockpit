@@ -22,13 +22,15 @@ model Tenant {
   partnerTier String? // Certifié / Or / Platine / Titane / Élite — config v1
   settings    Json    @default("{}")
 
-  users          User[]
-  clients        Client[]
-  suppliers      Supplier[]
-  products       Product[]
-  apiCredentials ApiCredential[]
-  fixedCosts     FixedCost[]
-  recurringTasks RecurringTask[]
+  users            User[]
+  clients          Client[]
+  suppliers        Supplier[]
+  products         Product[]
+  apiCredentials   ApiCredential[]
+  fixedCosts       FixedCost[]
+  recurringTasks   RecurringTask[]
+  mailingContacts  MailingContact[]
+  mailingCampaigns MailingCampaign[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -164,6 +166,7 @@ model Client {
 
   services         ClientService[]
   recurringTasks   RecurringTask[]
+  mailingContacts  MailingContact[]
   invoices         Invoice[]
   notes            Note[]
   comments         Comment[]
@@ -677,4 +680,109 @@ model RecurringTask {
   @@index([tenantId, nextDueDate])
   @@index([tenantId, clientId])
   @@index([tenantId, active])
+}
+
+// ────────────────── Liste de diffusion (4e division) ────────────────────────
+// Envoi de courriels de masse aux clients. Tables DÉDIÉES : rien à voir avec
+// la facturation. Deux règles structurantes (LCAP / loi canadienne
+// anti-pourriel) :
+//  1. le désabonnement ne coupe QUE le marketing — jamais les factures ni les
+//     avis de service, qui ne passent pas par ici ;
+//  2. on garde la PREUVE du consentement (source, date, IP) : c'est elle qui
+//     protège en cas de plainte.
+
+model MailingContact {
+  id       String  @id @default(uuid())
+  tenantId String
+  // Un client peut avoir PLUSIEURS contacts (proprio, comptabilité, TI).
+  // Null = abonné venu du site web, sans fiche client.
+  clientId String?
+
+  email String
+  name  String?
+  role  String? // « Comptabilité », « Propriétaire »… simple étiquette
+
+  // Consentement : TACITE (client actif, valable 2 ans après la dernière
+  // transaction), EXPRES (s'est abonné lui-même), RETIRE (désabonné).
+  consent       String    @default("TACITE")
+  consentSource String? // « import ERP », « site web », « manuel »
+  consentAt     DateTime?
+  consentIp     String? // preuve pour un consentement exprès
+
+  // Désabonnement : jeton du lien public, à usage permanent.
+  unsubToken     String    @unique
+  unsubscribedAt DateTime?
+
+  // Santé de l'adresse : réenvoyer à une adresse morte détruit la réputation
+  // du domaine — donc celle qui envoie aussi les factures.
+  bouncedAt   DateTime?
+  bounceCount Int       @default(0)
+
+  active    Boolean   @default(true)
+  deletedAt DateTime?
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id])
+  client     Client?           @relation(fields: [clientId], references: [id])
+  deliveries MailingDelivery[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, email])
+  @@index([tenantId, clientId])
+  @@index([tenantId, active])
+}
+
+model MailingCampaign {
+  id       String @id @default(uuid())
+  tenantId String
+
+  name     String // « Infolettre novembre » — usage interne
+  subject  String
+  bodyHtml String  @db.Text
+  bodyText String? @db.Text
+
+  // Critères de ciblage (division, groupe de produit, recherche…) : conservés
+  // pour savoir À QUI on a écrit, même si les services changent après coup.
+  segment Json
+
+  // BROUILLON → EN_COURS → ENVOYEE (ou ANNULEE). L'envoi se fait en file
+  // d'attente : 400 courriels prennent ~15 min, une requête web mourrait avant.
+  status     String    @default("BROUILLON")
+  testMode   Boolean   @default(true) // garde-fou : rien ne part par défaut
+  startedAt  DateTime?
+  finishedAt DateTime?
+  sentCount  Int       @default(0)
+  failCount  Int       @default(0)
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id])
+  deliveries MailingDelivery[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+}
+
+// Un enregistrement par destinataire ET par campagne : c'est lui qui garantit
+// qu'un contact ne reçoit JAMAIS deux fois la même campagne, même si le cron
+// repasse ou plante en plein envoi.
+model MailingDelivery {
+  id         String @id @default(uuid())
+  tenantId   String
+  campaignId String
+  contactId  String
+
+  email  String // figé à l'envoi : l'adresse peut changer après
+  status String    @default("EN_ATTENTE") // EN_ATTENTE | ENVOYE | ECHEC | IGNORE
+  error  String?   @db.Text
+  sentAt DateTime?
+
+  campaign MailingCampaign @relation(fields: [campaignId], references: [id])
+  contact  MailingContact  @relation(fields: [contactId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([campaignId, contactId])
+  @@index([tenantId, status])
 }

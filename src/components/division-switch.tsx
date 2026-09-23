@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Cloud, Globe, Loader2, Repeat } from "lucide-react";
+import { Cloud, Globe, Loader2, Mail, Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { setDivision } from "@/app/(dashboard)/division-actions";
 import type { DivisionCode } from "@/lib/division";
@@ -11,7 +11,7 @@ import type { DivisionCode } from "@/lib/division";
 // barre laterale (dashboard, clients, services, produits) ne montre que la
 // division choisie. Le choix est memorise dans un cookie.
 
-const ICONS = { ITCLOUD: Cloud, HEBERGEMENT: Globe, TACHES: Repeat } as const;
+const ICONS = { ITCLOUD: Cloud, HEBERGEMENT: Globe, TACHES: Repeat, DIFFUSION: Mail } as const;
 
 export function DivisionSwitch({
   current,
