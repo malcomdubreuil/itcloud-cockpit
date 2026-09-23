@@ -56,8 +56,15 @@ https://login.microsoftonline.com/b4d279e2-d0b9-4251-86f6-5fc05a0d4072/admincons
 ### Secret client
 
 `Certificates & secrets` → `New client secret`. **La valeur ne s'affiche
-qu'une fois** — la copier immédiatement. Noter la date d'expiration : le jour
-venu, l'envoi s'arrête avec `AADSTS7000215`.
+qu'une fois** — la copier immédiatement.
+
+Le secret en service a été créé le **2026-09-23** (durée 180 jours) et
+**expire le 2027-03-22**.
+
+> ⚠️ **À renouveler avant cette date.** Le jour venu, la diffusion s'arrête
+> d'un coup avec `AADSTS7000215` — rien d'autre dans l'ERP n'est touché.
+> Renouvellement : créer un nouveau secret, remplacer `MS_CLIENT_SECRET` dans
+> le `.env`, redémarrer, puis supprimer l'ancien dans Entra.
 
 ## 2. Restreindre l'application à une seule boîte
 
