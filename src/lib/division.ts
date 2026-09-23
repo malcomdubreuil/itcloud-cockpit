@@ -16,6 +16,11 @@ export const DIVISIONS = [
   // 4e division : liste de diffusion. Tables dédiées (MailingContact...),
   // aucun lien avec la facturation — le désabonnement ne coupe QUE le marketing.
   { code: "DIFFUSION", label: "Diffusion", short: "Liste de diffusion et infolettres" },
+  // 5e onglet : tableau de post-it. Ce n'est pas une division commerciale —
+  // c'est un espace de travail. Il vit ici parce que le basculeur d'onglets
+  // est le seul endroit qui donne une vue entiere, et qu'un tableau de notes
+  // a besoin de toute la largeur.
+  { code: "NOTES", label: "Notes", short: "Tableau de post-it et pense-betes" },
 ] as const;
 
 export type DivisionCode = (typeof DIVISIONS)[number]["code"];

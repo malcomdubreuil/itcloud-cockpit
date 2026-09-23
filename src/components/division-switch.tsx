@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Cloud, Globe, Loader2, Mail, Repeat } from "lucide-react";
+import { Cloud, Globe, Loader2, Mail, Repeat, StickyNote } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { setDivision } from "@/app/(dashboard)/division-actions";
 import type { DivisionCode } from "@/lib/division";
@@ -11,7 +11,22 @@ import type { DivisionCode } from "@/lib/division";
 // barre laterale (dashboard, clients, services, produits) ne montre que la
 // division choisie. Le choix est memorise dans un cookie.
 
-const ICONS = { ITCLOUD: Cloud, HEBERGEMENT: Globe, TACHES: Repeat, DIFFUSION: Mail } as const;
+const ICONS = {
+  ITCLOUD: Cloud,
+  HEBERGEMENT: Globe,
+  TACHES: Repeat,
+  DIFFUSION: Mail,
+  NOTES: StickyNote,
+} as const;
+
+// Onglets qui n'ont qu'une seule page. Y basculer doit y emmener : rester sur
+// /services ou /produits afficherait une page vide, sans rien dans la barre
+// laterale pour s'en sortir. Et en sortir ramene au tableau de bord.
+const PAGE_UNIQUE: Partial<Record<DivisionCode, string>> = {
+  TACHES: "/taches",
+  DIFFUSION: "/diffusion",
+  NOTES: "/notes",
+};
 
 export function DivisionSwitch({
   current,
@@ -27,11 +42,9 @@ export function DivisionSwitch({
     if (code === current || pending) return;
     start(async () => {
       await setDivision(code);
-      // La division Tâches n'a qu'une page : y aller directement (rester sur
-      // /services ou /produits afficherait une page vide). Et en sortir ramène
-      // au tableau de bord, qui n'existe pas côté Tâches.
-      if (code === "TACHES") router.push("/taches");
-      else if (current === "TACHES") router.push("/dashboard");
+      const cible = PAGE_UNIQUE[code];
+      if (cible) router.push(cible);
+      else if (PAGE_UNIQUE[current]) router.push("/dashboard");
       else router.refresh();
     });
   };

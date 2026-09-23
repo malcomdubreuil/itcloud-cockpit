@@ -31,6 +31,7 @@ model Tenant {
   recurringTasks   RecurringTask[]
   mailingContacts  MailingContact[]
   mailingCampaigns MailingCampaign[]
+  stickyNotes      StickyNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -52,9 +53,10 @@ model User {
   tenant Tenant @relation(fields: [tenantId], references: [id])
   role   Role   @relation(fields: [roleId], references: [id])
 
-  notes     Note[]
-  comments  Comment[]
-  documents Document[]
+  notes       Note[]
+  stickyNotes StickyNote[]
+  comments    Comment[]
+  documents   Document[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -785,4 +787,43 @@ model MailingDelivery {
 
   @@unique([campaignId, contactId])
   @@index([tenantId, status])
+}
+
+// Post-it du tableau de notes (5e onglet). A ne pas confondre avec `Note`,
+// qui est une note attachee a une fiche client. Ici il n'y a pas de client :
+// c'est un tableau libre, partage par le tenant, ou l'on epingle ce qu'on
+// veut et ou la POSITION fait partie de l'information (regrouper trois
+// post-it dans un coin, c'est deja les classer).
+model StickyNote {
+  id       String @id @default(uuid())
+  tenantId String
+  authorId String
+
+  content String @db.Text
+  // Nom de couleur (JAUNE, ROSE...) et non un code hexadecimal : la palette
+  // vit dans le code, ce qui permet de la retoucher — et de gerer le mode
+  // sombre — sans migrer les donnees.
+  color   String @default("JAUNE")
+
+  // Position et taille sur le tableau, en pixels depuis le coin haut-gauche.
+  x      Int @default(40)
+  y      Int @default(40)
+  width  Int @default(260)
+  height Int @default(220)
+  // Ordre d'empilement : attraper un post-it le remonte au-dessus des autres.
+  z      Int @default(0)
+
+  // Verrouille : le post-it ne bouge plus. Utile pour un pense-bete de fond
+  // qu'on ne veut pas deplacer par accident en rangeant les autres.
+  locked Boolean @default(false)
+
+  deletedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  author User   @relation(fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, deletedAt])
 }

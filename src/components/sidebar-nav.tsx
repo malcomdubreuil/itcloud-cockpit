@@ -16,6 +16,7 @@ import {
   Repeat,
   Search,
   Settings,
+  StickyNote,
   Shield,
   Users,
   Wrench,
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/taches", label: "Tâches récurrentes", icon: Repeat },
   { href: "/diffusion", label: "Liste de diffusion", icon: Mail },
+  { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/produits", label: "Produits", icon: Package },
@@ -55,6 +57,9 @@ export function SidebarNav({ division }: { division: string }) {
     // Diffusion : section dediee a ses propres tables (contacts, campagnes).
     if (division === "DIFFUSION") return i.href === "/diffusion";
     if (i.href === "/diffusion") return false;
+    // Notes : tableau de post-it, sans rapport avec le reste de l'ERP.
+    if (division === "NOTES") return i.href === "/notes";
+    if (i.href === "/notes") return false;
     // La synchro ITCloud n'a aucun sens cote Hebergement : ces produits sont
     // maison et ne viennent d'aucun rapport ITCloud.
     if (i.href === "/synchronisation") return division === "ITCLOUD";
