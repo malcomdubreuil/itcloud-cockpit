@@ -36,8 +36,10 @@ import {
   CASE_VIDE,
   PUCE,
   basculerCoche,
+  basculerCocheLigne,
   basculerPrefixe,
   continuerListe,
+  lireLignes,
   type Prefixe,
 } from "@/lib/liste";
 import { cn } from "@/lib/utils";
@@ -110,6 +112,10 @@ export function Postit({
   // Selection a restaurer apres qu'un bouton de liste a reecrit le texte :
   // React remplace la valeur du champ, ce qui renvoie le curseur a la fin.
   const selection = useRef<[number, number] | null>(null);
+  // Deux modes pour le corps : lecture (cases cliquables) et edition (zone de
+  // texte). Un « ☐ » dans une zone de texte n'est qu'un caractere — impossible
+  // de cliquer dessus. D'ou la vue de lecture, qui rend de vrais boutons.
+  const [edition, setEdition] = useState(false);
   const [corpsActif, setCorpsActif] = useState(false);
   const geste = useRef<{
     mode: "deplacer" | "redimensionner";
@@ -141,6 +147,18 @@ export function Postit({
     const t = setTimeout(enregistrer, DELAI_SAUVEGARDE);
     return () => clearTimeout(t);
   }, [sale, enregistrer]);
+
+  // Entree en edition : on donne le focus au champ qui vient d'apparaitre.
+  useEffect(() => {
+    if (!edition) return;
+    const el = corps.current;
+    if (!el) return;
+    el.focus();
+    // Curseur a la fin : on vient de cliquer pour AJOUTER quelque chose, pas
+    // pour ecrire avant ce qui existe deja.
+    const n = el.value.length;
+    el.setSelectionRange(n, n);
+  }, [edition]);
 
   useEffect(() => {
     const sel = selection.current;
@@ -179,6 +197,19 @@ export function Postit({
       setTexte(r.texte);
     },
     [],
+  );
+
+  /** Coche depuis la vue de lecture. Enregistre tout de suite plutot qu'en
+   *  differe : cocher est un geste ponctuel, et sur un tableau partage les
+   *  autres ecrans doivent le voir sans attendre. */
+  const cocherLigne = useCallback(
+    (index: number) => {
+      const nouveau = basculerCocheLigne(texte, index);
+      if (nouveau === texte) return;
+      setTexte(nouveau);
+      onContenu(note.id, { titre, contenu: nouveau });
+    },
+    [texte, titre, note.id, onContenu],
   );
 
   const auClavierCorps = useCallback(
@@ -497,30 +528,88 @@ export function Postit({
       </div>
 
       {/* ── Corps ── */}
-      <textarea
-        ref={corps}
-        value={texte}
-        onChange={(e) => setTexte(e.target.value)}
-        onKeyDown={auClavierCorps}
-        onFocus={() => {
-          setCorpsActif(true);
-          onOccupe(note.id, true);
-          onDevant(note.id);
-        }}
-        onBlur={() => {
-          setCorpsActif(false);
-          if (sale) enregistrer();
-          onOccupe(note.id, false);
-        }}
-        onPointerDown={(e) => {
-          onDevant(note.id);
-          e.stopPropagation();
-        }}
-        placeholder="Écrire…"
-        spellCheck
-        style={{ fontSize: taille }}
-        className="min-h-0 flex-1 resize-none bg-transparent px-2.5 py-2 leading-relaxed placeholder:opacity-35 focus-visible:outline-none"
-      />
+      {edition ? (
+        <textarea
+          ref={corps}
+          value={texte}
+          onChange={(e) => setTexte(e.target.value)}
+          onKeyDown={auClavierCorps}
+          onFocus={() => {
+            setCorpsActif(true);
+            onOccupe(note.id, true);
+            onDevant(note.id);
+          }}
+          onBlur={() => {
+            setCorpsActif(false);
+            if (sale) enregistrer();
+            onOccupe(note.id, false);
+          }}
+          onPointerDown={(e) => {
+            onDevant(note.id);
+            e.stopPropagation();
+          }}
+          placeholder="Écrire…"
+          spellCheck
+          style={{ fontSize: taille }}
+          className="min-h-0 flex-1 resize-none bg-transparent px-2.5 py-2 leading-relaxed placeholder:opacity-35 focus-visible:outline-none"
+        />
+      ) : (
+        /* ── Vue de lecture ────────────────────────────────────────────
+           Les cases sont de VRAIS boutons : un clic dessus coche, sans
+           passer en edition. Cliquer ailleurs ouvre le champ texte. */
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Modifier le texte"
+          onClick={() => setEdition(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setEdition(true);
+            }
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          style={{ fontSize: taille }}
+          className="min-h-0 flex-1 cursor-text overflow-auto px-2.5 py-2 leading-relaxed focus-visible:outline-none"
+        >
+          {texte.trim() === "" ? (
+            <span className="opacity-35">Écrire…</span>
+          ) : (
+            lireLignes(texte).map((l, i) => (
+              <div key={i} className="flex items-start gap-1.5">
+                {l.prefixe === CASE_VIDE || l.cochee ? (
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={l.cochee}
+                    aria-label={l.contenu || "Élément"}
+                    onClick={(e) => {
+                      // Sans ça, le clic remonterait au conteneur et
+                      // basculerait en édition — on veut juste cocher.
+                      e.stopPropagation();
+                      cocherLigne(i);
+                    }}
+                    className="mt-[0.15em] shrink-0 leading-none opacity-70 hover:opacity-100"
+                    style={{ fontSize: "1.1em" }}
+                  >
+                    {l.cochee ? "☑" : "☐"}
+                  </button>
+                ) : l.prefixe === PUCE ? (
+                  <span className="shrink-0 opacity-70">•</span>
+                ) : null}
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 whitespace-pre-wrap break-words",
+                    l.cochee && "line-through opacity-45",
+                  )}
+                >
+                  {l.contenu || " "}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* ── Barre de liste ──────────────────────────────────────────────
           Elle n'apparaît que pendant la saisie : un post-it au repos doit

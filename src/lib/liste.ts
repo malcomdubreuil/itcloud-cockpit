@@ -143,3 +143,46 @@ export function continuerListe(etat: Etat): Etat | null {
     fin: pos,
   };
 }
+
+// ── Lecture ──────────────────────────────────────────────────────────────
+// Au repos, le post-it n'affiche pas son texte brut : il l'affiche mis en
+// forme, avec de VRAIES cases cliquables. C'est la seule façon de cocher un
+// élément d'un seul clic — dans une zone de texte, un « ☐ » n'est qu'un
+// caractère, on ne peut pas cliquer dessus.
+
+export type LigneLue = {
+  /** Préfixe de liste, s'il y en a un. */
+  prefixe: Prefixe | null;
+  /** Le texte sans son préfixe. */
+  contenu: string;
+  /** Case à cocher déjà cochée ? */
+  cochee: boolean;
+};
+
+export function lireLignes(texte: string): LigneLue[] {
+  return texte.split("\n").map((l) => {
+    const prefixe = prefixeDe(l);
+    return {
+      prefixe,
+      contenu: prefixe ? l.slice(prefixe.length) : l,
+      cochee: prefixe === CASE_COCHEE,
+    };
+  });
+}
+
+/** Coche/décoche la ligne d'index donné. Utilisé par le clic direct sur la
+ *  case, où l'on connaît la ligne et non la position du curseur. */
+export function basculerCocheLigne(texte: string, index: number): string {
+  const lignes = texte.split("\n");
+  const l = lignes[index];
+  if (l === undefined) return texte;
+
+  if (l.startsWith(CASE_VIDE)) {
+    lignes[index] = CASE_COCHEE + l.slice(CASE_VIDE.length);
+  } else if (l.startsWith(CASE_COCHEE)) {
+    lignes[index] = CASE_VIDE + l.slice(CASE_COCHEE.length);
+  } else {
+    return texte;
+  }
+  return lignes.join("\n");
+}
