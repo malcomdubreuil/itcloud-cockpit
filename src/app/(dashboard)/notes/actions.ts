@@ -11,6 +11,7 @@ import {
   LARGEUR_MAX,
   LARGEUR_MIN,
   LONGUEUR_MAX,
+  TITRE_MAX,
   aligner,
   borner,
   estCouleur,
@@ -51,6 +52,7 @@ async function assertMien(id: string, tenantId: string): Promise<void> {
 
 export type PostitDTO = {
   id: string;
+  title: string | null;
   content: string;
   color: string;
   x: number;
@@ -81,6 +83,7 @@ export async function creerPostit(couleur?: string): Promise<PostitDTO> {
     data: {
       tenantId: user.tenantId,
       authorId: user.id,
+      title: null,
       content: "",
       color: estCouleur(couleur) ? couleur : COULEUR_DEFAUT,
       x,
@@ -88,7 +91,7 @@ export async function creerPostit(couleur?: string): Promise<PostitDTO> {
       z: (dessus?.z ?? 0) + 1,
     },
     select: {
-      id: true, content: true, color: true, x: true, y: true,
+      id: true, title: true, content: true, color: true, x: true, y: true,
       width: true, height: true, z: true, locked: true,
     },
   });
@@ -97,17 +100,28 @@ export async function creerPostit(couleur?: string): Promise<PostitDTO> {
   return cree;
 }
 
-/** Texte. Appelé en différé pendant la frappe — donc sans revalidation. */
-export async function enregistrerTexte(
+/** Titre et texte. Appelé en différé pendant la frappe — donc sans
+ *  revalidation, et les deux champs voyagent ensemble : une seule écriture
+ *  plutôt que deux quand on remplit un post-it neuf. */
+export async function enregistrerContenu(
   id: string,
-  content: string,
+  v: { titre?: string; contenu?: string },
 ): Promise<void> {
   const user = await requireUser();
   await assertMien(id, user.tenantId);
 
+  const titre = v.titre?.trim().slice(0, TITRE_MAX);
+
   await prisma.stickyNote.update({
     where: { id },
-    data: { content: content.slice(0, LONGUEUR_MAX) },
+    data: {
+      // Un titre effacé redevient null, pas une chaîne vide : c'est la même
+      // chose pour l'utilisateur, autant que ce soit la même chose en base.
+      ...(v.titre !== undefined ? { title: titre || null } : {}),
+      ...(v.contenu !== undefined
+        ? { content: v.contenu.slice(0, LONGUEUR_MAX) }
+        : {}),
+    },
   });
 }
 

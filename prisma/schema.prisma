@@ -799,11 +799,13 @@ model StickyNote {
   tenantId String
   authorId String
 
-  content String @db.Text
+  // Titre facultatif : sur un tableau charge, c'est lui qu'on lit de loin.
+  title   String?
+  content String  @db.Text
   // Nom de couleur (JAUNE, ROSE...) et non un code hexadecimal : la palette
   // vit dans le code, ce qui permet de la retoucher — et de gerer le mode
   // sombre — sans migrer les donnees.
-  color   String @default("JAUNE")
+  color   String  @default("JAUNE")
 
   // Position et taille sur le tableau, en pixels depuis le coin haut-gauche.
   x      Int @default(40)

@@ -5,12 +5,14 @@ import { GripHorizontal, Lock, LockOpen, Palette, Trash2 } from "lucide-react";
 import {
   CLASSES_COULEUR,
   COULEURS,
+  ENCRE,
   HAUTEUR_MAX,
   HAUTEUR_MIN,
   LARGEUR_MAX,
   LARGEUR_MIN,
   PAS,
   PASTILLE_COULEUR,
+  TITRE_MAX,
   aligner,
   borner,
   estCouleur,
@@ -32,6 +34,7 @@ import { cn } from "@/lib/utils";
 
 export type PostitData = {
   id: string;
+  title: string | null;
   content: string;
   color: string;
   x: number;
@@ -51,7 +54,7 @@ type Props = {
   ) => void;
   /** Remonter au-dessus de la pile : retourne le nouveau z. */
   onDevant: (id: string) => number;
-  onTexte: (id: string, texte: string) => void;
+  onContenu: (id: string, v: { titre: string; contenu: string }) => void;
   onCouleur: (id: string, couleur: CouleurCode) => void;
   onVerrou: (id: string) => void;
   onSupprimer: (id: string) => void;
@@ -63,7 +66,7 @@ export function Postit({
   note,
   onPoser,
   onDevant,
-  onTexte,
+  onContenu,
   onCouleur,
   onVerrou,
   onSupprimer,
@@ -71,6 +74,7 @@ export function Postit({
   // Décalage visuel pendant le geste en cours (non encore enregistré).
   const [glisse, setGlisse] = useState({ dx: 0, dy: 0, dw: 0, dh: 0 });
   const [palette, setPalette] = useState(false);
+  const [titre, setTitre] = useState(note.title ?? "");
   const [texte, setTexte] = useState(note.content);
   const geste = useRef<{
     mode: "deplacer" | "redimensionner";
@@ -80,18 +84,27 @@ export function Postit({
 
   const couleur: CouleurCode = estCouleur(note.color) ? note.color : "JAUNE";
 
-  // Le texte venu du serveur reprend la main seulement s'il a réellement
+  // Ce qui vient du serveur reprend la main seulement si ça a réellement
   // changé ailleurs — sinon on écraserait ce qui est en train d'être tapé.
   useEffect(() => {
     setTexte(note.content);
   }, [note.content]);
-
-  // Enregistrement différé : on n'écrit pas en base à chaque touche.
   useEffect(() => {
-    if (texte === note.content) return;
-    const t = setTimeout(() => onTexte(note.id, texte), DELAI_SAUVEGARDE);
+    setTitre(note.title ?? "");
+  }, [note.title]);
+
+  // Enregistrement différé : on n'écrit pas en base à chaque touche. Titre et
+  // corps partent ensemble — remplir un post-it neuf ne fait qu'une écriture.
+  const sale = titre !== (note.title ?? "") || texte !== note.content;
+  const enregistrer = useCallback(
+    () => onContenu(note.id, { titre, contenu: texte }),
+    [onContenu, note.id, titre, texte],
+  );
+  useEffect(() => {
+    if (!sale) return;
+    const t = setTimeout(enregistrer, DELAI_SAUVEGARDE);
     return () => clearTimeout(t);
-  }, [texte, note.content, note.id, onTexte]);
+  }, [sale, enregistrer]);
 
   // ── Geste ──────────────────────────────────────────────────────────────
 
@@ -195,6 +208,7 @@ export function Postit({
       className={cn(
         "absolute flex flex-col overflow-hidden rounded-md border shadow-sm",
         CLASSES_COULEUR[couleur],
+        ENCRE,
         enGeste ? "shadow-lg ring-2 ring-ring/40" : "transition-shadow",
       )}
       style={{
@@ -301,14 +315,27 @@ export function Postit({
         </div>
       )}
 
+      {/* ── Titre ── */}
+      <input
+        value={titre}
+        onChange={(e) => setTitre(e.target.value)}
+        onBlur={() => sale && enregistrer()}
+        onPointerDown={(e) => e.stopPropagation()}
+        maxLength={TITRE_MAX}
+        placeholder="Titre"
+        aria-label="Titre du post-it"
+        className="shrink-0 border-b border-black/10 bg-transparent px-2.5 py-1.5 text-sm font-semibold placeholder:font-normal placeholder:opacity-35 focus-visible:outline-none"
+      />
+
       {/* ── Corps ── */}
       <textarea
         value={texte}
         onChange={(e) => setTexte(e.target.value)}
-        onBlur={() => texte !== note.content && onTexte(note.id, texte)}
+        onBlur={() => sale && enregistrer()}
+        onPointerDown={(e) => e.stopPropagation()}
         placeholder="Écrire…"
         spellCheck
-        className="min-h-0 flex-1 resize-none bg-transparent px-2.5 py-2 text-sm leading-relaxed placeholder:opacity-40 focus-visible:outline-none"
+        className="min-h-0 flex-1 resize-none bg-transparent px-2.5 py-2 text-sm leading-relaxed placeholder:opacity-35 focus-visible:outline-none"
       />
 
       {/* ── Poignée de redimensionnement ── */}

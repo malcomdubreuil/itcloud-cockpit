@@ -10,7 +10,7 @@ import {
   changerCouleur,
   creerPostit,
   deplacerPostit,
-  enregistrerTexte,
+  enregistrerContenu,
   rangerEnGrille,
   restaurerPostit,
   supprimerPostit,
@@ -25,7 +25,7 @@ import type { CouleurCode } from "@/lib/postit";
 // le dire — d'où le message d'erreur qui invite à recharger plutôt que de
 // laisser croire que c'est enregistré.
 
-type Corbeille = { id: string; content: string }[];
+type Corbeille = { id: string; title: string | null; content: string }[];
 
 export function TableauPostits({
   notesInitiales,
@@ -96,12 +96,16 @@ export function TableauPostits({
     [notes, echec],
   );
 
-  const texte = useCallback(
-    (id: string, contenu: string) => {
-      setNotes((v) =>
-        v.map((n) => (n.id === id ? { ...n, content: contenu } : n)),
+  const contenu = useCallback(
+    (id: string, v: { titre: string; contenu: string }) => {
+      setNotes((prev) =>
+        prev.map((n) =>
+          n.id === id
+            ? { ...n, title: v.titre.trim() || null, content: v.contenu }
+            : n,
+        ),
       );
-      enregistrerTexte(id, contenu).catch(echec);
+      enregistrerContenu(id, v).catch(echec);
     },
     [echec],
   );
@@ -128,7 +132,11 @@ export function TableauPostits({
     (id: string) => {
       const n = notes.find((x) => x.id === id);
       setNotes((v) => v.filter((x) => x.id !== id));
-      if (n) setCorbeille((c) => [{ id: n.id, content: n.content }, ...c]);
+      if (n)
+        setCorbeille((c) => [
+          { id: n.id, title: n.title, content: n.content },
+          ...c,
+        ]);
       supprimerPostit(id).catch(echec);
     },
     [notes, echec],
@@ -213,7 +221,7 @@ export function TableauPostits({
           {corbeille.map((c) => (
             <div key={c.id} className="flex items-center gap-2 text-sm">
               <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                {c.content.trim() || <em>(vide)</em>}
+                {c.title?.trim() || c.content.trim() || <em>(vide)</em>}
               </span>
               <Button
                 size="sm"
@@ -259,7 +267,7 @@ export function TableauPostits({
                 note={n}
                 onPoser={poser}
                 onDevant={devant}
-                onTexte={texte}
+                onContenu={contenu}
                 onCouleur={couleur}
                 onVerrou={verrou}
                 onSupprimer={jeter}

@@ -1,10 +1,14 @@
 // Palette et géométrie des post-it. Module pur : utilisé par le tableau
 // (client) comme par les actions serveur.
 //
-// La couleur est stockée par NOM et non par code hexadécimal. Deux raisons :
-// on peut retoucher la palette sans migrer les données, et surtout une même
-// couleur doit rendre différemment en mode clair et en mode sombre — un jaune
-// vif sur fond noir est illisible.
+// La couleur est stockée par NOM et non par code hexadécimal : on peut
+// retoucher la palette sans migrer les données.
+//
+// Un post-it reste du PAPIER CLAIR À ENCRE NOIRE, même en mode sombre. C'est
+// voulu : l'objet imite un vrai post-it, et c'est ce qui le fait ressortir du
+// reste de l'écran. En mode sombre la teinte est simplement un cran plus
+// soutenue, pour éblouir un peu moins sans jamais compromettre la lisibilité
+// du texte noir.
 
 export const COULEURS = [
   { code: "JAUNE", label: "Jaune" },
@@ -24,22 +28,22 @@ export function estCouleur(v: string | undefined | null): v is CouleurCode {
   return !!v && COULEURS.some((c) => c.code === v);
 }
 
-/** Classes Tailwind d'un post-it : fond, bordure, bandeau de saisie.
- *  Les variantes sombres sont désaturées — sur fond noir, un pastel saturé
- *  éblouit et le texte devient pénible à lire. */
+/** Classes Tailwind d'un post-it : fond et bordure. */
 export const CLASSES_COULEUR: Record<CouleurCode, string> = {
-  JAUNE:
-    "bg-amber-100 border-amber-300 dark:bg-amber-950/60 dark:border-amber-800",
-  ROSE: "bg-pink-100 border-pink-300 dark:bg-pink-950/60 dark:border-pink-800",
+  JAUNE: "bg-amber-100 border-amber-300 dark:bg-amber-200 dark:border-amber-400",
+  ROSE: "bg-pink-100 border-pink-300 dark:bg-pink-200 dark:border-pink-400",
   ORANGE:
-    "bg-orange-100 border-orange-300 dark:bg-orange-950/60 dark:border-orange-800",
+    "bg-orange-100 border-orange-300 dark:bg-orange-200 dark:border-orange-400",
   VERT:
-    "bg-emerald-100 border-emerald-300 dark:bg-emerald-950/60 dark:border-emerald-800",
-  BLEU: "bg-sky-100 border-sky-300 dark:bg-sky-950/60 dark:border-sky-800",
+    "bg-emerald-100 border-emerald-300 dark:bg-emerald-200 dark:border-emerald-400",
+  BLEU: "bg-sky-100 border-sky-300 dark:bg-sky-200 dark:border-sky-400",
   MAUVE:
-    "bg-violet-100 border-violet-300 dark:bg-violet-950/60 dark:border-violet-800",
-  GRIS: "bg-slate-100 border-slate-300 dark:bg-slate-900 dark:border-slate-700",
+    "bg-violet-100 border-violet-300 dark:bg-violet-200 dark:border-violet-400",
+  GRIS: "bg-slate-100 border-slate-300 dark:bg-slate-200 dark:border-slate-400",
 };
+
+/** Encre du post-it. Noir franc, quel que soit le theme : c'est du papier. */
+export const ENCRE = "text-neutral-900";
 
 /** Pastille de choix de couleur (plus saturée : elle doit se distinguer). */
 export const PASTILLE_COULEUR: Record<CouleurCode, string> = {
@@ -80,3 +84,5 @@ export function positionSuivante(nb: number): { x: number; y: number } {
 }
 
 export const LONGUEUR_MAX = 10000;
+/** Longueur du titre : la colonne fait 191 caracteres. */
+export const TITRE_MAX = 180;

@@ -20,7 +20,7 @@ export default async function NotesPage() {
       where: { tenantId, deletedAt: null },
       orderBy: { z: "asc" },
       select: {
-        id: true, content: true, color: true, x: true, y: true,
+        id: true, title: true, content: true, color: true, x: true, y: true,
         width: true, height: true, z: true, locked: true,
       },
     }),
@@ -30,7 +30,7 @@ export default async function NotesPage() {
       where: { tenantId, deletedAt: { not: null } },
       orderBy: { deletedAt: "desc" },
       take: 20,
-      select: { id: true, content: true },
+      select: { id: true, title: true, content: true },
     }),
   ]);
 
