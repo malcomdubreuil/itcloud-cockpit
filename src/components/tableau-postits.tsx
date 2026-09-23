@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { LayoutGrid, Loader2, Plus, RotateCcw, StickyNote } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Postit, type PostitData } from "@/components/postit";
@@ -19,6 +20,13 @@ import type { CouleurCode } from "@/lib/postit";
 
 // Le tableau. Il tient l'état des post-it et parle au serveur.
 //
+// Le tableau est PARTAGÉ : il vit sur un écran mural et se modifie depuis
+// plusieurs postes. D'où le rafraîchissement automatique — mais fusionné, pas
+// écrasant. Recharger bêtement l'état du serveur ferait sauter la note qu'un
+// collègue est en train de déplacer et effacerait ce qu'il vient de taper.
+// Les post-it « occupés » (en cours de saisie ou de geste ICI) sont donc
+// laissés tels quels jusqu'à ce qu'on les lâche.
+//
 // Choix de fond : l'état affiché est LOCAL, et le serveur n'est qu'un journal.
 // Un tableau où chaque déplacement attendrait l'aller-retour réseau avant de
 // bouger serait inutilisable. En contrepartie, si une écriture échoue, il faut
@@ -34,10 +42,81 @@ export function TableauPostits({
   notesInitiales: PostitData[];
   corbeilleInitiale: Corbeille;
 }) {
+  const router = useRouter();
   const [notes, setNotes] = useState<PostitData[]>(notesInitiales);
   const [corbeille, setCorbeille] = useState<Corbeille>(corbeilleInitiale);
   const [voirCorbeille, setVoirCorbeille] = useState(false);
   const [pending, start] = useTransition();
+
+  // Post-it manipulés en ce moment sur CE poste. Un ref et non un state :
+  // cela ne doit rien redessiner, seulement servir d'aiguillage au moment de
+  // la fusion.
+  const occupes = useRef<Set<string>>(new Set());
+  const marquerOccupe = useCallback((id: string, occupe: boolean) => {
+    if (occupe) occupes.current.add(id);
+    else occupes.current.delete(id);
+  }, []);
+
+  // Fusion de ce qui vient du serveur. Appelée à chaque nouveau rendu de la
+  // page (donc après chaque router.refresh()).
+  useEffect(() => {
+    setNotes((locales) => {
+      const parId = new Map(locales.map((n) => [n.id, n]));
+      const fusion = notesInitiales.map((serveur) => {
+        const locale = parId.get(serveur.id);
+        // En cours de manipulation ici : on garde la version locale, sinon on
+        // arracherait la note des mains de la personne.
+        if (locale && occupes.current.has(serveur.id)) return locale;
+        return serveur;
+      });
+      // Une note occupée mais déjà absente du serveur (jetée ailleurs) : on la
+      // garde tant qu'on y touche. Elle disparaîtra au prochain passage.
+      for (const l of locales) {
+        if (occupes.current.has(l.id) && !fusion.some((n) => n.id === l.id)) {
+          fusion.push(l);
+        }
+      }
+      return fusion;
+    });
+    setCorbeille(corbeilleInitiale);
+  }, [notesInitiales, corbeilleInitiale]);
+
+  // Rafraîchissement automatique. On n'interroge qu'une empreinte (deux
+  // nombres) et on ne recharge vraiment que si elle a changé : à trois écrans
+  // en boucle, la charge reste négligeable.
+  //
+  // Volontairement lent (15 s) : un tableau mural n'a pas besoin d'être
+  // instantané, et ça ne doit gêner personne d'autre sur le site.
+  useEffect(() => {
+    let vivant = true;
+    let derniere: string | null = null;
+
+    const verifier = async () => {
+      // Onglet caché (poste en veille, autre onglet) : rien à afficher, donc
+      // rien à demander. L'écran mural, lui, reste visible et continue.
+      if (document.visibilityState !== "visible") return;
+      // Quelqu'un est en train d'écrire ou de déplacer : on ne recharge pas
+      // sous ses doigts, on attendra le prochain tour.
+      if (occupes.current.size > 0) return;
+      try {
+        const r = await fetch("/api/notes/version", { cache: "no-store" });
+        if (!r.ok || !vivant) return;
+        const { v } = (await r.json()) as { v: string };
+        if (derniere !== null && v !== derniere) router.refresh();
+        derniere = v;
+      } catch {
+        // Réseau coupé, session expirée : on réessaiera au prochain tour.
+        // Un écran mural ne doit pas afficher une erreur pour un ping raté.
+      }
+    };
+
+    void verifier();
+    const t = setInterval(verifier, 15000);
+    return () => {
+      vivant = false;
+      clearInterval(t);
+    };
+  }, [router]);
 
   const echec = useCallback((e: unknown) => {
     toast.error(
@@ -148,8 +227,8 @@ export function TableauPostits({
         await restaurerPostit(id);
         setCorbeille((c) => c.filter((x) => x.id !== id));
         toast.success("Post-it récupéré.");
-        // Il retrouve sa position d'origine, calculée côté serveur.
-        window.location.reload();
+        // La fusion des props le remet au tableau, à sa position d'origine.
+        router.refresh();
       } catch (e) {
         echec(e);
       }
@@ -164,8 +243,9 @@ export function TableauPostits({
             ? "Rien à ranger."
             : `${n} post-it rangé${n > 1 ? "s" : ""} en grille.`,
         );
-        // La grille est calculée côté serveur : on recharge pour l'afficher.
-        window.location.reload();
+        // La grille est calculée côté serveur : on la recupere sans recharger
+        // toute la page.
+        router.refresh();
       } catch (e) {
         echec(e);
       }
@@ -271,6 +351,7 @@ export function TableauPostits({
                 onCouleur={couleur}
                 onVerrou={verrou}
                 onSupprimer={jeter}
+                onOccupe={marquerOccupe}
               />
             ))}
           </div>

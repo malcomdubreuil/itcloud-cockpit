@@ -58,6 +58,10 @@ type Props = {
   onCouleur: (id: string, couleur: CouleurCode) => void;
   onVerrou: (id: string) => void;
   onSupprimer: (id: string) => void;
+  /** Signale que ce post-it est en cours de manipulation (saisie ou geste).
+   *  Le tableau s'en sert pour NE PAS l'ecraser quand le rafraichissement
+   *  automatique ramene la version du serveur. */
+  onOccupe: (id: string, occupe: boolean) => void;
 };
 
 const DELAI_SAUVEGARDE = 800;
@@ -70,6 +74,7 @@ export function Postit({
   onCouleur,
   onVerrou,
   onSupprimer,
+  onOccupe,
 }: Props) {
   // Décalage visuel pendant le geste en cours (non encore enregistré).
   const [glisse, setGlisse] = useState({ dx: 0, dy: 0, dw: 0, dh: 0 });
@@ -117,9 +122,10 @@ export function Postit({
       e.stopPropagation();
       (e.target as Element).setPointerCapture(e.pointerId);
       geste.current = { mode, x0: e.clientX, y0: e.clientY };
+      onOccupe(note.id, true);
       onDevant(note.id);
     },
-    [note.locked, note.id, onDevant],
+    [note.locked, note.id, onDevant, onOccupe],
   );
 
   const bouger = useCallback(
@@ -154,6 +160,7 @@ export function Postit({
       const g = geste.current;
       if (!g) return;
       geste.current = null;
+      onOccupe(note.id, false);
       try {
         (e.target as Element).releasePointerCapture(e.pointerId);
       } catch {
@@ -175,7 +182,7 @@ export function Postit({
         });
       }
     },
-    [glisse, note.id, note.x, note.y, note.width, note.height, onPoser],
+    [glisse, note.id, note.x, note.y, note.width, note.height, onPoser, onOccupe],
   );
 
   // Clavier : le bandeau est focusable, les flèches déplacent. Un tableau
@@ -258,7 +265,11 @@ export function Postit({
         <input
           value={titre}
           onChange={(e) => setTitre(e.target.value)}
-          onBlur={() => sale && enregistrer()}
+          onFocus={() => onOccupe(note.id, true)}
+          onBlur={() => {
+            if (sale) enregistrer();
+            onOccupe(note.id, false);
+          }}
           onPointerDown={(e) => e.stopPropagation()}
           maxLength={TITRE_MAX}
           placeholder="Titre"
@@ -333,7 +344,11 @@ export function Postit({
       <textarea
         value={texte}
         onChange={(e) => setTexte(e.target.value)}
-        onBlur={() => sale && enregistrer()}
+        onFocus={() => onOccupe(note.id, true)}
+        onBlur={() => {
+          if (sale) enregistrer();
+          onOccupe(note.id, false);
+        }}
         onPointerDown={(e) => e.stopPropagation()}
         placeholder="Écrire…"
         spellCheck
