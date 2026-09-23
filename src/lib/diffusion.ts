@@ -39,3 +39,51 @@ export function emailValide(email: string): boolean {
   const m = e.match(/^[^@]+@([^@]+)$/);
   return !!m && m[1].includes(".") && !m[1].startsWith(".") && !m[1].endsWith(".");
 }
+
+/** Construit le filtre Prisma d un segment. Vit ici (et non dans un fichier
+ *  "use server", qui ne peut exporter que de l async) pour etre partage par
+ *  la page Abonnes et par les campagnes.
+ *  Regle de surete : on ne vise JAMAIS un desabonne, un consentement retire
+ *  ni une adresse en rebond. */
+export function whereDuSegment(tenantId: string, s: Segment) {
+  const serviceActif = {
+    deletedAt: null,
+    status: "ACTIF" as const,
+    ...(s.division ? { product: { division: s.division } } : {}),
+    ...(s.groupeProduit ? { product: { group: s.groupeProduit } } : {}),
+    ...(s.produitContient
+      ? { product: { name: { contains: s.produitContient } } }
+      : {}),
+  };
+  const filtreClient =
+    s.division || s.groupeProduit || s.produitContient
+      ? { services: { some: serviceActif } }
+      : {};
+
+  // Un contact sans fiche client (abonne du site web) ne peut satisfaire aucun
+  // critere de produit : on ne l inclut que si c est demande explicitement.
+  const critereClient = Object.keys(filtreClient).length
+    ? s.inclureSansClient
+      ? { OR: [{ client: filtreClient }, { clientId: null }] }
+      : { client: filtreClient }
+    : {};
+
+  return {
+    tenantId,
+    deletedAt: null,
+    active: true,
+    unsubscribedAt: null,
+    bouncedAt: null,
+    consent: { not: "RETIRE" },
+    ...critereClient,
+  };
+}
+
+/** Etats d une campagne, dans l ordre du cycle de vie. */
+export const STATUT_CAMPAGNE: Record<string, string> = {
+  BROUILLON: "Brouillon",
+  PRETE: "Prete a envoyer",
+  EN_COURS: "Envoi en cours",
+  ENVOYEE: "Envoyee",
+  ANNULEE: "Annulee",
+};

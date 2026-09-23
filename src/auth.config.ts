@@ -20,7 +20,12 @@ export const authConfig = {
       const isPublic =
         pathname === "/login" ||
         pathname.startsWith("/api/auth") ||
-        pathname.startsWith("/api/cron"); // protégé par CRON_SECRET, pas par session
+        pathname.startsWith("/api/cron") || // protégé par CRON_SECRET, pas par session
+        // Liste de diffusion : le désabonnement DOIT fonctionner sans compte
+        // (obligation LCAP) et le formulaire du site web poste sans session.
+        // Le jeton du lien fait office d identification.
+        pathname.startsWith("/desabonnement") ||
+        pathname.startsWith("/api/diffusion");
 
       if (isPublic) return true;
       return isLoggedIn;

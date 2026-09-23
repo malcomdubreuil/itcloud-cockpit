@@ -6,7 +6,7 @@ import { auth } from "@/auth";
 import { assertCan } from "@/application/policies/can";
 import { prisma } from "@/infrastructure/db/prisma";
 import { audit } from "@/infrastructure/db/audit";
-import { emailValide, type Segment } from "@/lib/diffusion";
+import { emailValide, whereDuSegment, type Segment } from "@/lib/diffusion";
 
 // Liste de diffusion — abonnés. Aucun envoi ici : cette étape ne fait que
 // constituer et entretenir la liste (livraison 1).
@@ -23,40 +23,6 @@ function nouveauJeton(): string {
   return randomBytes(24).toString("base64url");
 }
 
-/** Construit le `where` Prisma correspondant à un segment. */
-function whereDuSegment(tenantId: string, s: Segment) {
-  const serviceActif = {
-    deletedAt: null,
-    status: "ACTIF" as const,
-    ...(s.division ? { product: { division: s.division } } : {}),
-    ...(s.groupeProduit ? { product: { group: s.groupeProduit } } : {}),
-    ...(s.produitContient
-      ? { product: { name: { contains: s.produitContient } } }
-      : {}),
-  };
-  const filtreClient =
-    s.division || s.groupeProduit || s.produitContient
-      ? { services: { some: serviceActif } }
-      : {};
-
-  // Un contact sans fiche client (abonné du site web) ne peut satisfaire aucun
-  // critère de produit : on ne l'inclut que si c'est demandé explicitement.
-  const critereClient = Object.keys(filtreClient).length
-    ? s.inclureSansClient
-      ? { OR: [{ client: filtreClient }, { clientId: null }] }
-      : { client: filtreClient }
-    : {};
-
-  return {
-    tenantId,
-    deletedAt: null,
-    active: true,
-    unsubscribedAt: null,
-    bouncedAt: null,
-    consent: { not: "RETIRE" },
-    ...critereClient,
-  };
-}
 
 /** Compte les destinataires d'un segment — sert à l'aperçu avant envoi. */
 export async function compterSegment(segment: Segment): Promise<number> {

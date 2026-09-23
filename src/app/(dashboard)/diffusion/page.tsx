@@ -7,6 +7,7 @@ import { prisma } from "@/infrastructure/db/prisma";
 import { DiffusionOutils } from "@/components/diffusion-outils";
 import { ContactActions } from "@/components/contact-actions";
 import { SegmentExplorer } from "@/components/segment-explorer";
+import { DiffusionTabs } from "@/components/diffusion-tabs";
 import { CONSENT_LABEL } from "@/lib/diffusion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -124,6 +125,8 @@ export default async function DiffusionPage({
           clients={clients.map((c) => ({ id: c.id, name: c.companyName }))}
         />
       </div>
+
+      <DiffusionTabs actif="abonnes" />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
