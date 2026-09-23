@@ -321,11 +321,12 @@ export function Postit({
           onPointerMove={bouger}
           onPointerUp={relacher}
           onPointerCancel={relacher}
-          className="absolute right-0 bottom-0 h-4 w-4 cursor-nwse-resize touch-none"
+          // 20 px et non 16 : a 16 px la poignee se manque d'un pixel, et
+          // l'opacite de depart doit suffire a la VOIR sans clic d'essai.
+          className="absolute right-0 bottom-0 h-5 w-5 cursor-nwse-resize touch-none opacity-40 transition-opacity hover:opacity-80"
           style={{
             background:
-              "linear-gradient(135deg, transparent 50%, currentColor 50%)",
-            opacity: 0.2,
+              "linear-gradient(135deg, transparent 55%, currentColor 55%)",
           }}
         />
       )}
