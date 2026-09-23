@@ -12,11 +12,20 @@
 
 export const COULEURS = [
   { code: "JAUNE", label: "Jaune" },
-  { code: "ROSE", label: "Rose" },
+  { code: "AMBRE", label: "Ambre" },
   { code: "ORANGE", label: "Orange" },
-  { code: "VERT", label: "Vert" },
-  { code: "BLEU", label: "Bleu" },
+  { code: "ROUGE", label: "Rouge" },
+  { code: "ROSE", label: "Rose" },
+  { code: "FUCHSIA", label: "Fuchsia" },
   { code: "MAUVE", label: "Mauve" },
+  { code: "INDIGO", label: "Indigo" },
+  { code: "BLEU", label: "Bleu" },
+  { code: "CIEL", label: "Ciel" },
+  { code: "CYAN", label: "Cyan" },
+  { code: "TURQUOISE", label: "Turquoise" },
+  { code: "VERT", label: "Vert" },
+  { code: "LIME", label: "Lime" },
+  { code: "PIERRE", label: "Pierre" },
   { code: "GRIS", label: "Gris" },
 ] as const;
 
@@ -30,15 +39,21 @@ export function estCouleur(v: string | undefined | null): v is CouleurCode {
 
 /** Classes Tailwind d'un post-it : fond et bordure. */
 export const CLASSES_COULEUR: Record<CouleurCode, string> = {
-  JAUNE: "bg-amber-100 border-amber-300 dark:bg-amber-200 dark:border-amber-400",
+  JAUNE: "bg-yellow-100 border-yellow-300 dark:bg-yellow-200 dark:border-yellow-400",
+  AMBRE: "bg-amber-100 border-amber-300 dark:bg-amber-200 dark:border-amber-400",
+  ORANGE: "bg-orange-100 border-orange-300 dark:bg-orange-200 dark:border-orange-400",
+  ROUGE: "bg-red-100 border-red-300 dark:bg-red-200 dark:border-red-400",
   ROSE: "bg-pink-100 border-pink-300 dark:bg-pink-200 dark:border-pink-400",
-  ORANGE:
-    "bg-orange-100 border-orange-300 dark:bg-orange-200 dark:border-orange-400",
-  VERT:
-    "bg-emerald-100 border-emerald-300 dark:bg-emerald-200 dark:border-emerald-400",
-  BLEU: "bg-sky-100 border-sky-300 dark:bg-sky-200 dark:border-sky-400",
-  MAUVE:
-    "bg-violet-100 border-violet-300 dark:bg-violet-200 dark:border-violet-400",
+  FUCHSIA: "bg-fuchsia-100 border-fuchsia-300 dark:bg-fuchsia-200 dark:border-fuchsia-400",
+  MAUVE: "bg-violet-100 border-violet-300 dark:bg-violet-200 dark:border-violet-400",
+  INDIGO: "bg-indigo-100 border-indigo-300 dark:bg-indigo-200 dark:border-indigo-400",
+  BLEU: "bg-blue-100 border-blue-300 dark:bg-blue-200 dark:border-blue-400",
+  CIEL: "bg-sky-100 border-sky-300 dark:bg-sky-200 dark:border-sky-400",
+  CYAN: "bg-cyan-100 border-cyan-300 dark:bg-cyan-200 dark:border-cyan-400",
+  TURQUOISE: "bg-teal-100 border-teal-300 dark:bg-teal-200 dark:border-teal-400",
+  VERT: "bg-emerald-100 border-emerald-300 dark:bg-emerald-200 dark:border-emerald-400",
+  LIME: "bg-lime-100 border-lime-300 dark:bg-lime-200 dark:border-lime-400",
+  PIERRE: "bg-stone-100 border-stone-300 dark:bg-stone-200 dark:border-stone-400",
   GRIS: "bg-slate-100 border-slate-300 dark:bg-slate-200 dark:border-slate-400",
 };
 
@@ -47,12 +62,21 @@ export const ENCRE = "text-neutral-900";
 
 /** Pastille de choix de couleur (plus saturée : elle doit se distinguer). */
 export const PASTILLE_COULEUR: Record<CouleurCode, string> = {
-  JAUNE: "bg-amber-300",
-  ROSE: "bg-pink-300",
+  JAUNE: "bg-yellow-300",
+  AMBRE: "bg-amber-300",
   ORANGE: "bg-orange-300",
-  VERT: "bg-emerald-300",
-  BLEU: "bg-sky-300",
+  ROUGE: "bg-red-300",
+  ROSE: "bg-pink-300",
+  FUCHSIA: "bg-fuchsia-300",
   MAUVE: "bg-violet-300",
+  INDIGO: "bg-indigo-300",
+  BLEU: "bg-blue-300",
+  CIEL: "bg-sky-300",
+  CYAN: "bg-cyan-300",
+  TURQUOISE: "bg-teal-300",
+  VERT: "bg-emerald-300",
+  LIME: "bg-lime-300",
+  PIERRE: "bg-stone-300",
   GRIS: "bg-slate-300",
 };
 

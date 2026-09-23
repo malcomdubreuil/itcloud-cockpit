@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GripHorizontal, Lock, LockOpen, Palette, Trash2 } from "lucide-react";
+import { GripVertical, Lock, LockOpen, Palette, Trash2 } from "lucide-react";
 import {
   CLASSES_COULEUR,
   COULEURS,
@@ -239,18 +239,32 @@ export function Postit({
         onPointerCancel={relacher}
         onKeyDown={auClavier}
         className={cn(
-          "flex shrink-0 touch-none items-center gap-1 border-b border-black/10 px-1.5 py-1 dark:border-white/10",
+          "flex shrink-0 touch-none items-center gap-1 border-b border-black/10 px-1.5 py-1.5 dark:border-white/10",
           note.locked ? "cursor-default" : "cursor-grab active:cursor-grabbing",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         )}
       >
         {note.locked ? (
-          <Lock className="h-3.5 w-3.5 shrink-0 opacity-50" />
+          <Lock className="h-4 w-4 shrink-0 opacity-50" />
         ) : (
-          <GripHorizontal className="h-3.5 w-3.5 shrink-0 opacity-40" />
+          <GripVertical className="h-4 w-4 shrink-0 opacity-40" />
         )}
 
-        <span className="flex-1" />
+        {/* Le titre vit DANS le bandeau, tout en haut du post-it : c'est lui
+            qu'on lit de loin sur un tableau chargé. Il arrête la propagation
+            du pointeur, sinon cliquer dedans déclencherait un déplacement au
+            lieu de placer le curseur. Le reste du bandeau — la poignée, les
+            marges, l'espace derrière les boutons — reste la zone de prise. */}
+        <input
+          value={titre}
+          onChange={(e) => setTitre(e.target.value)}
+          onBlur={() => sale && enregistrer()}
+          onPointerDown={(e) => e.stopPropagation()}
+          maxLength={TITRE_MAX}
+          placeholder="Titre"
+          aria-label="Titre du post-it"
+          className="min-w-0 flex-1 cursor-text bg-transparent text-sm font-semibold placeholder:font-normal placeholder:opacity-35 focus-visible:outline-none"
+        />
 
         <button
           type="button"
@@ -293,7 +307,7 @@ export function Postit({
       </div>
 
       {palette && (
-        <div className="flex shrink-0 flex-wrap gap-1 border-b border-black/10 px-1.5 py-1.5 dark:border-white/10">
+        <div className="grid shrink-0 grid-cols-8 gap-1 border-b border-black/10 px-1.5 py-1.5 dark:border-white/10">
           {COULEURS.map((c) => (
             <button
               key={c.code}
@@ -306,7 +320,7 @@ export function Postit({
                 setPalette(false);
               }}
               className={cn(
-                "h-5 w-5 rounded-full border border-black/20",
+                "aspect-square w-full rounded-full border border-black/20",
                 PASTILLE_COULEUR[c.code],
                 c.code === couleur && "ring-2 ring-foreground ring-offset-1",
               )}
@@ -314,18 +328,6 @@ export function Postit({
           ))}
         </div>
       )}
-
-      {/* ── Titre ── */}
-      <input
-        value={titre}
-        onChange={(e) => setTitre(e.target.value)}
-        onBlur={() => sale && enregistrer()}
-        onPointerDown={(e) => e.stopPropagation()}
-        maxLength={TITRE_MAX}
-        placeholder="Titre"
-        aria-label="Titre du post-it"
-        className="shrink-0 border-b border-black/10 bg-transparent px-2.5 py-1.5 text-sm font-semibold placeholder:font-normal placeholder:opacity-35 focus-visible:outline-none"
-      />
 
       {/* ── Corps ── */}
       <textarea

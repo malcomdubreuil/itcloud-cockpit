@@ -5,6 +5,7 @@ import { SidebarNav } from "@/components/sidebar-nav";
 import { DivisionSwitch } from "@/components/division-switch";
 import { DIVISIONS, currentDivision } from "@/lib/division";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { PleinEcran } from "@/components/plein-ecran";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
@@ -41,6 +42,7 @@ export default async function DashboardLayout({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center justify-end gap-2 border-b px-4">
+          <PleinEcran />
           <ThemeToggle />
           <form
             action={async () => {
