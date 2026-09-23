@@ -197,7 +197,16 @@ export function Postit({
         });
       }
     },
-    [glisse, note.id, note.x, note.y, note.width, note.height, onPoser, onOccupe],
+    [
+      glisse,
+      note.id,
+      note.x,
+      note.y,
+      note.width,
+      note.height,
+      onPoser,
+      onOccupe,
+    ],
   );
 
   // Clavier : le bandeau est focusable, les flèches déplacent. Un tableau
@@ -228,7 +237,10 @@ export function Postit({
   return (
     <div
       className={cn(
-        "absolute flex flex-col overflow-hidden rounded-md border shadow-sm",
+        "absolute flex flex-col rounded-md border shadow-sm",
+        // Le panneau d'apparence doit pouvoir depasser du post-it ; le reste
+        // du temps on decoupe, pour que le texte respecte les coins arrondis.
+        palette ? "overflow-visible" : "overflow-hidden",
         // Le post-it en cours de saisie se distingue nettement : sur un
         // tableau charge, savoir OU l'on ecrit evite d'ecrire au mauvais
         // endroit.
@@ -265,7 +277,7 @@ export function Postit({
         onPointerCancel={relacher}
         onKeyDown={auClavier}
         className={cn(
-          "flex shrink-0 touch-none items-center gap-1 border-b border-black/10 px-1.5 py-1.5 dark:border-white/10",
+          "relative flex shrink-0 touch-none items-center gap-1 border-b border-black/10 px-1.5 py-1.5 dark:border-white/10",
           note.locked ? "cursor-default" : "cursor-grab active:cursor-grabbing",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         )}
@@ -345,63 +357,72 @@ export function Postit({
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
+        {palette && (
+          <div
+            // Panneau FLOTTANT et non dans le flux : sur une note courte, la
+            // seconde rangee de couleurs etait coupee par la hauteur de la
+            // note, donc la moitie de la palette etait inatteignable.
+            className={cn(
+              "absolute top-full right-0 left-0 z-20 space-y-1.5 rounded-b-md border px-1.5 py-1.5 shadow-lg",
+              CLASSES_COULEUR[couleur],
+            )}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {/* Taille du texte. Rangee ici plutot que dans le bandeau : deux
+                  boutons de plus la-haut le rendraient illisible, et couleur et
+                  taille sont deux reglages d'apparence — ils vont ensemble. */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="Réduire le texte"
+                title="Réduire le texte"
+                disabled={taille === TAILLES[0]}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => onTaille(note.id, tailleVoisine(taille, -1))}
+                className="rounded p-1 opacity-60 hover:bg-black/5 hover:opacity-100 disabled:opacity-20"
+              >
+                <Minus className="h-3.5 w-3.5" />
+              </button>
+              <span className="min-w-12 text-center text-xs tabular-nums opacity-70">
+                {taille} px
+              </span>
+              <button
+                type="button"
+                aria-label="Agrandir le texte"
+                title="Agrandir le texte"
+                disabled={taille === TAILLES[TAILLES.length - 1]}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => onTaille(note.id, tailleVoisine(taille, 1))}
+                className="rounded p-1 opacity-60 hover:bg-black/5 hover:opacity-100 disabled:opacity-20"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-8 gap-1">
+              {COULEURS.map((c) => (
+                <button
+                  key={c.code}
+                  type="button"
+                  aria-label={c.label}
+                  title={c.label}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    onCouleur(note.id, c.code);
+                    setPalette(false);
+                  }}
+                  className={cn(
+                    "aspect-square w-full rounded-full border border-black/20",
+                    PASTILLE_COULEUR[c.code],
+                    c.code === couleur &&
+                      "ring-2 ring-foreground ring-offset-1",
+                  )}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
-
-      {palette && (
-        <div className="shrink-0 space-y-1.5 border-b border-black/10 px-1.5 py-1.5 dark:border-white/10">
-          {/* Taille du texte. Rangee ici plutot que dans le bandeau : deux
-              boutons de plus la-haut le rendraient illisible, et couleur et
-              taille sont deux reglages d'apparence — ils vont ensemble. */}
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              aria-label="Réduire le texte"
-              title="Réduire le texte"
-              disabled={taille === TAILLES[0]}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => onTaille(note.id, tailleVoisine(taille, -1))}
-              className="rounded p-1 opacity-60 hover:bg-black/5 hover:opacity-100 disabled:opacity-20"
-            >
-              <Minus className="h-3.5 w-3.5" />
-            </button>
-            <span className="min-w-12 text-center text-xs tabular-nums opacity-70">
-              {taille} px
-            </span>
-            <button
-              type="button"
-              aria-label="Agrandir le texte"
-              title="Agrandir le texte"
-              disabled={taille === TAILLES[TAILLES.length - 1]}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => onTaille(note.id, tailleVoisine(taille, 1))}
-              className="rounded p-1 opacity-60 hover:bg-black/5 hover:opacity-100 disabled:opacity-20"
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-8 gap-1">
-          {COULEURS.map((c) => (
-            <button
-              key={c.code}
-              type="button"
-              aria-label={c.label}
-              title={c.label}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => {
-                onCouleur(note.id, c.code);
-                setPalette(false);
-              }}
-              className={cn(
-                "aspect-square w-full rounded-full border border-black/20",
-                PASTILLE_COULEUR[c.code],
-                c.code === couleur && "ring-2 ring-foreground ring-offset-1",
-              )}
-            />
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── Corps ── */}
       <textarea
