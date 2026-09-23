@@ -167,6 +167,14 @@ export function Postit({
         fin: el.selectionEnd,
       });
       if (!r) return;
+      // Texte inchange : on ne memorise PAS de selection a restaurer. Sinon
+      // React n'a rien a re-rendre, l'effet de restauration ne part jamais, et
+      // la position resterait en attente — pour se rappliquer a la prochaine
+      // frappe et renvoyer le curseur en arriere.
+      if (r.texte === el.value) {
+        el.setSelectionRange(r.debut, r.fin);
+        return;
+      }
       selection.current = [r.debut, r.fin];
       setTexte(r.texte);
     },

@@ -64,9 +64,13 @@ export function basculerPrefixe(etat: Etat, prefixe: Prefixe): Etat {
     const actuel = prefixeDe(avant);
     const nu = actuel ? avant.slice(actuel.length) : avant;
 
-    // Une ligne vide ne reçoit pas de puce : on n'ajoute pas un point tout
-    // seul sous le dernier élément quand on sélectionne trop large.
-    const apres = toutesDeja || (nu === "" && !actuel) ? nu : prefixe + nu;
+    // Sur une sélection de PLUSIEURS lignes, une ligne vide ne reçoit pas de
+    // puce : on n'ajoute pas un point tout seul sous le dernier élément.
+    // Mais sur une seule ligne — le cas d'un post-it neuf où l'on clique
+    // « puces » avant d'écrire — il faut bien la poser, sinon le bouton reste
+    // sans effet.
+    const ligneVideDansUnLot = cibles.length > 1 && nu === "" && !actuel;
+    const apres = toutesDeja || ligneVideDansUnLot ? nu : prefixe + nu;
 
     lignes[i] = apres;
     const d = apres.length - avant.length;
