@@ -18,7 +18,10 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen">
-      <aside className="hidden w-60 shrink-0 flex-col border-r bg-background md:flex">
+      <aside
+        data-masquer-plein-ecran
+        className="hidden w-60 shrink-0 flex-col border-r bg-background md:flex"
+      >
         <div className="flex h-14 items-center gap-2 px-4">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Cloud className="h-4 w-4" />

@@ -214,6 +214,10 @@ export function Postit({
     <div
       className={cn(
         "absolute flex flex-col overflow-hidden rounded-md border shadow-sm",
+        // Le post-it en cours de saisie se distingue nettement : sur un
+        // tableau charge, savoir OU l'on ecrit evite d'ecrire au mauvais
+        // endroit.
+        "focus-within:shadow-lg focus-within:ring-2 focus-within:ring-ring",
         CLASSES_COULEUR[couleur],
         ENCRE,
         enGeste ? "shadow-lg ring-2 ring-ring/40" : "transition-shadow",
@@ -265,12 +269,22 @@ export function Postit({
         <input
           value={titre}
           onChange={(e) => setTitre(e.target.value)}
-          onFocus={() => onOccupe(note.id, true)}
+          onFocus={() => {
+            onOccupe(note.id, true);
+            onDevant(note.id);
+          }}
           onBlur={() => {
             if (sale) enregistrer();
             onOccupe(note.id, false);
           }}
-          onPointerDown={(e) => e.stopPropagation()}
+          // Remonter AVANT d'arreter la propagation : sans ce rappel
+          // explicite, le stopPropagation prive aussi le conteneur de son
+          // propre onPointerDown, et cliquer dans le texte d'un post-it
+          // enfoui ne le faisait jamais passer devant.
+          onPointerDown={(e) => {
+            onDevant(note.id);
+            e.stopPropagation();
+          }}
           maxLength={TITRE_MAX}
           placeholder="Titre"
           aria-label="Titre du post-it"
@@ -344,12 +358,18 @@ export function Postit({
       <textarea
         value={texte}
         onChange={(e) => setTexte(e.target.value)}
-        onFocus={() => onOccupe(note.id, true)}
+        onFocus={() => {
+          onOccupe(note.id, true);
+          onDevant(note.id);
+        }}
         onBlur={() => {
           if (sale) enregistrer();
           onOccupe(note.id, false);
         }}
-        onPointerDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => {
+          onDevant(note.id);
+          e.stopPropagation();
+        }}
         placeholder="Écrire…"
         spellCheck
         className="min-h-0 flex-1 resize-none bg-transparent px-2.5 py-2 text-sm leading-relaxed placeholder:opacity-35 focus-visible:outline-none"

@@ -154,11 +154,21 @@ export function TableauPostits({
 
   const devant = useCallback(
     (id: string) => {
+      const actuel = notes.find((n) => n.id === id);
+      // Deja au-dessus : ne rien ecrire. Sans ce test, chaque clic ferait une
+      // ecriture inutile — et ferait clignoter les autres ecrans, puisque
+      // toute ecriture change l'empreinte du tableau.
+      if (!actuel || actuel.z >= zMax) return actuel?.z ?? zMax;
+
       const z = zMax + 1;
       setNotes((v) => v.map((n) => (n.id === id ? { ...n, z } : n)));
+      // L'ordre d'empilement est une donnee partagee : sur un tableau mural,
+      // la note qu'on remonte doit etre au-dessus pour tout le monde, et le
+      // rester apres un rechargement.
+      deplacerPostit(id, { x: actuel.x, y: actuel.y, z }).catch(echec);
       return z;
     },
-    [zMax],
+    [notes, zMax, echec],
   );
 
   const poser = useCallback(

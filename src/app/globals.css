@@ -138,3 +138,19 @@
 @media (prefers-reduced-motion: reduce) {
   .note-breathe { animation: none; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.28); }
 }
+
+/* ── Plein écran ──────────────────────────────────────────────────────────
+   Le tableau de post-it vit sur un écran mural : en plein écran on efface
+   tout ce qui n'est pas le contenu — barre latérale, titre de page, mode
+   d'emploi. Aucun état JavaScript là-dedans : `:fullscreen` est une
+   pseudo-classe native, donc l'affichage ne peut pas se désynchroniser de
+   l'état réel (Échap, F11 et le bouton donnent le même résultat). */
+html:fullscreen [data-masquer-plein-ecran],
+html:-webkit-full-screen [data-masquer-plein-ecran] {
+  display: none;
+}
+/* Marges resserrées : sur un mur, chaque pixel compte. */
+html:fullscreen main,
+html:-webkit-full-screen main {
+  padding: 0.75rem;
+}

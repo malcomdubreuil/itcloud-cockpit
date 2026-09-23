@@ -36,7 +36,7 @@ export default async function NotesPage() {
 
   return (
     <div className="space-y-4">
-      <div>
+      <div data-masquer-plein-ecran>
         <h1 className="text-2xl font-semibold">Notes</h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
           Attrapez un post-it par son bandeau pour le déplacer, tirez le coin
