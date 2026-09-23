@@ -7,6 +7,9 @@ import { assertCan } from "@/application/policies/can";
 import { prisma } from "@/infrastructure/db/prisma";
 import { audit } from "@/infrastructure/db/audit";
 import { whereDuSegment, type Segment } from "@/lib/diffusion";
+import { envoyerEssai, traiterFile } from "@/infrastructure/microsoft/envoi-campagne";
+import { graphEstConfigure } from "@/infrastructure/microsoft/graph";
+import { lireReglages, manquePourEnvoyer } from "@/lib/reglages-diffusion";
 
 // Campagnes de la liste de diffusion.
 //
@@ -214,4 +217,134 @@ export async function supprimerCampagne(campaignId: string): Promise<void> {
 
   revalidatePath("/diffusion/campagnes");
   redirect("/diffusion/campagnes");
+}
+
+
+// ── Envoi réel ───────────────────────────────────────────────────────────
+
+/** Envoi d'essai vers UNE adresse — par défaut celle de la personne
+ *  connectée. Ne touche ni la file, ni les compteurs, ni les abonnés. C'est
+ *  le passage obligé avant de viser la liste complète. */
+export async function envoyerEssaiCampagne(
+  campaignId: string,
+  adresse?: string,
+): Promise<{ destinataire: string }> {
+  const user = await requireUser();
+  const destinataire = (adresse ?? user.email ?? "").trim();
+  if (!destinataire) {
+    throw new Error("Aucune adresse d'essai : précise-la.");
+  }
+
+  await envoyerEssai(campaignId, user.tenantId, destinataire);
+
+  await audit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    action: "mailing.campaign_test",
+    entityType: "MailingCampaign",
+    entityId: campaignId,
+    after: { destinataire },
+  });
+
+  return { destinataire };
+}
+
+/** Démarre l'envoi : la campagne passe EN_COURS et le cron prend le relais.
+ *  On traite aussitôt un premier petit lot pour que quelque chose se passe
+ *  visiblement — attendre la minute suivante donnerait l'impression d'un bug. */
+export async function lancerEnvoi(campaignId: string): Promise<{
+  enAttente: number;
+  premierLot: number;
+}> {
+  const user = await requireUser();
+
+  const [c, tenant] = await Promise.all([
+    prisma.mailingCampaign.findFirst({
+      where: { id: campaignId, tenantId: user.tenantId },
+      select: { id: true, status: true, name: true },
+    }),
+    prisma.tenant.findUnique({
+      where: { id: user.tenantId },
+      select: { settings: true },
+    }),
+  ]);
+  if (!c) throw new Error("Campagne introuvable");
+  if (c.status === "ENVOYEE") throw new Error("Campagne déjà envoyée.");
+  if (c.status === "EN_COURS") throw new Error("L'envoi est déjà en cours.");
+  if (c.status !== "PRETE") {
+    throw new Error("Prépare d'abord l'envoi pour figer la liste des destinataires.");
+  }
+
+  if (!graphEstConfigure()) {
+    throw new Error(
+      "Microsoft 365 n'est pas encore branché — voir Diffusion → Paramètres.",
+    );
+  }
+  const manque = manquePourEnvoyer(lireReglages(tenant?.settings));
+  if (manque.length) {
+    throw new Error(
+      `Impossible d'envoyer : il manque ${manque.join(" et ")}. Voir Diffusion → Paramètres.`,
+    );
+  }
+
+  const enAttente = await prisma.mailingDelivery.count({
+    where: { campaignId, status: "EN_ATTENTE" },
+  });
+  if (enAttente === 0) {
+    throw new Error("Aucun destinataire en attente pour cette campagne.");
+  }
+
+  await prisma.mailingCampaign.update({
+    where: { id: campaignId },
+    data: { status: "EN_COURS", startedAt: new Date(), testMode: false },
+  });
+
+  await audit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    action: "mailing.campaign_send",
+    entityType: "MailingCampaign",
+    entityId: campaignId,
+    after: { nom: c.name, destinataires: enAttente },
+  });
+
+  // Premier lot volontairement court : la suite appartient au cron.
+  let premierLot = 0;
+  try {
+    const r = await traiterFile({ campaignId, max: 3 });
+    premierLot = r.envoyes;
+  } catch {
+    // L'échec du premier lot ne doit pas annuler le démarrage : le cron
+    // réessaiera, et les erreurs sont visibles ligne par ligne.
+  }
+
+  revalidatePath(`/diffusion/campagnes/${campaignId}`);
+  return { enAttente, premierLot };
+}
+
+/** Arrête un envoi en cours. Ce qui est parti est parti — on empêche
+ *  seulement la suite. */
+export async function arreterEnvoi(campaignId: string): Promise<void> {
+  const user = await requireUser();
+  const c = await prisma.mailingCampaign.findFirst({
+    where: { id: campaignId, tenantId: user.tenantId },
+    select: { id: true, status: true },
+  });
+  if (!c) throw new Error("Campagne introuvable");
+  if (c.status !== "EN_COURS") throw new Error("Aucun envoi en cours.");
+
+  await prisma.mailingCampaign.update({
+    where: { id: campaignId },
+    data: { status: "PRETE" },
+  });
+
+  await audit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    action: "mailing.campaign_pause",
+    entityType: "MailingCampaign",
+    entityId: campaignId,
+  });
+
+  revalidatePath(`/diffusion/campagnes/${campaignId}`);
 }

@@ -1,39 +1,63 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ListChecks, Loader2, RotateCcw, Trash2, X } from "lucide-react";
+import {
+  ListChecks,
+  Loader2,
+  Pause,
+  RotateCcw,
+  Send,
+  TestTube2,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
+  arreterEnvoi,
+  envoyerEssaiCampagne,
+  lancerEnvoi,
   preparerEnvoi,
   remettreEnBrouillon,
   supprimerCampagne,
 } from "@/app/(dashboard)/diffusion/campagnes/actions";
 
-// Actions sur une campagne : figer la liste des destinataires, revenir en
-// brouillon, supprimer. L'envoi réel viendra avec la connexion Microsoft.
+// Actions sur une campagne : figer la liste, envoyer un essai, lancer l'envoi,
+// l'arrêter, revenir en brouillon, supprimer.
+//
+// Le parcours est volontairement séquentiel — préparer, essayer, envoyer — et
+// l'envoi réel demande une confirmation explicite avec le nombre exact de
+// destinataires. Un envoi en nombre ne se rattrape pas.
 
 export function CampagneActions({
   campaignId,
   status,
   peutSupprimer,
+  enAttente,
+  courrielUtilisateur,
 }: {
   campaignId: string;
   status: string;
   peutSupprimer: boolean;
+  enAttente: number;
+  courrielUtilisateur?: string | null;
 }) {
   const [pending, start] = useTransition();
   const [confirmer, setConfirmer] = useState(false);
+  const [confirmerEnvoi, setConfirmerEnvoi] = useState(false);
   const envoyee = status === "ENVOYEE";
+  const enCours = status === "EN_COURS";
+
+  const executer = (fn: () => Promise<void>) => start(fn);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {!envoyee && status !== "PRETE" && (
+      {!envoyee && !enCours && status !== "PRETE" && (
         <Button
           size="sm"
           disabled={pending}
           onClick={() =>
-            start(async () => {
+            executer(async () => {
               try {
                 const r = await preparerEnvoi(campaignId);
                 toast.success(
@@ -51,14 +75,83 @@ export function CampagneActions({
         </Button>
       )}
 
+      {/* Essai : possible à tout moment tant que la campagne n'est pas partie. */}
+      {!envoyee && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={() =>
+            executer(async () => {
+              try {
+                const r = await envoyerEssaiCampagne(campaignId);
+                toast.success(`Essai envoyé à ${r.destinataire}.`);
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Échec", {
+                  duration: 10000,
+                });
+              }
+            })
+          }
+        >
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube2 className="h-3.5 w-3.5" />}
+          Envoyer un essai
+          {courrielUtilisateur ? ` (${courrielUtilisateur})` : ""}
+        </Button>
+      )}
+
       {status === "PRETE" && (
         <>
+          {confirmerEnvoi ? (
+            <span className="flex flex-wrap items-center gap-1">
+              <Button
+                size="sm"
+                disabled={pending}
+                onClick={() =>
+                  executer(async () => {
+                    try {
+                      const r = await lancerEnvoi(campaignId);
+                      toast.success(
+                        `Envoi lancé vers ${r.enAttente} destinataire(s). ` +
+                          "Il se poursuit en arrière-plan.",
+                      );
+                      setConfirmerEnvoi(false);
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : "Échec", {
+                        duration: 10000,
+                      });
+                    }
+                  })
+                }
+              >
+                <Send className="h-3.5 w-3.5" />
+                Oui, écrire à {enAttente} personne{enAttente > 1 ? "s" : ""}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setConfirmerEnvoi(false)}
+                aria-label="Annuler"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </span>
+          ) : (
+            <Button
+              size="sm"
+              disabled={pending || enAttente === 0}
+              onClick={() => setConfirmerEnvoi(true)}
+            >
+              <Send className="h-3.5 w-3.5" /> Lancer l&apos;envoi
+            </Button>
+          )}
+
           <Button
             size="sm"
             variant="outline"
             disabled={pending}
             onClick={() =>
-              start(async () => {
+              executer(async () => {
                 try {
                   const r = await preparerEnvoi(campaignId);
                   toast.success(
@@ -74,12 +167,13 @@ export function CampagneActions({
           >
             <ListChecks className="h-3.5 w-3.5" /> Rafraîchir la liste
           </Button>
+
           <Button
             size="sm"
             variant="ghost"
             disabled={pending}
             onClick={() =>
-              start(async () => {
+              executer(async () => {
                 try {
                   await remettreEnBrouillon(campaignId);
                   toast.success("Campagne remise en brouillon.");
@@ -94,7 +188,28 @@ export function CampagneActions({
         </>
       )}
 
-      {peutSupprimer && !envoyee && (
+      {enCours && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={() =>
+            executer(async () => {
+              try {
+                await arreterEnvoi(campaignId);
+                toast.success("Envoi arrêté. Ce qui est déjà parti reste parti.");
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Échec");
+              }
+            })
+          }
+        >
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pause className="h-3.5 w-3.5" />}
+          Arrêter l&apos;envoi
+        </Button>
+      )}
+
+      {peutSupprimer && !envoyee && !enCours && (
         confirmer ? (
           <span className="flex items-center gap-1">
             <Button
@@ -102,7 +217,7 @@ export function CampagneActions({
               variant="destructive"
               disabled={pending}
               onClick={() =>
-                start(async () => {
+                executer(async () => {
                   try {
                     await supprimerCampagne(campaignId);
                   } catch (e) {

@@ -5,6 +5,8 @@ import { ArrowLeft } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { CampagneActions } from "@/components/campagne-actions";
+import { EtatEnvoi } from "@/components/etat-envoi";
+import { graphEstConfigure } from "@/infrastructure/microsoft/graph";
 import { modifierCampagne } from "../actions";
 import { decrireSegment, STATUT_CAMPAGNE, type Segment } from "@/lib/diffusion";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +38,7 @@ export default async function CampagnePage({
   });
   if (!c) notFound();
 
-  const [groupesRaw, deliveries, apercu] = await Promise.all([
+  const [groupesRaw, deliveries, enAttente, apercu] = await Promise.all([
     prisma.product.findMany({
       where: { tenantId, deletedAt: null },
       select: { group: true },
@@ -44,6 +46,9 @@ export default async function CampagnePage({
       orderBy: { group: "asc" },
     }),
     prisma.mailingDelivery.count({ where: { campaignId: c.id } }),
+    prisma.mailingDelivery.count({
+      where: { campaignId: c.id, status: "EN_ATTENTE" },
+    }),
     prisma.mailingDelivery.findMany({
       where: { campaignId: c.id },
       orderBy: { email: "asc" },
@@ -96,14 +101,25 @@ export default async function CampagnePage({
         campaignId={c.id}
         status={c.status}
         peutSupprimer={c.sentCount === 0}
+        enAttente={enAttente}
+        courrielUtilisateur={session.user.email}
       />
 
-      <div className="rounded-md border bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
-        <strong>L&apos;envoi n&apos;est pas encore branché.</strong> La
-        connexion à Microsoft 365 attend le consentement administrateur dans
-        Entra. En attendant, vous pouvez tout préparer : le contenu, la cible,
-        et figer la liste des destinataires.
-      </div>
+      {!graphEstConfigure() && (
+        <div className="rounded-md border bg-amber-50 p-3 text-sm dark:bg-amber-950/30">
+          <strong>Microsoft 365 n&apos;est pas encore branché.</strong> Tout se
+          prépare normalement — contenu, cible, liste figée — mais aucun
+          courriel ne peut partir. Voir{" "}
+          <Link href="/diffusion/parametres" className="underline">
+            Diffusion → Paramètres
+          </Link>
+          .
+        </div>
+      )}
+
+      {c.status === "EN_COURS" && (
+        <EtatEnvoi enAttente={enAttente} envoyes={c.sentCount} echecs={c.failCount} />
+      )}
 
       {/* ── Édition ─────────────────────────────────────────────── */}
       <form action={modifierCampagne.bind(null, c.id)} className="space-y-3 rounded-md border p-4">

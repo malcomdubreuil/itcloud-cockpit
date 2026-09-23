@@ -50,6 +50,18 @@ const envSchema = z.object({
   QBO_REDIRECT_URI: z.string().optional(),
   QBO_ENVIRONMENT: z.enum(["production", "sandbox"]).default("production"),
 
+  // Microsoft Graph (envoi de la liste de diffusion) — flux « client
+  // credentials » : l'application s'authentifie seule, sans session
+  // utilisateur. Optionnel tant que le consentement administrateur n'est pas
+  // accordé dans Entra ; l'interface le signale au lieu de planter.
+  MS_TENANT_ID: z.string().optional(),
+  MS_CLIENT_ID: z.string().optional(),
+  MS_CLIENT_SECRET: z.string().optional(),
+  /** Boîte qui envoie réellement (ex. keven@god-info.com). Une
+   *  ApplicationAccessPolicy dans Exchange limite l'application à CETTE boîte
+   *  — sans quoi Mail.Send donne accès à toutes celles du domaine. */
+  MS_SENDER: z.string().optional(),
+
   APP_URL: z.string().optional(),
 });
 
