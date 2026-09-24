@@ -56,3 +56,43 @@ export function yearlyRevenue(price: number, periodDays: number): number {
   if (periodDays <= 0) return 0;
   return price * (365 / periodDays);
 }
+
+// ── Saisie du prix en heures ─────────────────────────────────────────────
+
+/** Taux horaire de God-Info. Vit ici plutôt que dans la base parce qu'il ne
+ *  change qu'exceptionnellement ; le jour où il changera, une seule ligne à
+ *  modifier — et les tâches déjà créées gardent leur montant, ce qui est bien
+ *  ce qu'on veut : on ne reprice pas le passé. */
+export const TAUX_HORAIRE = 82;
+
+/** Lit un montant saisi, en dollars OU en heures.
+ *
+ *  « 246 » vaut 246 $. « 3h » vaut 3 × 82 = 246 $. Accepte la virgule
+ *  décimale, les espaces, et les formes « 3 h », « 3hr », « 3 heures ».
+ *
+ *  Retourne null si ce n'est pas un montant valide — l'appelant décide quoi
+ *  en dire, plutôt que de recevoir un 0 silencieux qui créerait une tâche
+ *  gratuite sans que personne ne s'en aperçoive. */
+export function lireMontant(
+  saisie: string,
+  taux = TAUX_HORAIRE,
+): { montant: number; heures: number | null } | null {
+  const s = saisie.trim().toLowerCase().replace(",", ".").replace(/\s+/g, "");
+  if (!s) return null;
+
+  // « 3h », « 3hr », « 3hrs », « 3heure », « 3heures »
+  const enHeures = s.match(/^(\d+(?:\.\d+)?)(?:h|hr|hrs|heure|heures)$/);
+  if (enHeures) {
+    const heures = parseFloat(enHeures[1]);
+    if (!Number.isFinite(heures) || heures < 0) return null;
+    // Arrondi au cent : 2,5 h à 82 $ donne 205 $, pas 204,99999.
+    return { montant: Math.round(heures * taux * 100) / 100, heures };
+  }
+
+  // Montant en dollars, avec ou sans symbole.
+  const enDollars = s.replace(/\$/g, "");
+  if (!/^\d+(?:\.\d+)?$/.test(enDollars)) return null;
+  const montant = parseFloat(enDollars);
+  if (!Number.isFinite(montant) || montant < 0) return null;
+  return { montant, heures: null };
+}

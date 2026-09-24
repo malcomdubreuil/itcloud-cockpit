@@ -5,7 +5,7 @@ import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { createTask } from "@/app/(dashboard)/taches/actions";
-import { PERIODS } from "@/lib/taches";
+import { PERIODS, TAUX_HORAIRE, lireMontant } from "@/lib/taches";
 import { ChoixClient } from "@/components/choix-client";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,11 @@ export type ClientQbo = { id: string; nom: string };
 
 const champ =
   "h-8 rounded-md border border-input bg-transparent px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none";
+
+const cad = new Intl.NumberFormat("fr-CA", {
+  style: "currency",
+  currency: "CAD",
+});
 
 const isoInDays = (days: number) => {
   const d = new Date();
@@ -44,13 +49,17 @@ export function AjouterTache({ clients }: { clients: ClientQbo[] }) {
 
   const ajouter = () => {
     if (!title.trim()) return toast.error("Donne un titre à la tâche.");
-    const parsed = parseFloat(price.replace(",", "."));
-    if (!Number.isFinite(parsed) || parsed < 0) return toast.error("Prix invalide");
+    const lu = lireMontant(price);
+    if (!lu) {
+      return toast.error(
+        `Prix invalide. Entre un montant (246) ou des heures (3h à ${TAUX_HORAIRE} $/h).`,
+      );
+    }
 
     const fd = new FormData();
     fd.set("qboCustomerId", qboCustomerId);
     fd.set("title", title.trim());
-    fd.set("price", String(parsed));
+    fd.set("price", String(lu.montant));
     fd.set("periodDays", String(periodDays));
     fd.set("nextDueDate", due);
     fd.set("lastQbInvoiceNo", facture);
@@ -116,6 +125,37 @@ export function AjouterTache({ clients }: { clients: ClientQbo[] }) {
           />
           / occurrence
         </label>
+
+        {/* Ce que l'ERP a compris de la saisie. Il vaut mieux le VOIR avant
+            d'enregistrer que de découvrir le montant après coup sur la fiche. */}
+        {(() => {
+          const lu = lireMontant(price);
+          if (!price.trim()) {
+            return (
+              <span className="text-xs text-muted-foreground">
+                montant, ou heures — ex. <strong>3h</strong> = {cad.format(3 * TAUX_HORAIRE)}
+              </span>
+            );
+          }
+          if (!lu) {
+            return (
+              <span className="text-xs text-destructive">
+                ni un montant ni des heures
+              </span>
+            );
+          }
+          return (
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {lu.heures !== null ? (
+                <>
+                  {lu.heures} h × {TAUX_HORAIRE} $ = <strong>{cad.format(lu.montant)}</strong>
+                </>
+              ) : (
+                <strong>{cad.format(lu.montant)}</strong>
+              )}
+            </span>
+          );
+        })()}
 
         <label className="flex items-center gap-1 text-xs text-muted-foreground">
           Période
