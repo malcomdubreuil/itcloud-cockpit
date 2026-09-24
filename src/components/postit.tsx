@@ -174,7 +174,11 @@ function ApercuSaisie({ texte }: { texte: string }) {
                   key={j}
                   style={seg.marques.includes("gras") ? FAUX_GRAS : undefined}
                   className={cn(
-                    seg.marqueur && "opacity-30",
+                    // Invisibles, mais toujours presents : ils doivent occuper leur
+                  // largeur, sinon le texte glisserait sous le curseur. Le
+                  // soulignage et le surlignage s'etendent par-dessus, donc
+                  // l'espace se fond dans la mise en forme.
+                  seg.marqueur && "text-transparent",
                     seg.marques.includes("souligne") &&
                       "underline underline-offset-2",
                     seg.marques.includes("barre") && "line-through",
