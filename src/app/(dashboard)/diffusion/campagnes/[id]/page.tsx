@@ -6,7 +6,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { CampagneActions } from "@/components/campagne-actions";
 import { EtatEnvoi } from "@/components/etat-envoi";
-import { graphEstConfigure } from "@/infrastructure/microsoft/graph";
+import { graphEstConfigure, lireConfigGraph } from "@/infrastructure/microsoft/graph";
 import { modifierCampagne } from "../actions";
 import { decrireSegment, STATUT_CAMPAGNE, type Segment } from "@/lib/diffusion";
 import { Badge } from "@/components/ui/badge";
@@ -102,7 +102,7 @@ export default async function CampagnePage({
         status={c.status}
         peutSupprimer={c.sentCount === 0}
         enAttente={enAttente}
-        courrielUtilisateur={session.user.email}
+        adresseEssai={graphEstConfigure() ? lireConfigGraph().sender : null}
       />
 
       {!graphEstConfigure() && (

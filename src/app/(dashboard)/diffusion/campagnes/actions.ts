@@ -8,7 +8,7 @@ import { prisma } from "@/infrastructure/db/prisma";
 import { audit } from "@/infrastructure/db/audit";
 import { whereDuSegment, type Segment } from "@/lib/diffusion";
 import { envoyerEssai, traiterFile } from "@/infrastructure/microsoft/envoi-campagne";
-import { graphEstConfigure } from "@/infrastructure/microsoft/graph";
+import { graphEstConfigure, lireConfigGraph } from "@/infrastructure/microsoft/graph";
 import { lireReglages, manquePourEnvoyer } from "@/lib/reglages-diffusion";
 
 // Campagnes de la liste de diffusion.
@@ -230,9 +230,14 @@ export async function envoyerEssaiCampagne(
   adresse?: string,
 ): Promise<{ destinataire: string }> {
   const user = await requireUser();
-  const destinataire = (adresse ?? user.email ?? "").trim();
-  if (!destinataire) {
-    throw new Error("Aucune adresse d'essai : précise-la.");
+
+  // Par defaut, la boite qui ENVOIE — pas le courriel du compte connecte.
+  // Le compte d'administration de l'ERP peut tres bien porter une adresse
+  // interne non livrable (admin@cockpit.local) : un essai partirait alors
+  // dans le vide, et on croirait le systeme casse.
+  const destinataire = (adresse?.trim() || lireConfigGraph().sender).trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(destinataire)) {
+    throw new Error(`Adresse d'essai invalide : ${destinataire}`);
   }
 
   await envoyerEssai(campaignId, user.tenantId, destinataire);

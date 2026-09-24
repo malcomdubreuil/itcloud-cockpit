@@ -34,17 +34,21 @@ export function CampagneActions({
   status,
   peutSupprimer,
   enAttente,
-  courrielUtilisateur,
+  adresseEssai,
 }: {
   campaignId: string;
   status: string;
   peutSupprimer: boolean;
   enAttente: number;
-  courrielUtilisateur?: string | null;
+  /** Boite d'envoi : destinataire par defaut de l'essai. */
+  adresseEssai?: string | null;
 }) {
   const [pending, start] = useTransition();
   const [confirmer, setConfirmer] = useState(false);
   const [confirmerEnvoi, setConfirmerEnvoi] = useState(false);
+  // Destinataire de l'essai, modifiable : voir le rendu dans Gmail ou Outlook
+  // est souvent plus utile que de se l'envoyer a soi-meme.
+  const [dest, setDest] = useState(adresseEssai ?? "");
   const envoyee = status === "ENVOYEE";
   const enCours = status === "EN_COURS";
 
@@ -77,27 +81,36 @@ export function CampagneActions({
 
       {/* Essai : possible à tout moment tant que la campagne n'est pas partie. */}
       {!envoyee && (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={pending}
-          onClick={() =>
-            executer(async () => {
-              try {
-                const r = await envoyerEssaiCampagne(campaignId);
-                toast.success(`Essai envoyé à ${r.destinataire}.`);
-              } catch (e) {
-                toast.error(e instanceof Error ? e.message : "Échec", {
-                  duration: 10000,
-                });
-              }
-            })
-          }
-        >
-          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube2 className="h-3.5 w-3.5" />}
-          Envoyer un essai
-          {courrielUtilisateur ? ` (${courrielUtilisateur})` : ""}
-        </Button>
+        <span className="flex flex-wrap items-center gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() =>
+              executer(async () => {
+                try {
+                  const r = await envoyerEssaiCampagne(campaignId, dest);
+                  toast.success(`Essai envoyé à ${r.destinataire}.`);
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Échec", {
+                    duration: 10000,
+                  });
+                }
+              })
+            }
+          >
+            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube2 className="h-3.5 w-3.5" />}
+            Envoyer un essai à
+          </Button>
+          <input
+            type="email"
+            value={dest}
+            onChange={(e) => setDest(e.target.value)}
+            placeholder="adresse d'essai"
+            aria-label="Adresse de l'essai"
+            className="h-8 w-56 rounded-md border border-input bg-transparent px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+          />
+        </span>
       )}
 
       {status === "PRETE" && (
