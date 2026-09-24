@@ -152,30 +152,54 @@ export async function envoyerMime(
   throw err;
 }
 
-/** Vérifie que la connexion fonctionne sans rien envoyer : on demande un jeton
- *  et on lit la boîte expéditrice. Un 403 ici = consentement non accordé. */
+/** Vérifie la connexion SANS rien envoyer.
+ *
+ *  On demande un jeton, puis on lit les permissions inscrites DEDANS. Le jeton
+ *  d'application porte ses habilitations dans sa charge utile (`roles`) : si
+ *  « Mail.Send » y figure, le secret est bon ET le consentement administrateur
+ *  est accordé. Rien d'autre à appeler.
+ *
+ *  La première version interrogeait le profil de la boîte expéditrice — et
+ *  recevait un 403, tout simplement parce que l'application n'a PAS le droit de
+ *  lire les profils (elle n'a que Mail.Send, et c'est voulu). Elle annonçait
+ *  donc « consentement non accordé » alors que tout fonctionnait.
+ *
+ *  La signature n'est pas vérifiée : ce jeton vient d'être obtenu directement
+ *  de Microsoft en TLS, et on ne l'utilise ici que pour afficher ce qu'il
+ *  contient — il n'authentifie personne. */
 export async function verifierConnexion(): Promise<
-  { ok: true; boite: string } | { ok: false; erreur: string }
+  { ok: true; boite: string; permissions: string[] } | { ok: false; erreur: string }
 > {
   try {
     const cfg = lireConfigGraph();
     const jeton = await obtenirJeton(cfg);
-    const r = await fetch(
-      `${GRAPH}/users/${encodeURIComponent(cfg.sender)}?$select=mail,displayName`,
-      { headers: { Authorization: `Bearer ${jeton}` }, cache: "no-store" },
-    );
-    if (!r.ok) {
-      const t = await r.text().catch(() => "");
+
+    let roles: string[] = [];
+    try {
+      const charge = JSON.parse(
+        Buffer.from(jeton.split(".")[1], "base64url").toString("utf8"),
+      ) as { roles?: string[] };
+      roles = charge.roles ?? [];
+    } catch {
       return {
         ok: false,
         erreur:
-          r.status === 403
-            ? "Accès refusé (403) — le consentement administrateur n'a probablement pas été accordé dans Entra."
-            : `Microsoft a répondu ${r.status} : ${t.slice(0, 300)}`,
+          "Jeton obtenu mais illisible. Réessayez ; si cela persiste, recréez le secret dans Entra.",
       };
     }
-    const j = (await r.json()) as { mail?: string; displayName?: string };
-    return { ok: true, boite: j.mail ?? cfg.sender };
+
+    if (!roles.includes("Mail.Send")) {
+      return {
+        ok: false,
+        erreur:
+          "Le secret est bon, mais la permission Mail.Send n'est pas accordée à l'application. " +
+          "Dans Entra → API permissions, ajoutez Mail.Send (type Application) puis cliquez " +
+          "« Grant admin consent »." +
+          (roles.length ? ` Permissions actuelles : ${roles.join(", ")}.` : ""),
+      };
+    }
+
+    return { ok: true, boite: cfg.sender, permissions: roles };
   } catch (e) {
     return { ok: false, erreur: e instanceof Error ? e.message : "Échec inconnu" };
   }

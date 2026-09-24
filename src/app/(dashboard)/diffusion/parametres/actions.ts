@@ -57,11 +57,11 @@ export async function enregistrerReglagesDiffusion(
 }
 
 /** Vérifie la connexion à Microsoft 365 SANS envoyer de courriel : on demande
- *  un jeton et on lit la boîte expéditrice. C'est le test qui distingue les
- *  trois pannes possibles — secret invalide, consentement non accordé,
- *  mauvaise boîte. */
+ *  un jeton et on lit les permissions inscrites dedans. Distingue le secret
+ *  invalide du consentement manquant. */
 export async function testerMicrosoft(): Promise<
-  { ok: true; boite: string } | { ok: false; erreur: string }
+  | { ok: true; boite: string; permissions: string[] }
+  | { ok: false; erreur: string }
 > {
   await requireUser();
   return verifierConnexion();

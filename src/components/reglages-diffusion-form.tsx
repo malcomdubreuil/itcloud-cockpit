@@ -23,7 +23,9 @@ export function ReglagesDiffusionForm({
 }) {
   const [pending, start] = useTransition();
   const [test, setTest] = useState<
-    { ok: true; boite: string } | { ok: false; erreur: string } | null
+    | { ok: true; boite: string; permissions: string[] }
+    | { ok: false; erreur: string }
+    | null
   >(null);
   const [testEnCours, startTest] = useTransition();
 
@@ -121,7 +123,7 @@ export function ReglagesDiffusionForm({
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Le test demande un jeton et lit la boîte expéditrice.{" "}
+            Le test demande un jeton et lit les permissions inscrites dedans.{" "}
             <strong>Aucun courriel n&apos;est envoyé.</strong>
           </p>
         )}
@@ -170,7 +172,8 @@ export function ReglagesDiffusionForm({
               {test.ok ? (
                 <>
                   Connexion établie — les courriels partiront de{" "}
-                  <strong>{test.boite}</strong>.
+                  <strong>{test.boite}</strong>. Permission accordée :{" "}
+                  {test.permissions.join(", ")}.
                 </>
               ) : (
                 test.erreur
