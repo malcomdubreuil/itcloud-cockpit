@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { updateTaskQboCustomer } from "@/app/(dashboard)/taches/actions";
+import { ChoixClient } from "@/components/choix-client";
 import { cn } from "@/lib/utils";
 
 // Client d'une tâche, modifiable sur place.
@@ -46,20 +47,20 @@ export function TaskClientSelect({
 
   return (
     <span className="flex items-center gap-1">
-      <select
-        autoFocus
-        defaultValue={valeur ?? ""}
-        disabled={pending}
-        onBlur={() => setOuvert(false)}
-        onChange={(e) => {
-          const v = e.target.value || null;
-          if (v === valeur) return setOuvert(false);
+      <ChoixClient
+        clients={clients}
+        valeur={valeur}
+        autoOuvert
+        desactive={pending}
+        className="w-56"
+        onChoisir={(id) => {
+          if (id === valeur) return setOuvert(false);
           start(async () => {
             try {
-              await updateTaskQboCustomer(taskId, v);
+              await updateTaskQboCustomer(taskId, id);
               toast.success(
-                v
-                  ? `Client : ${clients.find((c) => c.id === v)?.nom ?? "modifié"}`
+                id
+                  ? `Client : ${clients.find((c) => c.id === id)?.nom ?? "modifié"}`
                   : "Client retiré.",
               );
               setOuvert(false);
@@ -68,15 +69,7 @@ export function TaskClientSelect({
             }
           });
         }}
-        className="h-7 max-w-56 min-w-0 flex-1 rounded-md border border-input bg-transparent px-1 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
-      >
-        <option value="">— Sans client —</option>
-        {clients.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.nom}
-          </option>
-        ))}
-      </select>
+      />
       {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
     </span>
   );

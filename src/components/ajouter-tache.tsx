@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { createTask } from "@/app/(dashboard)/taches/actions";
 import { PERIODS } from "@/lib/taches";
+import { ChoixClient } from "@/components/choix-client";
 import { cn } from "@/lib/utils";
 
 // Ajouter une tâche récurrente : un titre, un montant, une période, et
@@ -83,20 +84,13 @@ export function AjouterTache({ clients }: { clients: ClientQbo[] }) {
       <p className="text-sm font-medium">Nouvelle tâche récurrente</p>
 
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          className={cn(champ, "min-w-0 flex-1 basis-56")}
-          value={qboCustomerId}
-          disabled={pending}
-          onChange={(e) => setQboCustomerId(e.target.value)}
-          aria-label="Client"
-        >
-          <option value="">— sans client —</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nom}
-            </option>
-          ))}
-        </select>
+        <ChoixClient
+          clients={clients}
+          valeur={qboCustomerId || null}
+          onChoisir={(id) => setQboCustomerId(id ?? "")}
+          desactive={pending}
+          className="min-w-0 flex-1 basis-56"
+        />
 
         <input
           className={cn(champ, "min-w-0 flex-1 basis-56")}
