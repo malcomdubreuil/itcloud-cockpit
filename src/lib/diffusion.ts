@@ -12,6 +12,10 @@ export type Segment = {
   produitContient?: string;
   /** Inclure les contacts sans fiche client (abonnés venus du site web). */
   inclureSansClient?: boolean;
+  /** Destinataires choisis un par un. Quand cette liste est remplie, elle
+   *  REMPLACE les critères : « ces dix-là, précisément » ne se combine pas
+   *  avec « tous les clients Hébergement » sans devenir incompréhensible. */
+  contactIds?: string[];
 };
 
 export const CONSENT_LABEL: Record<string, string> = {
@@ -22,6 +26,10 @@ export const CONSENT_LABEL: Record<string, string> = {
 
 /** Décrit un segment en une phrase lisible, pour l'écran et l'historique. */
 export function decrireSegment(s: Segment): string {
+  if (s.contactIds?.length) {
+    const n = s.contactIds.length;
+    return `${n} destinataire${n > 1 ? "s" : ""} choisi${n > 1 ? "s" : ""} à la main`;
+  }
   const bouts: string[] = [];
   if (s.division) bouts.push(s.division === "ITCLOUD" ? "clients ITCloud" : "clients Hébergement");
   if (s.groupeProduit) bouts.push(`groupe « ${s.groupeProduit} »`);
@@ -46,6 +54,23 @@ export function emailValide(email: string): boolean {
  *  Regle de surete : on ne vise JAMAIS un desabonne, un consentement retire
  *  ni une adresse en rebond. */
 export function whereDuSegment(tenantId: string, s: Segment) {
+  // Regles de surete communes, appliquees dans TOUS les cas — y compris sur un
+  // choix manuel. Quelqu un qui s est desabonne ne doit pas pouvoir etre
+  // reselectionne a la main : ce serait une infraction, et c est l erreur la
+  // plus facile a commettre.
+  const surete = {
+    tenantId,
+    deletedAt: null,
+    active: true,
+    unsubscribedAt: null,
+    bouncedAt: null,
+    consent: { not: "RETIRE" },
+  };
+
+  if (s.contactIds?.length) {
+    return { ...surete, id: { in: s.contactIds } };
+  }
+
   const serviceActif = {
     deletedAt: null,
     status: "ACTIF" as const,
@@ -68,15 +93,7 @@ export function whereDuSegment(tenantId: string, s: Segment) {
       : { client: filtreClient }
     : {};
 
-  return {
-    tenantId,
-    deletedAt: null,
-    active: true,
-    unsubscribedAt: null,
-    bouncedAt: null,
-    consent: { not: "RETIRE" },
-    ...critereClient,
-  };
+  return { ...surete, ...critereClient };
 }
 
 /** Etats d une campagne, dans l ordre du cycle de vie. */

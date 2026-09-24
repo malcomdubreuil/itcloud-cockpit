@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { CampagneActions } from "@/components/campagne-actions";
+import { ChampsDestinataires } from "@/components/champs-destinataires";
 import { EtatEnvoi } from "@/components/etat-envoi";
 import { graphEstConfigure, lireConfigGraph } from "@/infrastructure/microsoft/graph";
 import { modifierCampagne } from "../actions";
@@ -38,7 +39,7 @@ export default async function CampagnePage({
   });
   if (!c) notFound();
 
-  const [groupesRaw, deliveries, enAttente, apercu] = await Promise.all([
+  const [groupesRaw, deliveries, enAttente, apercu, contactsRaw] = await Promise.all([
     prisma.product.findMany({
       where: { tenantId, deletedAt: null },
       select: { group: true },
@@ -55,9 +56,35 @@ export default async function CampagnePage({
       take: 50,
       select: { id: true, email: true, status: true, sentAt: true, error: true },
     }),
+    // Abonnes JOIGNABLES uniquement : un desabonne ne doit meme pas etre
+    // proposable a la selection manuelle.
+    prisma.mailingContact.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        active: true,
+        unsubscribedAt: null,
+        bouncedAt: null,
+        consent: { not: "RETIRE" },
+      },
+      orderBy: [{ email: "asc" }],
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        client: { select: { companyName: true } },
+      },
+    }),
   ]);
 
   const groupes = groupesRaw.map((g) => g.group).filter(Boolean) as string[];
+  const contacts = contactsRaw.map((c) => ({
+    id: c.id,
+    email: c.email,
+    name: c.name,
+    client: c.client?.companyName ?? null,
+  }));
+
   const seg = (c.segment ?? {}) as Segment;
   const fige = c.status !== "BROUILLON";
 
@@ -146,43 +173,18 @@ export default async function CampagnePage({
           />
         </label>
 
-        <fieldset className="space-y-2 rounded-md border bg-muted/40 p-3">
-          <legend className="px-1 text-xs font-medium">Destinataires</legend>
-          {fige && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
-              La liste est figée. Modifier la cible n&apos;a d&apos;effet
-              qu&apos;après « Rafraîchir la liste ».
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <select name="division" defaultValue={seg.division ?? ""} className={cn(champ, "w-48")}>
-              <option value="">Toutes divisions</option>
-              <option value="ITCLOUD">Clients ITCloud</option>
-              <option value="HEBERGEMENT">Clients Hébergement</option>
-            </select>
-            <select name="groupeProduit" defaultValue={seg.groupeProduit ?? ""} className={cn(champ, "w-64")}>
-              <option value="">Tous les groupes de produits</option>
-              {groupes.map((g) => (
-                <option key={g} value={g}>{g}</option>
-              ))}
-            </select>
-            <input
-              name="produitContient"
-              defaultValue={seg.produitContient ?? ""}
-              className={cn(champ, "w-56")}
-              placeholder="Produit contient…"
-            />
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                name="inclureSansClient"
-                defaultChecked={!!seg.inclureSansClient}
-                className="h-4 w-4"
-              />
-              inclure les abonnés du site web
-            </label>
-          </div>
-        </fieldset>
+        {fige && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            La liste est figée. Modifier la cible n&apos;a d&apos;effet
+            qu&apos;après « Rafraîchir la liste ».
+          </p>
+        )}
+        <ChampsDestinataires
+          groupes={groupes}
+          contacts={contacts}
+          segment={seg}
+          desactive={c.status === "ENVOYEE"}
+        />
 
         <Button type="submit" size="sm" disabled={c.status === "ENVOYEE"}>
           Enregistrer

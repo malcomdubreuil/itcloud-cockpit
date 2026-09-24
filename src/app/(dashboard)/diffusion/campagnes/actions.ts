@@ -28,6 +28,20 @@ async function requireUser() {
 }
 
 function lireSegment(formData: FormData): Segment {
+  // Choix manuel : il REMPLACE les criteres. On ne melange pas « ces dix-la »
+  // avec « tous les clients Hebergement » — la cible deviendrait indescriptible,
+  // et sur un envoi en nombre ne pas savoir a qui l on ecrit est le pire defaut.
+  if (formData.get("cible") === "manuel") {
+    const ids = formData
+      .getAll("contactIds")
+      .map((v) => String(v).trim())
+      .filter(Boolean);
+    if (ids.length === 0) {
+      throw new Error("Choisis au moins un destinataire, ou repasse en ciblage par critères.");
+    }
+    return { contactIds: [...new Set(ids)] };
+  }
+
   const division = String(formData.get("division") ?? "").trim();
   const groupeProduit = String(formData.get("groupeProduit") ?? "").trim();
   const produitContient = String(formData.get("produitContient") ?? "").trim();

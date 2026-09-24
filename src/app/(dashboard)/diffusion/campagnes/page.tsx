@@ -17,7 +17,7 @@ export default async function CampagnesPage() {
   if (!session?.user) redirect("/login");
   const tenantId = session.user.tenantId;
 
-  const [campagnes, groupesRaw] = await Promise.all([
+  const [campagnes, groupesRaw, contactsRaw] = await Promise.all([
     prisma.mailingCampaign.findMany({
       where: { tenantId },
       orderBy: { createdAt: "desc" },
@@ -33,9 +33,35 @@ export default async function CampagnesPage() {
       distinct: ["group"],
       orderBy: { group: "asc" },
     }),
+    // Abonnes JOIGNABLES uniquement : un desabonne ne doit meme pas etre
+    // proposable a la selection manuelle.
+    prisma.mailingContact.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        active: true,
+        unsubscribedAt: null,
+        bouncedAt: null,
+        consent: { not: "RETIRE" },
+      },
+      orderBy: [{ email: "asc" }],
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        client: { select: { companyName: true } },
+      },
+    }),
   ]);
 
   const groupes = groupesRaw.map((g) => g.group).filter(Boolean) as string[];
+  const contacts = contactsRaw.map((c) => ({
+    id: c.id,
+    email: c.email,
+    name: c.name,
+    client: c.client?.companyName ?? null,
+  }));
+
 
   return (
     <div className="space-y-6">
@@ -49,7 +75,7 @@ export default async function CampagnesPage() {
 
       <DiffusionTabs actif="campagnes" />
 
-      <CampagneForm groupes={groupes} />
+      <CampagneForm groupes={groupes} contacts={contacts} />
 
       {campagnes.length === 0 ? (
         <Card>

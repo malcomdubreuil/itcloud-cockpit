@@ -5,6 +5,8 @@ import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { creerCampagne } from "@/app/(dashboard)/diffusion/campagnes/actions";
+import { ChampsDestinataires } from "@/components/champs-destinataires";
+import type { ContactChoisissable } from "@/components/choix-destinataires";
 import { cn } from "@/lib/utils";
 
 // Création d'une campagne. Le segment se choisit ici et reste modifiable tant
@@ -13,7 +15,13 @@ import { cn } from "@/lib/utils";
 const champ =
   "h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none";
 
-export function CampagneForm({ groupes }: { groupes: string[] }) {
+export function CampagneForm({
+  groupes,
+  contacts,
+}: {
+  groupes: string[];
+  contacts: ContactChoisissable[];
+}) {
   const [ouvert, setOuvert] = useState(false);
   const [pending, start] = useTransition();
 
@@ -77,36 +85,7 @@ export function CampagneForm({ groupes }: { groupes: string[] }) {
         />
       </label>
 
-      <fieldset className="space-y-2 rounded-md border bg-background p-3">
-        <legend className="px-1 text-xs font-medium">Destinataires</legend>
-        <div className="flex flex-wrap items-center gap-2">
-          <select name="division" className={cn(champ, "w-48")} disabled={pending}>
-            <option value="">Toutes divisions</option>
-            <option value="ITCLOUD">Clients ITCloud</option>
-            <option value="HEBERGEMENT">Clients Hébergement</option>
-          </select>
-          <select name="groupeProduit" className={cn(champ, "w-64")} disabled={pending}>
-            <option value="">Tous les groupes de produits</option>
-            {groupes.map((g) => (
-              <option key={g} value={g}>{g}</option>
-            ))}
-          </select>
-          <input
-            name="produitContient"
-            className={cn(champ, "w-56")}
-            placeholder="Produit contient — ex. antivirus"
-            disabled={pending}
-          />
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <input type="checkbox" name="inclureSansClient" className="h-4 w-4" disabled={pending} />
-            inclure les abonnés du site web
-          </label>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Laisser tout vide vise <strong>tous les abonnés joignables</strong>.
-          Les désabonnés et les adresses en rebond sont toujours exclus.
-        </p>
-      </fieldset>
+      <ChampsDestinataires groupes={groupes} contacts={contacts} desactive={pending} />
 
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={pending}>
