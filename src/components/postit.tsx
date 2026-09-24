@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Bold,
   CheckSquare,
   GripVertical,
+  Heading,
+  Highlighter,
   Lock,
   LockOpen,
   Minus,
@@ -11,7 +14,9 @@ import {
   Palette,
   Plus,
   SquareCheck,
+  Strikethrough,
   Trash2,
+  Underline,
 } from "lucide-react";
 import {
   CLASSES_COULEUR,
@@ -42,6 +47,13 @@ import {
   lireLignes,
   type Prefixe,
 } from "@/lib/liste";
+import {
+  MARQUEURS,
+  basculerMarqueur,
+  basculerTitre,
+  lireFormat,
+  lireTitre,
+} from "@/lib/format-texte";
 import { cn } from "@/lib/utils";
 
 // Un post-it. Il se déplace par son bandeau, se redimensionne par le coin
@@ -91,6 +103,42 @@ type Props = {
 };
 
 const DELAI_SAUVEGARDE = 800;
+
+/** Rend une ligne avec sa mise en forme. Un lien arrete la propagation du
+ *  clic : il doit s'ouvrir, pas faire basculer le post-it en edition. */
+function TexteFormate({ ligne }: { ligne: string }) {
+  return (
+    <>
+      {lireFormat(ligne).map((seg, i) =>
+        seg.marques[0] === "lien" ? (
+          <a
+            key={i}
+            href={seg.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="underline decoration-dotted underline-offset-2"
+          >
+            {seg.texte}
+          </a>
+        ) : (
+          <span
+            key={i}
+            className={cn(
+              seg.marques.includes("gras") && "font-bold",
+              seg.marques.includes("souligne") && "underline underline-offset-2",
+              seg.marques.includes("barre") && "line-through",
+              seg.marques.includes("surligne") &&
+                "rounded bg-yellow-300/70 px-0.5 dark:bg-yellow-400/80",
+            )}
+          >
+            {seg.texte}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
 
 export function Postit({
   note,
@@ -599,11 +647,17 @@ export function Postit({
                 ) : null}
                 <span
                   className={cn(
-                    "min-w-0 flex-1 whitespace-pre-wrap break-words",
+                    "min-w-0 flex-1 break-words whitespace-pre-wrap",
                     l.cochee && "line-through opacity-45",
+                    // Un titre de section doit se lire de loin sur un mur.
+                    lireTitre(l.contenu) !== null && "text-[1.25em] font-bold",
                   )}
                 >
-                  {l.contenu || " "}
+                  {l.contenu ? (
+                    <TexteFormate ligne={lireTitre(l.contenu) ?? l.contenu} />
+                  ) : (
+                    " "
+                  )}
                 </span>
               </div>
             ))
@@ -640,6 +694,35 @@ export function Postit({
                 icone: CheckSquare,
                 titre: "Cocher / décocher cette ligne",
                 act: () => appliquer(basculerCoche),
+              },
+              {
+                icone: Heading,
+                titre: "Titre de section",
+                act: () => appliquer(basculerTitre),
+              },
+              {
+                icone: Bold,
+                titre: "Gras — **texte**",
+                act: () =>
+                  appliquer((e) => basculerMarqueur(e, MARQUEURS.gras)),
+              },
+              {
+                icone: Underline,
+                titre: "Souligné — __texte__",
+                act: () =>
+                  appliquer((e) => basculerMarqueur(e, MARQUEURS.souligne)),
+              },
+              {
+                icone: Strikethrough,
+                titre: "Barré — ~~texte~~",
+                act: () =>
+                  appliquer((e) => basculerMarqueur(e, MARQUEURS.barre)),
+              },
+              {
+                icone: Highlighter,
+                titre: "Surligné — ==texte==",
+                act: () =>
+                  appliquer((e) => basculerMarqueur(e, MARQUEURS.surligne)),
               },
             ] as const
           ).map(({ icone: Icone, titre: t, act }) => (
