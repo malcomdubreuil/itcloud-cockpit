@@ -262,6 +262,12 @@ export function Postit({
 
   const auClavierCorps = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Echap revient a la vue mise en forme sans avoir a cliquer ailleurs.
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.currentTarget.blur();
+        return;
+      }
       if (e.key !== "Enter" || e.shiftKey) return;
       const el = e.currentTarget;
       const r = continuerListe({
@@ -589,6 +595,10 @@ export function Postit({
           }}
           onBlur={() => {
             setCorpsActif(false);
+            // Sans ceci le post-it reste en edition indefiniment : on continue
+            // de voir les marqueurs bruts (**gras**) au lieu du texte mis en
+            // forme, et seul un rechargement de page le remet en lecture.
+            setEdition(false);
             if (sale) enregistrer();
             onOccupe(note.id, false);
           }}
