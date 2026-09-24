@@ -80,48 +80,75 @@ export function lireTitre(ligne: string): string | null {
 
 export type Etat = { texte: string; debut: number; fin: number };
 
-/** Entoure la sélection du marqueur, ou le retire si elle l'est déjà.
+/** Tous les caractères qui servent de marqueur, quel qu'il soit. */
+const CARACTERES_MARQUEURS = /[*_~=]/;
+
+function echapperRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Les passages déjà marqués avec ce marqueur : [début, fin, contenu]. */
+function passagesMarques(
+  texte: string,
+  marqueur: string,
+): { a: number; b: number; dedans: string }[] {
+  const motif = new RegExp(
+    echapperRegex(marqueur) + "(.+?)" + echapperRegex(marqueur),
+    "g",
+  );
+  return [...texte.matchAll(motif)].map((m) => ({
+    a: m.index ?? 0,
+    b: (m.index ?? 0) + m[0].length,
+    dedans: m[1],
+  }));
+}
+
+/** Entoure la sélection du marqueur, ou le retire si elle touche un passage
+ *  déjà marqué.
+ *
+ *  Le test ne peut PAS se contenter de regarder les caractères juste avant et
+ *  juste après la sélection. Les marqueurs sont invisibles à l'écran : en
+ *  sélectionnant à la souris on en attrape facilement un à moitié, et une
+ *  comparaison stricte concluait alors « pas encore marqué » et ré-entourait,
+ *  produisant des `___mot____`. On cherche donc si la sélection CHEVAUCHE un
+ *  passage marqué, et on retire ce passage en entier.
  *
  *  Sans sélection, on insère les deux marqueurs et on place le curseur au
- *  milieu : cliquer « gras » puis taper est le geste naturel, et obliger à
- *  sélectionner d'abord serait pénible. */
+ *  milieu : cliquer « gras » puis taper est le geste naturel. */
 export function basculerMarqueur(etat: Etat, marqueur: string): Etat {
-  const { texte, debut, fin } = etat;
+  const { texte } = etat;
+  const debut = Math.min(etat.debut, etat.fin);
+  const fin = Math.max(etat.debut, etat.fin);
   const n = marqueur.length;
 
-  const dedans = texte.slice(debut, fin);
-  const autour =
-    texte.slice(Math.max(0, debut - n), debut) === marqueur &&
-    texte.slice(fin, fin + n) === marqueur;
-
-  // Déjà marqué — de l'intérieur (**|texte|**) : on retire.
-  if (autour) {
+  // 1. La sélection touche-t-elle un passage déjà marqué ?
+  for (const { a, b, dedans } of passagesMarques(texte, marqueur)) {
+    const chevauche =
+      debut === fin ? debut > a && debut < b : debut < b && fin > a;
+    if (!chevauche) continue;
     return {
-      texte: texte.slice(0, debut - n) + dedans + texte.slice(fin + n),
-      debut: debut - n,
-      fin: fin - n,
+      texte: texte.slice(0, a) + dedans + texte.slice(b),
+      // On resélectionne le contenu : on voit exactement ce qu'on vient de
+      // démarquer, et un second clic le remarque à l'identique.
+      debut: a,
+      fin: a + dedans.length,
     };
   }
 
-  // Déjà marqué — sélection incluant les marqueurs (|**texte**|) : on retire.
-  if (
-    dedans.length >= 2 * n &&
-    dedans.startsWith(marqueur) &&
-    dedans.endsWith(marqueur)
-  ) {
-    const nu = dedans.slice(n, -n);
-    return {
-      texte: texte.slice(0, debut) + nu + texte.slice(fin),
-      debut,
-      fin: debut + nu.length,
-    };
-  }
+  // 2. Sinon on entoure — après avoir écarté des bords tout caractère de
+  //    marqueur happé par mégarde, et les espaces qui alourdiraient le rendu.
+  let d = debut;
+  let f = fin;
+  while (d < f && CARACTERES_MARQUEURS.test(texte[d])) d++;
+  while (f > d && CARACTERES_MARQUEURS.test(texte[f - 1])) f--;
+  while (d < f && /\s/.test(texte[d])) d++;
+  while (f > d && /\s/.test(texte[f - 1])) f--;
 
+  const dedans = texte.slice(d, f);
   return {
-    texte:
-      texte.slice(0, debut) + marqueur + dedans + marqueur + texte.slice(fin),
-    debut: debut + n,
-    fin: fin + n,
+    texte: texte.slice(0, d) + marqueur + dedans + marqueur + texte.slice(f),
+    debut: d + n,
+    fin: f + n,
   };
 }
 

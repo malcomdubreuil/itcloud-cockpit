@@ -225,7 +225,6 @@ export function Postit({
   // texte). Un « ☐ » dans une zone de texte n'est qu'un caractere — impossible
   // de cliquer dessus. D'ou la vue de lecture, qui rend de vrais boutons.
   const [edition, setEdition] = useState(false);
-  const [corpsActif, setCorpsActif] = useState(false);
   const geste = useRef<{
     mode: "deplacer" | "redimensionner";
     x0: number;
@@ -665,13 +664,11 @@ export function Postit({
             onChange={(e) => setTexte(e.target.value)}
             onKeyDown={auClavierCorps}
             onFocus={() => {
-              setCorpsActif(true);
-              onOccupe(note.id, true);
+                onOccupe(note.id, true);
               onDevant(note.id);
             }}
             onBlur={() => {
-              setCorpsActif(false);
-              // Sans ceci le post-it reste en edition indefiniment : on continue
+                // Sans ceci le post-it reste en edition indefiniment : on continue
               // de voir les marqueurs bruts (**gras**) au lieu du texte mis en
               // forme, et seul un rechargement de page le remet en lecture.
               setEdition(false);
@@ -763,7 +760,11 @@ export function Postit({
           montrer son contenu, pas des outils. `onMouseDown` empêche le
           bouton de voler le focus au texte — sinon la barre disparaîtrait
           avant même que le clic soit traité. */}
-      {corpsActif && (
+      {/* La barre suit l'ETAT d'edition, et non un evenement de focus : selon
+          la facon dont le champ recoit le focus, l'evenement n'arrivait pas et
+          la barre restait invisible alors qu'on etait bel et bien en train
+          d'ecrire. */}
+      {edition && (
         <div
           className="flex shrink-0 items-center gap-0.5 border-t border-black/10 px-1 py-0.5 dark:border-white/10"
           onMouseDown={(e) => e.preventDefault()}
