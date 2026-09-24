@@ -104,3 +104,70 @@ export const STATUT_CAMPAGNE: Record<string, string> = {
   ENVOYEE: "Envoyee",
   ANNULEE: "Annulee",
 };
+
+// ── Suivi d'envoi ────────────────────────────────────────────────────────
+
+/** Statuts d'un destinataire, et ce qu'ils veulent dire. */
+export const STATUT_ENVOI: Record<string, string> = {
+  EN_ATTENTE: "En attente",
+  ENVOYE: "Envoyé",
+  ECHEC: "Échec",
+  IGNORE: "Ignoré",
+};
+
+/** Cadence nominale de la file (voir envoi-campagne.ts). Sert tant qu'on n'a
+ *  pas assez de mesures réelles pour estimer mieux. */
+export const CADENCE_NOMINALE = 27;
+
+export type Avancement = {
+  total: number;
+  traites: number;
+  /** 0 à 100. */
+  pourcentage: number;
+  /** Messages par minute réellement observés, ou null si trop tôt pour le dire. */
+  cadence: number | null;
+  /** Minutes restantes estimées, ou null si rien ne reste. */
+  minutesRestantes: number | null;
+};
+
+/** Avancement d'un envoi, cadence mesurée comprise.
+ *
+ *  On préfère la cadence RÉELLE à la théorique : Exchange ralentit parfois, le
+ *  cron peut avoir sauté un tour, et une estimation fondée sur la théorie
+ *  annoncerait une fin qui n'arrive pas. On ne s'y fie qu'à partir de trois
+ *  messages traités — en dessous, une seconde d'écart fausserait tout. */
+export function calculerAvancement(v: {
+  envoyes: number;
+  echecs: number;
+  ignores: number;
+  enAttente: number;
+  debut: Date | null;
+  maintenant?: Date;
+}): Avancement {
+  const traites = v.envoyes + v.echecs + v.ignores;
+  const total = traites + v.enAttente;
+  const pourcentage = total > 0 ? Math.round((traites / total) * 100) : 100;
+
+  let cadence: number | null = null;
+  if (v.debut && traites >= 3) {
+    const minutes = ((v.maintenant ?? new Date()).getTime() - v.debut.getTime()) / 60000;
+    if (minutes > 0.1) cadence = traites / minutes;
+  }
+
+  const minutesRestantes =
+    v.enAttente > 0
+      ? Math.max(1, Math.ceil(v.enAttente / (cadence ?? CADENCE_NOMINALE)))
+      : null;
+
+  return { total, traites, pourcentage, cadence, minutesRestantes };
+}
+
+/** Durée lisible : « 3 min », « 1 h 12 ». Les secondes n'intéressent personne
+ *  sur un envoi qui dure un quart d'heure. */
+export function dureeLisible(minutes: number): string {
+  if (minutes < 1) return "moins d'une minute";
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return m === 0 ? `${h} h` : `${h} h ${m}`;
+}

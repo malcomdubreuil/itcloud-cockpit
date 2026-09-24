@@ -6,7 +6,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { CampagneForm } from "@/components/campagne-form";
 import { DiffusionTabs } from "@/components/diffusion-tabs";
-import { decrireSegment, STATUT_CAMPAGNE, type Segment } from "@/lib/diffusion";
+import { decrireSegment, dureeLisible, STATUT_CAMPAGNE, type Segment } from "@/lib/diffusion";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -24,6 +24,7 @@ export default async function CampagnesPage() {
       select: {
         id: true, name: true, subject: true, status: true, segment: true,
         sentCount: true, failCount: true, createdAt: true,
+        startedAt: true, finishedAt: true,
         _count: { select: { deliveries: true } },
       },
     }),
@@ -110,8 +111,20 @@ export default async function CampagnesPage() {
                     : "aucun destinataire figé"}
                   {c.failCount > 0 ? ` · ${c.failCount} échec(s)` : ""}
                 </span>
-                <span className="w-24 text-right text-xs tabular-nums text-muted-foreground">
-                  {c.createdAt.toLocaleDateString("fr-CA")}
+                <span className="w-32 text-right text-xs tabular-nums text-muted-foreground">
+                  {/* La date qui compte est celle de l'ENVOI, pas de la
+                      creation : c'est elle qu'on cherche dans un historique. */}
+                  {c.finishedAt
+                    ? c.finishedAt.toLocaleDateString("fr-CA")
+                    : c.createdAt.toLocaleDateString("fr-CA")}
+                  {c.startedAt && c.finishedAt && (
+                    <span className="block opacity-70">
+                      en{" "}
+                      {dureeLisible(
+                        (c.finishedAt.getTime() - c.startedAt.getTime()) / 60000,
+                      )}
+                    </span>
+                  )}
                 </span>
               </Link>
             ))}

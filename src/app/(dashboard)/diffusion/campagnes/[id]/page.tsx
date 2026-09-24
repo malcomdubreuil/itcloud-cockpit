@@ -9,7 +9,14 @@ import { ChampsDestinataires } from "@/components/champs-destinataires";
 import { EtatEnvoi } from "@/components/etat-envoi";
 import { graphEstConfigure, lireConfigGraph } from "@/infrastructure/microsoft/graph";
 import { modifierCampagne } from "../actions";
-import { decrireSegment, STATUT_CAMPAGNE, type Segment } from "@/lib/diffusion";
+import {
+  calculerAvancement,
+  decrireSegment,
+  dureeLisible,
+  STATUT_CAMPAGNE,
+  STATUT_ENVOI,
+  type Segment,
+} from "@/lib/diffusion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,40 +27,62 @@ export const metadata: Metadata = { title: "Campagne" };
 const champ =
   "h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none";
 
+const PAR_PAGE = 100;
+
 export default async function CampagnePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ statut?: string; page?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const tenantId = session.user.tenantId;
   const { id } = await params;
+  const { statut = "tous", page: pageRaw } = await searchParams;
+  const page = Math.max(1, parseInt(pageRaw ?? "1") || 1);
 
   const c = await prisma.mailingCampaign.findFirst({
     where: { id, tenantId },
     select: {
       id: true, name: true, subject: true, bodyHtml: true, segment: true,
       status: true, sentCount: true, failCount: true, createdAt: true,
+      startedAt: true, finishedAt: true,
     },
   });
   if (!c) notFound();
 
-  const [groupesRaw, deliveries, enAttente, apercu, contactsRaw] = await Promise.all([
+  const [groupesRaw, parStatut, totalFiltre, apercu, contactsRaw] = await Promise.all([
     prisma.product.findMany({
       where: { tenantId, deletedAt: null },
       select: { group: true },
       distinct: ["group"],
       orderBy: { group: "asc" },
     }),
-    prisma.mailingDelivery.count({ where: { campaignId: c.id } }),
+    // Un seul passage pour tous les compteurs plutot que quatre requetes :
+    // ils doivent de toute facon etre coherents entre eux.
+    prisma.mailingDelivery.groupBy({
+      by: ["status"],
+      where: { campaignId: c.id },
+      _count: { _all: true },
+    }),
     prisma.mailingDelivery.count({
-      where: { campaignId: c.id, status: "EN_ATTENTE" },
+      where: {
+        campaignId: c.id,
+        ...(statut !== "tous" ? { status: statut } : {}),
+      },
     }),
     prisma.mailingDelivery.findMany({
-      where: { campaignId: c.id },
-      orderBy: { email: "asc" },
-      take: 50,
+      where: {
+        campaignId: c.id,
+        ...(statut !== "tous" ? { status: statut } : {}),
+      },
+      // Les plus recemment traites en tete : pendant un envoi, c'est ce qui
+      // vient de partir qu'on veut voir defiler.
+      orderBy: [{ sentAt: "desc" }, { email: "asc" }],
+      skip: (page - 1) * PAR_PAGE,
+      take: PAR_PAGE,
       select: { id: true, email: true, status: true, sentAt: true, error: true },
     }),
     // Abonnes JOIGNABLES uniquement : un desabonne ne doit meme pas etre
@@ -85,6 +114,25 @@ export default async function CampagnePage({
     client: c.client?.companyName ?? null,
   }));
 
+  const compte = (s: string) =>
+    parStatut.find((x) => x.status === s)?._count._all ?? 0;
+  const envoyes = compte("ENVOYE");
+  const echecs = compte("ECHEC");
+  const ignores = compte("IGNORE");
+  const enAttente = compte("EN_ATTENTE");
+  const deliveries = envoyes + echecs + ignores + enAttente;
+
+  const avancement = calculerAvancement({
+    envoyes, echecs, ignores, enAttente,
+    debut: c.startedAt,
+  });
+
+  const pages = Math.max(1, Math.ceil(totalFiltre / PAR_PAGE));
+  const lienListe = (o: Record<string, string>) => {
+    const p = new URLSearchParams({ statut, page: String(page), ...o });
+    return `/diffusion/campagnes/${c.id}?${p.toString()}`;
+  };
+
   const seg = (c.segment ?? {}) as Segment;
   const fige = c.status !== "BROUILLON";
 
@@ -108,21 +156,59 @@ export default async function CampagnePage({
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         {[
-          { label: "Destinataires figés", value: String(deliveries) },
-          { label: "Envoyés", value: String(c.sentCount) },
-          { label: "Échecs", value: String(c.failCount) },
-          { label: "Créée le", value: c.createdAt.toLocaleDateString("fr-CA") },
-        ].map(({ label, value }) => (
+          { label: "Destinataires", value: String(deliveries), sub: "liste figée" },
+          { label: "Reçus", value: String(envoyes), sub: "acceptés par Microsoft" },
+          { label: "À venir", value: String(enAttente), sub: enAttente > 0 && avancement.minutesRestantes ? `~${dureeLisible(avancement.minutesRestantes)}` : "—" },
+          { label: "Échecs", value: String(echecs), sub: echecs > 0 ? "voir la liste" : "—" },
+          {
+            label: "Ignorés",
+            value: String(ignores),
+            sub: ignores > 0 ? "désabonnés entre-temps" : "—",
+          },
+        ].map(({ label, value, sub }) => (
           <Card key={label}>
             <CardHeader className="pb-2">
               <CardDescription>{label}</CardDescription>
               <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
+              <p className="text-xs text-muted-foreground">{sub}</p>
             </CardHeader>
           </Card>
         ))}
       </div>
+
+      {/* Historique de l'envoi : quand il a commencé, quand il s'est terminé,
+          combien de temps il a pris. Sans ça, une campagne envoyée ne laisse
+          aucune trace de son déroulement. */}
+      {(c.startedAt || c.finishedAt) && (
+        <p className="text-sm text-muted-foreground">
+          {c.startedAt && (
+            <>
+              Envoi lancé le{" "}
+              <strong>
+                {c.startedAt.toLocaleString("fr-CA", { dateStyle: "long", timeStyle: "short" })}
+              </strong>
+            </>
+          )}
+          {c.finishedAt && c.startedAt && (
+            <>
+              , terminé le{" "}
+              <strong>
+                {c.finishedAt.toLocaleString("fr-CA", { dateStyle: "long", timeStyle: "short" })}
+              </strong>{" "}
+              — durée{" "}
+              {dureeLisible(
+                (c.finishedAt.getTime() - c.startedAt.getTime()) / 60000,
+              )}
+            </>
+          )}
+          {!c.finishedAt && avancement.cadence && (
+            <> · cadence observée {Math.round(avancement.cadence)} messages/minute</>
+          )}
+          .
+        </p>
+      )}
 
       <CampagneActions
         campaignId={c.id}
@@ -145,7 +231,14 @@ export default async function CampagnePage({
       )}
 
       {c.status === "EN_COURS" && (
-        <EtatEnvoi enAttente={enAttente} envoyes={c.sentCount} echecs={c.failCount} />
+        <EtatEnvoi
+          enAttente={enAttente}
+          traites={avancement.traites}
+          total={avancement.total}
+          pourcentage={avancement.pourcentage}
+          cadence={avancement.cadence}
+          minutesRestantes={avancement.minutesRestantes}
+        />
       )}
 
       {/* ── Édition ─────────────────────────────────────────────── */}
@@ -191,32 +284,110 @@ export default async function CampagnePage({
         </Button>
       </form>
 
-      {/* ── Destinataires figés ─────────────────────────────────── */}
+      {/* ── Liste des destinataires ─────────────────────────────── */}
       {deliveries > 0 && (
-        <div>
-          <h2 className="mb-2 text-lg font-semibold">
-            Destinataires ({deliveries})
-            {deliveries > 50 && (
-              <span className="ml-2 text-sm font-normal text-muted-foreground">
-                — 50 premiers affichés
-              </span>
-            )}
-          </h2>
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <h2 className="text-lg font-semibold">Destinataires</h2>
+            {/* Filtrer par statut : sur 300 lignes, « montre-moi les échecs »
+                est la question qu'on se pose, pas « montre-moi tout ». */}
+            <div className="flex flex-wrap gap-1 text-sm">
+              {[
+                ["tous", `Tous (${deliveries})`],
+                ["ENVOYE", `Reçus (${envoyes})`],
+                ["EN_ATTENTE", `À venir (${enAttente})`],
+                ["ECHEC", `Échecs (${echecs})`],
+                ["IGNORE", `Ignorés (${ignores})`],
+              ].map(([v, label]) => (
+                <Link
+                  key={v}
+                  href={lienListe({ statut: v, page: "1" })}
+                  className={cn(
+                    "rounded-md px-2 py-1",
+                    statut === v
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted",
+                  )}
+                >
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
           <Card className="py-0">
             <CardContent className="divide-y px-0">
-              {apercu.map((d) => (
-                <div key={d.id} className="flex items-center gap-3 px-4 py-2 text-sm">
-                  <span className="min-w-0 flex-1 truncate">{d.email}</span>
-                  <Badge variant={d.status === "ENVOYE" ? "secondary" : "outline"}>
-                    {d.status === "EN_ATTENTE" ? "En attente" : d.status === "ENVOYE" ? "Envoyé" : d.status}
-                  </Badge>
-                  <span className="w-32 text-right text-xs tabular-nums text-muted-foreground">
-                    {d.sentAt ? d.sentAt.toLocaleDateString("fr-CA") : "—"}
-                  </span>
-                </div>
-              ))}
+              {apercu.length === 0 ? (
+                <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                  Aucun destinataire dans cet état.
+                </p>
+              ) : (
+                apercu.map((d) => (
+                  <div
+                    key={d.id}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 basis-56 truncate">{d.email}</span>
+                    <Badge
+                      variant={
+                        d.status === "ENVOYE"
+                          ? "secondary"
+                          : d.status === "ECHEC"
+                            ? "destructive"
+                            : "outline"
+                      }
+                    >
+                      {STATUT_ENVOI[d.status] ?? d.status}
+                    </Badge>
+                    <span className="w-40 text-right text-xs tabular-nums text-muted-foreground">
+                      {d.sentAt
+                        ? d.sentAt.toLocaleString("fr-CA", {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          })
+                        : "—"}
+                    </span>
+                    {/* La raison de l'echec, en clair : sans elle, un echec
+                        n'apprend rien et ne se corrige pas. */}
+                    {d.error && (
+                      <span className="w-full text-xs break-words text-destructive">
+                        {d.error}
+                      </span>
+                    )}
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
+
+          {pages > 1 && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Page {page} de {pages} — {totalFiltre} ligne
+                {totalFiltre > 1 ? "s" : ""}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  nativeButton={false}
+                  disabled={page <= 1}
+                  render={<Link href={lienListe({ page: String(page - 1) })} />}
+                >
+                  Précédent
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  nativeButton={false}
+                  disabled={page >= pages}
+                  render={<Link href={lienListe({ page: String(page + 1) })} />}
+                >
+                  Suivant
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
