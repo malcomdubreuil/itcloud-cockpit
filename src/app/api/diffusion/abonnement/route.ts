@@ -22,6 +22,20 @@ const REPONSE_OK = {
   message: "Merci ! Votre inscription est enregistrée.",
 };
 
+// Le formulaire vit sur un AUTRE domaine (god-info.com) que l'ERP. Le
+// navigateur exige alors l'en-tête sur la requête préliminaire ET sur la
+// réponse réelle : sans lui ici, le site recevrait une erreur CORS et
+// l'inscription paraîtrait échouer alors qu'elle serait enregistrée.
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+function repondre(corps: unknown, status = 200) {
+  return NextResponse.json(corps, { status, headers: CORS });
+}
+
 /** Le tenant : l'ERP est mono-tenant en v1. */
 async function tenantId(): Promise<string | null> {
   const t = await prisma.tenant.findFirst({ select: { id: true } });
@@ -52,20 +66,17 @@ export async function POST(req: NextRequest) {
       name = n ? String(n).slice(0, 191) : null;
     }
   } catch {
-    return NextResponse.json({ ok: false, message: "Requête invalide." }, { status: 400 });
+    return repondre({ ok: false, message: "Requête invalide." }, 400);
   }
 
   email = email.trim().toLowerCase();
   if (!emailValide(email)) {
-    return NextResponse.json(
-      { ok: false, message: "Cette adresse courriel semble invalide." },
-      { status: 400 },
-    );
+    return repondre({ ok: false, message: "Cette adresse courriel semble invalide." }, 400);
   }
 
   const tid = await tenantId();
   if (!tid) {
-    return NextResponse.json({ ok: false, message: "Service indisponible." }, { status: 503 });
+    return repondre({ ok: false, message: "Service indisponible." }, 503);
   }
 
   const existant = await prisma.mailingContact.findFirst({
@@ -81,7 +92,7 @@ export async function POST(req: NextRequest) {
         data: { name: name ?? undefined },
       });
     }
-    return NextResponse.json(REPONSE_OK);
+    return repondre(REPONSE_OK);
   }
 
   await prisma.mailingContact.create({
@@ -98,19 +109,13 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json(REPONSE_OK);
+  return repondre(REPONSE_OK);
 }
 
-/** Le formulaire vit sur un autre domaine (god-info.com) : on autorise
- *  explicitement l'appel entre origines. */
+/** Requête préliminaire du navigateur, avant le vrai POST. */
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-      "Access-Control-Max-Age": "86400",
-    },
+    headers: { ...CORS, "Access-Control-Max-Age": "86400" },
   });
 }
