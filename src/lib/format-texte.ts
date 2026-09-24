@@ -142,3 +142,51 @@ export function basculerTitre(etat: Etat): Etat {
     fin: Math.max(d, etat.fin + delta),
   };
 }
+
+
+// ── Aperçu pendant la saisie ─────────────────────────────────────────────
+// Le champ de saisie contient forcément les marqueurs — c'est du texte brut.
+// Les cacher décalerait tout : chaque caractère masqué ferait glisser la suite
+// de la ligne et l'aperçu ne coïnciderait plus avec le curseur.
+//
+// On les GARDE donc, en les estompant, et on met en forme ce qu'ils entourent.
+// Chaque caractère reste à sa place exacte, l'alignement est parfait, et on
+// voit le gras pendant qu'on tape.
+
+export type SegmentEdition = Segment & { marqueur: boolean };
+
+export function lireFormatEdition(ligne: string): SegmentEdition[] {
+  const out: SegmentEdition[] = [];
+  let pos = 0;
+
+  const pousser = (texte: string, marques: Marque[], marqueur: boolean) => {
+    if (texte) out.push({ texte, marques, marqueur });
+  };
+
+  for (const m of ligne.matchAll(MOTIF)) {
+    const i = m.index ?? 0;
+    if (i > pos) pousser(ligne.slice(pos, i), [], false);
+
+    const paires: [number, Marque, string][] = [
+      [1, "gras", MARQUEURS.gras],
+      [2, "souligne", MARQUEURS.souligne],
+      [3, "barre", MARQUEURS.barre],
+      [4, "surligne", MARQUEURS.surligne],
+    ];
+    const trouve = paires.find(([idx]) => m[idx] !== undefined);
+
+    if (trouve) {
+      const [idx, marque, signe] = trouve;
+      pousser(signe, [marque], true);
+      pousser(m[idx], [marque], false);
+      pousser(signe, [marque], true);
+    } else if (m[5] !== undefined) {
+      pousser(m[5], ["lien"], false);
+    }
+
+    pos = i + m[0].length;
+  }
+
+  if (pos < ligne.length) pousser(ligne.slice(pos), [], false);
+  return out;
+}

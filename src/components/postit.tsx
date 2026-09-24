@@ -52,6 +52,7 @@ import {
   basculerMarqueur,
   basculerTitre,
   lireFormat,
+  lireFormatEdition,
   lireTitre,
 } from "@/lib/format-texte";
 import { cn } from "@/lib/utils";
@@ -126,7 +127,8 @@ function TexteFormate({ ligne }: { ligne: string }) {
             key={i}
             className={cn(
               seg.marques.includes("gras") && "font-bold",
-              seg.marques.includes("souligne") && "underline underline-offset-2",
+              seg.marques.includes("souligne") &&
+                "underline underline-offset-2",
               seg.marques.includes("barre") && "line-through",
               seg.marques.includes("surligne") &&
                 "rounded bg-yellow-300/70 px-0.5 dark:bg-yellow-400/80",
@@ -136,6 +138,60 @@ function TexteFormate({ ligne }: { ligne: string }) {
           </span>
         ),
       )}
+    </>
+  );
+}
+
+/** Aperçu superposé au champ de saisie : on voit la mise en forme PENDANT
+ *  qu'on tape, au lieu de lire `**gras**` et de découvrir le résultat en
+ *  sortant du champ.
+ *
+ *  Deux contraintes gouvernent tout ce qui suit :
+ *
+ *  1. AUCUN caractère ne peut être masqué. Cacher les `**` décalerait la suite
+ *     de la ligne et l'aperçu ne coïnciderait plus avec le curseur. Ils sont
+ *     donc gardés et simplement estompés.
+ *
+ *  2. AUCUN style ne peut changer la largeur des caractères. Un vrai
+ *     `font-weight: bold` est plus large que le normal : une ligne tiendrait
+ *     dans le champ mais reviendrait à la ligne dans l'aperçu, et tout
+ *     glisserait. D'où le faux gras par `text-shadow`, qui épaissit le trait
+ *     sans toucher à l'avance des glyphes. Souligné, barré et surligné, eux,
+ *     ne changent rien aux métriques. */
+const FAUX_GRAS = {
+  textShadow: "0 0 0.6px currentColor, 0 0 0.6px currentColor",
+};
+
+function ApercuSaisie({ texte }: { texte: string }) {
+  return (
+    <>
+      {texte.split("\n").map((ligne, i) => (
+        <div key={i}>
+          {ligne === ""
+            ? " "
+            : lireFormatEdition(ligne).map((seg, j) => (
+                <span
+                  key={j}
+                  style={seg.marques.includes("gras") ? FAUX_GRAS : undefined}
+                  className={cn(
+                    seg.marqueur && "opacity-30",
+                    seg.marques.includes("souligne") &&
+                      "underline underline-offset-2",
+                    seg.marques.includes("barre") && "line-through",
+                    seg.marques.includes("surligne") &&
+                      "rounded bg-yellow-300/70 dark:bg-yellow-400/80",
+                    seg.marques.includes("lien") &&
+                      "underline decoration-dotted underline-offset-2",
+                  )}
+                >
+                  {seg.texte}
+                </span>
+              ))}
+        </div>
+      ))}
+      {/* Une ligne vide finale, pour que le curseur en bout de texte ait de
+          quoi se poser sans faire defiler l'apercu differemment du champ. */}
+      <div>{" "}</div>
     </>
   );
 }
@@ -157,6 +213,7 @@ export function Postit({
   const [titre, setTitre] = useState(note.title ?? "");
   const [texte, setTexte] = useState(note.content);
   const corps = useRef<HTMLTextAreaElement>(null);
+  const apercu = useRef<HTMLDivElement>(null);
   // Selection a restaurer apres qu'un bouton de liste a reecrit le texte :
   // React remplace la valeur du champ, ce qui renvoie le curseur a la fin.
   const selection = useRef<[number, number] | null>(null);
@@ -583,34 +640,56 @@ export function Postit({
 
       {/* ── Corps ── */}
       {edition ? (
-        <textarea
-          ref={corps}
-          value={texte}
-          onChange={(e) => setTexte(e.target.value)}
-          onKeyDown={auClavierCorps}
-          onFocus={() => {
-            setCorpsActif(true);
-            onOccupe(note.id, true);
-            onDevant(note.id);
-          }}
-          onBlur={() => {
-            setCorpsActif(false);
-            // Sans ceci le post-it reste en edition indefiniment : on continue
-            // de voir les marqueurs bruts (**gras**) au lieu du texte mis en
-            // forme, et seul un rechargement de page le remet en lecture.
-            setEdition(false);
-            if (sale) enregistrer();
-            onOccupe(note.id, false);
-          }}
-          onPointerDown={(e) => {
-            onDevant(note.id);
-            e.stopPropagation();
-          }}
-          placeholder="Écrire…"
-          spellCheck
-          style={{ fontSize: taille }}
-          className="min-h-0 flex-1 resize-none bg-transparent px-2.5 py-2 leading-relaxed placeholder:opacity-35 focus-visible:outline-none"
-        />
+        <div className="relative min-h-0 flex-1">
+          {/* L'aperçu est DESSOUS ; le champ par-dessus a son texte rendu
+              transparent. On voit donc la mise en forme tout en tapant dans un
+              vrai <textarea>, avec son curseur, sa sélection et son
+              correcteur orthographique. Les deux boîtes ont exactement la même
+              police, la même taille, le même retour à la ligne et les mêmes
+              marges : c'est ce qui garantit que chaque caractère se superpose. */}
+          <div
+            ref={apercu}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 overflow-hidden px-2.5 py-2 leading-relaxed break-words whitespace-pre-wrap"
+            style={{ fontSize: taille }}
+          >
+            <ApercuSaisie texte={texte} />
+          </div>
+          <textarea
+            ref={corps}
+            value={texte}
+            onChange={(e) => setTexte(e.target.value)}
+            onKeyDown={auClavierCorps}
+            onFocus={() => {
+              setCorpsActif(true);
+              onOccupe(note.id, true);
+              onDevant(note.id);
+            }}
+            onBlur={() => {
+              setCorpsActif(false);
+              // Sans ceci le post-it reste en edition indefiniment : on continue
+              // de voir les marqueurs bruts (**gras**) au lieu du texte mis en
+              // forme, et seul un rechargement de page le remet en lecture.
+              setEdition(false);
+              if (sale) enregistrer();
+              onOccupe(note.id, false);
+            }}
+            onPointerDown={(e) => {
+              onDevant(note.id);
+              e.stopPropagation();
+            }}
+            onScroll={(e) => {
+              // L'aperçu doit suivre le défilement du champ, sinon les deux se
+              // désolidarisent dès que le texte dépasse la hauteur du post-it.
+              if (apercu.current)
+                apercu.current.scrollTop = e.currentTarget.scrollTop;
+            }}
+            placeholder="Écrire…"
+            spellCheck
+            style={{ fontSize: taille }}
+            className="absolute inset-0 h-full w-full resize-none bg-transparent px-2.5 py-2 leading-relaxed break-words whitespace-pre-wrap text-transparent caret-neutral-900 placeholder:text-neutral-900/35 selection:bg-sky-400/30 focus-visible:outline-none"
+          />
+        </div>
       ) : (
         /* ── Vue de lecture ────────────────────────────────────────────
            Les cases sont de VRAIS boutons : un clic dessus coche, sans
