@@ -90,6 +90,20 @@ Test-ApplicationAccessPolicy `
 
 La propagation prend jusqu'à 30 minutes.
 
+> ✅ **Appliquée le 2026-09-24.** `Test-ApplicationAccessPolicy` répond
+> « Accordé » pour keven@god-info.com, et un envoi d'essai est passé APRÈS la
+> création de la règle — elle ne bloque donc pas l'envoi légitime.
+>
+> Pour vérifier qu'elle bloque bien le reste, sur une AUTRE boîte du domaine
+> (lecture seule, n'envoie rien) :
+>
+> ```powershell
+> Test-ApplicationAccessPolicy -Identity uneautre@god-info.com `
+>   -AppId ad467cc4-f9ec-433e-87c2-efc8222905b3
+> ```
+>
+> Doit répondre **Denied / Refusé**.
+
 ## 3. Variables d'environnement du serveur
 
 Dans `~/cockpit/.env` :
