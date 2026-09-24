@@ -148,7 +148,7 @@ export function AjouterTache({ clients }: { clients: ClientQbo[] }) {
             <span className="text-xs tabular-nums text-muted-foreground">
               {lu.heures !== null ? (
                 <>
-                  {lu.heures} h × {TAUX_HORAIRE} $ = <strong>{cad.format(lu.montant)}</strong>
+                  {lu.heures.toLocaleString("fr-CA")} h × {TAUX_HORAIRE} $ = <strong>{cad.format(lu.montant)}</strong>
                 </>
               ) : (
                 <strong>{cad.format(lu.montant)}</strong>
