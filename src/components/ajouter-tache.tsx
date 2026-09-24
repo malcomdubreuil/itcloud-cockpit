@@ -8,10 +8,13 @@ import { createTask } from "@/app/(dashboard)/taches/actions";
 import { PERIODS } from "@/lib/taches";
 import { cn } from "@/lib/utils";
 
-// Ajouter une tâche récurrente : un client, un titre, un montant et une
-// période. L'échéance se pré-remplit à « aujourd'hui + période ».
+// Ajouter une tâche récurrente : un titre, un montant, une période, et
+// FACULTATIVEMENT un client QuickBooks — toutes les tâches ne se rattachent
+// pas à quelqu'un (veille, entretien interne, abonnement mutualisé).
+// L'échéance se pré-remplit à « aujourd'hui + période ».
 
-export type ClientOption = { id: string; name: string };
+/** Client QuickBooks : la liste de reference pour facturer. */
+export type ClientQbo = { id: string; nom: string };
 
 const champ =
   "h-8 rounded-md border border-input bg-transparent px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none";
@@ -22,9 +25,9 @@ const isoInDays = (days: number) => {
   return d.toLocaleDateString("en-CA"); // AAAA-MM-JJ en heure locale
 };
 
-export function AjouterTache({ clients }: { clients: ClientOption[] }) {
+export function AjouterTache({ clients }: { clients: ClientQbo[] }) {
   const [ouvert, setOuvert] = useState(false);
-  const [clientId, setClientId] = useState("");
+  const [qboCustomerId, setQboCustomerId] = useState("");
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
   const [periodDays, setPeriodDays] = useState(30);
@@ -39,13 +42,12 @@ export function AjouterTache({ clients }: { clients: ClientOption[] }) {
   };
 
   const ajouter = () => {
-    if (!clientId) return toast.error("Choisis un client.");
     if (!title.trim()) return toast.error("Donne un titre à la tâche.");
     const parsed = parseFloat(price.replace(",", "."));
     if (!Number.isFinite(parsed) || parsed < 0) return toast.error("Prix invalide");
 
     const fd = new FormData();
-    fd.set("clientId", clientId);
+    fd.set("qboCustomerId", qboCustomerId);
     fd.set("title", title.trim());
     fd.set("price", String(parsed));
     fd.set("periodDays", String(periodDays));
@@ -83,15 +85,15 @@ export function AjouterTache({ clients }: { clients: ClientOption[] }) {
       <div className="flex flex-wrap items-center gap-2">
         <select
           className={cn(champ, "min-w-0 flex-1 basis-56")}
-          value={clientId}
+          value={qboCustomerId}
           disabled={pending}
-          onChange={(e) => setClientId(e.target.value)}
+          onChange={(e) => setQboCustomerId(e.target.value)}
           aria-label="Client"
         >
-          <option value="">— choisir un client —</option>
+          <option value="">— sans client —</option>
           {clients.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name}
+              {c.nom}
             </option>
           ))}
         </select>

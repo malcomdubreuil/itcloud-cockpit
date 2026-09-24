@@ -3,6 +3,7 @@ import { InlineTextInput } from "@/components/inline-text-input";
 import { TaskPeriodSelect } from "@/components/task-period-select";
 import { TaskDateInput } from "@/components/task-date-input";
 import { TaskActions } from "@/components/task-actions";
+import { TaskClientSelect } from "@/components/task-client-select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -38,10 +39,22 @@ export type TaskCardData = {
   lastQbInvoiceNo: string | null;
   notes: string | null;
   active: boolean;
-  client: { id: string; companyName: string };
+  /** Fiche client de l'ERP — historique, plus alimentee a la creation. */
+  client: { id: string; companyName: string } | null;
+  /** Client QuickBooks : la liste de reference aujourd'hui. */
+  qboCustomer: { id: string; displayName: string } | null;
 };
 
-export function TaskCard({ task: t }: { task: TaskCardData }) {
+export function TaskCard({
+  task: t,
+  clientsQbo,
+}: {
+  task: TaskCardData;
+  clientsQbo: { id: string; nom: string }[];
+}) {
+  // Le client QuickBooks fait foi ; la fiche ERP ne sert plus que d'historique
+  // pour les taches creees avant la bascule.
+  const nomClient = t.qboCustomer?.displayName ?? t.client?.companyName ?? null;
   const urgency = taskUrgency(t.nextDueDate, t.periodDays, t.active);
   const days = t.nextDueDate ? daysUntil(t.nextDueDate) : null;
   const yearly = yearlyRevenue(t.price, t.periodDays);
@@ -58,7 +71,12 @@ export function TaskCard({ task: t }: { task: TaskCardData }) {
     >
       <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4">
         <div className="min-w-0 flex-1 basis-64">
-          <p className="truncate font-medium">{t.client.companyName}</p>
+          <TaskClientSelect
+            taskId={t.id}
+            valeur={t.qboCustomer?.id ?? null}
+            nomAffiche={nomClient}
+            clients={clientsQbo}
+          />
           <InlineTextInput
             id={t.id}
             value={t.title}
@@ -133,7 +151,7 @@ export function TaskCard({ task: t }: { task: TaskCardData }) {
           <TaskActions
             taskId={t.id}
             title={t.title}
-            clientName={t.client.companyName}
+            clientName={nomClient ?? "sans client"}
             active={t.active}
             qbInvoiceNo={t.lastQbInvoiceNo}
           />

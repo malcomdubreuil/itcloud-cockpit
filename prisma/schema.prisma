@@ -32,6 +32,7 @@ model Tenant {
   mailingContacts  MailingContact[]
   mailingCampaigns MailingCampaign[]
   stickyNotes      StickyNote[]
+  qboCustomers     QboCustomer[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -653,10 +654,9 @@ model FixedCost {
 // produits/services ITCloud et Hébergement : rien à synchroniser, rien à
 // rapprocher — juste un montant, une période en jours et une échéance.
 model RecurringTask {
-  id       String @id @default(uuid())
-  tenantId String
-  clientId String
-
+  id         String  @id @default(uuid())
+  tenantId   String
+  clientId   String?
   title      String // « Mise à jour site web », « Entretien sécurité Office 365 »
   // Montant facturé à CHAQUE occurrence (pas au mois : au cycle de la tâche).
   price      Decimal @db.Decimal(12, 4)
@@ -673,11 +673,16 @@ model RecurringTask {
   active    Boolean   @default(true)
   deletedAt DateTime?
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  client Client @relation(fields: [clientId], references: [id])
+  // Client QuickBooks : c'est LA liste de reference pour facturer. Elle vit
+  // dans sa propre table (QboCustomer), synchronisee depuis QuickBooks — on ne
+  // la melange pas aux fiches Client de l'ERP, qui servent a autre chose.
+  qboCustomerId String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  qboCustomer QboCustomer? @relation(fields: [qboCustomerId], references: [id])
+  client      Client?      @relation(fields: [clientId], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@index([tenantId, nextDueDate])
   @@index([tenantId, clientId])
@@ -832,4 +837,38 @@ model StickyNote {
   updatedAt DateTime @updatedAt
 
   @@index([tenantId, deletedAt])
+}
+
+// Clients tels que QuickBooks les connait. Table SEPAREE des fiches Client de
+// l'ERP : ce sont deux referentiels distincts, avec des identifiants et des
+// cycles de vie differents, et les confondre obligerait a choisir lequel fait
+// foi. Ici QuickBooks fait foi — on ne fait que recopier.
+model QboCustomer {
+  id       String @id @default(uuid())
+  tenantId String
+
+  /**
+   * Identifiant chez QuickBooks. C'est la cle de rapprochement.
+   */
+  qboId       String
+  displayName String
+  companyName String?
+  email       String?
+
+  /**
+   * Un client desactive dans QuickBooks reste en base : des taches y font
+   * peut-etre encore reference. On le masque au lieu de l'effacer.
+   */
+  active Boolean @default(true)
+
+  syncedAt DateTime @default(now())
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  recurringTasks RecurringTask[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, qboId])
+  @@index([tenantId, active])
 }

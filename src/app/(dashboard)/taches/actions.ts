@@ -69,7 +69,7 @@ function advanceDays(from: Date | null, periodDays: number): Date {
 export async function createTask(formData: FormData): Promise<void> {
   const user = await requireUser();
 
-  const clientId = String(formData.get("clientId") ?? "").trim();
+  const qboCustomerId = String(formData.get("qboCustomerId") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim().slice(0, 191);
   const priceRaw = String(formData.get("price") ?? "").replace(",", ".").trim();
   const periodRaw = String(formData.get("periodDays") ?? "30").trim();
@@ -77,7 +77,8 @@ export async function createTask(formData: FormData): Promise<void> {
   const qb = String(formData.get("lastQbInvoiceNo") ?? "").trim().slice(0, 100);
   const notes = String(formData.get("notes") ?? "").trim().slice(0, 2000);
 
-  if (!clientId) throw new Error("Choisis un client.");
+  // Le client est FACULTATIF : toutes les tâches récurrentes ne se rattachent
+  // pas à quelqu'un (veille, entretien interne, abonnement mutualisé).
   if (!title) throw new Error("Le titre de la tâche est requis.");
   const price = parseFloat(priceRaw);
   if (!Number.isFinite(price) || price < 0) throw new Error("Prix invalide");
@@ -86,16 +87,18 @@ export async function createTask(formData: FormData): Promise<void> {
     throw new Error("Période invalide (en jours)");
   }
 
-  const client = await prisma.client.findFirst({
-    where: { id: clientId, tenantId: user.tenantId, deletedAt: null },
-    select: { id: true },
-  });
-  if (!client) throw new Error("Client introuvable");
+  if (qboCustomerId) {
+    const existe = await prisma.qboCustomer.findFirst({
+      where: { id: qboCustomerId, tenantId: user.tenantId },
+      select: { id: true },
+    });
+    if (!existe) throw new Error("Client QuickBooks introuvable");
+  }
 
   const created = await prisma.recurringTask.create({
     data: {
       tenantId: user.tenantId,
-      clientId,
+      qboCustomerId: qboCustomerId || null,
       title,
       price: price.toFixed(4),
       periodDays,
@@ -112,7 +115,7 @@ export async function createTask(formData: FormData): Promise<void> {
     action: "task.create",
     entityType: "RecurringTask",
     entityId: created.id,
-    after: { title, price, periodDays, clientId },
+    after: { title, price, periodDays, qboCustomerId: qboCustomerId || null },
   });
 
   revalidatePath("/taches");
@@ -438,4 +441,92 @@ export async function billTaskViaQuickBooks(
     invoiceUrl: qbInvoiceUrl(created.Id),
     nextDueDate,
   };
+}
+
+
+// ── Clients QuickBooks ──────────────────────────────────────────────────────
+
+/** Rattache (ou détache) une tâche à un client QuickBooks. */
+export async function updateTaskQboCustomer(
+  taskId: string,
+  qboCustomerId: string | null,
+): Promise<void> {
+  const user = await requireUser();
+  const task = await loadTask(taskId, user.tenantId);
+
+  if (qboCustomerId) {
+    const existe = await prisma.qboCustomer.findFirst({
+      where: { id: qboCustomerId, tenantId: user.tenantId },
+      select: { id: true },
+    });
+    if (!existe) throw new Error("Client QuickBooks introuvable");
+  }
+
+  await prisma.recurringTask.update({
+    where: { id: task.id },
+    data: { qboCustomerId },
+  });
+
+  revalidatePath("/taches");
+}
+
+export type ResultatSyncClients = {
+  ajoutes: number;
+  majs: number;
+  total: number;
+};
+
+/** Recopie la liste des clients depuis QuickBooks.
+ *
+ *  QuickBooks fait foi : on ne crée jamais un client de ce côté, on ne fait que
+ *  refléter. Un client disparu de QuickBooks n'est PAS supprimé ici — des
+ *  tâches y font peut-être encore référence ; on le marque inactif, ce qui le
+ *  retire des listes de choix sans casser l'historique. */
+export async function synchroniserClientsQuickBooks(): Promise<ResultatSyncClients> {
+  const user = await requireUser();
+
+  const qbo = new QuickBooksClient(user.tenantId);
+  const clients = await qbo.getCustomers();
+
+  let ajoutes = 0;
+  let majs = 0;
+
+  for (const c of clients) {
+    const donnees = {
+      displayName: c.DisplayName?.slice(0, 191) || `Client ${c.Id}`,
+      companyName: c.CompanyName?.slice(0, 191) ?? null,
+      email: c.PrimaryEmailAddr?.Address?.slice(0, 191) ?? null,
+      active: c.Active !== false,
+      syncedAt: new Date(),
+    };
+
+    const res = await prisma.qboCustomer.upsert({
+      where: { tenantId_qboId: { tenantId: user.tenantId, qboId: c.Id } },
+      update: donnees,
+      create: { tenantId: user.tenantId, qboId: c.Id, ...donnees },
+      select: { createdAt: true, updatedAt: true },
+    });
+    if (res.createdAt.getTime() === res.updatedAt.getTime()) ajoutes++;
+    else majs++;
+  }
+
+  // Ceux que QuickBooks ne renvoie plus : masqués, jamais effaces.
+  const vus = clients.map((c) => c.Id);
+  if (vus.length > 0) {
+    await prisma.qboCustomer.updateMany({
+      where: { tenantId: user.tenantId, qboId: { notIn: vus }, active: true },
+      data: { active: false },
+    });
+  }
+
+  await audit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    action: "qbo.customers_sync",
+    entityType: "QboCustomer",
+    after: { ajoutes, majs, total: clients.length },
+  });
+
+  revalidatePath("/taches");
+  return { ajoutes, majs, total: clients.length };
 }

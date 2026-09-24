@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Repeat } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
+import { SyncClientsQbo } from "@/components/sync-clients-qbo";
 import { AjouterTache } from "@/components/ajouter-tache";
 import { TaskCard } from "@/components/task-card";
 import { Button } from "@/components/ui/button";
@@ -44,12 +45,13 @@ export default async function TachesPage({
             { title: { contains: q } },
             { notes: { contains: q } },
             { client: { companyName: { contains: q } } },
+            { qboCustomer: { displayName: { contains: q } } },
           ],
         }
       : {}),
   };
 
-  const [taches, clients] = await Promise.all([
+  const [taches, clientsQboRaw] = await Promise.all([
     prisma.recurringTask.findMany({
       where,
       // Les échéances les plus proches d'abord : c'est l'ordre de travail.
@@ -58,14 +60,19 @@ export default async function TachesPage({
         id: true, title: true, price: true, periodDays: true, nextDueDate: true,
         lastQbInvoiceNo: true, notes: true, active: true,
         client: { select: { id: true, companyName: true } },
+        qboCustomer: { select: { id: true, displayName: true } },
       },
     }),
-    prisma.client.findMany({
-      where: { tenantId, deletedAt: null },
-      orderBy: { companyName: "asc" },
-      select: { id: true, companyName: true },
+    // La liste de reference vient de QuickBooks, pas des fiches Client de
+    // l'ERP : c'est QuickBooks qui facture.
+    prisma.qboCustomer.findMany({
+      where: { tenantId, active: true },
+      orderBy: { displayName: "asc" },
+      select: { id: true, displayName: true },
     }),
   ]);
+
+  const clientsQbo = clientsQboRaw.map((c) => ({ id: c.id, nom: c.displayName }));
 
   const rows = taches.map((t) => ({
     id: t.id,
@@ -77,6 +84,7 @@ export default async function TachesPage({
     notes: t.notes,
     active: t.active,
     client: t.client,
+    qboCustomer: t.qboCustomer,
   }));
 
   // Totaux : seules les tâches actives comptent comme revenu récurrent.
@@ -105,9 +113,10 @@ export default async function TachesPage({
             ensuite.
           </p>
         </div>
-        <AjouterTache
-          clients={clients.map((c) => ({ id: c.id, name: c.companyName }))}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <SyncClientsQbo nombre={clientsQbo.length} />
+          <AjouterTache clients={clientsQbo} />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -165,7 +174,7 @@ export default async function TachesPage({
       ) : (
         <div className="space-y-2">
           {rows.map((t) => (
-            <TaskCard key={t.id} task={t} />
+            <TaskCard key={t.id} task={t} clientsQbo={clientsQbo} />
           ))}
         </div>
       )}

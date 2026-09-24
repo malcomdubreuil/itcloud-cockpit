@@ -31,6 +31,14 @@ export type QboInvoice = {
   [k: string]: unknown;
 };
 
+export type QboCustomer = {
+  Id: string;
+  DisplayName: string;
+  CompanyName?: string;
+  Active?: boolean;
+  PrimaryEmailAddr?: { Address?: string };
+};
+
 export class QuickBooksClient {
   private accessToken: string | null = null;
   private realmId: string | null = null;
@@ -101,6 +109,31 @@ export class QuickBooksClient {
       `SELECT * FROM Invoice WHERE DocNumber = '${safe}'`,
     );
     return data.QueryResponse.Invoice?.[0] ?? null;
+  }
+
+  /** Tous les clients de QuickBooks, actifs et inactifs.
+   *
+   *  L'API plafonne a 1000 lignes par requete : on pagine avec STARTPOSITION
+   *  (qui commence a 1, pas a 0) jusqu'a recevoir une page incomplete. Sans
+   *  cette boucle, une compagnie de plus de mille clients en perdrait
+   *  silencieusement une partie — le pire genre de bogue, puisque la liste
+   *  aurait l'air correcte. */
+  async getCustomers(): Promise<QboCustomer[]> {
+    const LOT = 1000;
+    const tous: QboCustomer[] = [];
+    let debut = 1;
+
+    for (let garde = 0; garde < 50; garde++) {
+      const data = await this.query<{ QueryResponse: { Customer?: QboCustomer[] } }>(
+        `SELECT * FROM Customer STARTPOSITION ${debut} MAXRESULTS ${LOT}`,
+      );
+      const page = data.QueryResponse.Customer ?? [];
+      tous.push(...page);
+      if (page.length < LOT) break;
+      debut += LOT;
+    }
+
+    return tous;
   }
 
   async getInvoiceById(id: string): Promise<QboInvoice> {
