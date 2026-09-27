@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Cloud } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -23,10 +23,24 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Cloud className="h-6 w-6" />
-          </div>
-          <CardTitle className="text-xl">ITCloud Cockpit</CardTitle>
+          <Image
+            src="/logo-god-info.png"
+            alt="God-Info — Solutions informatiques"
+            width={900}
+            height={307}
+            priority
+            className="mb-3 h-12 w-auto dark:hidden"
+          />
+          <Image
+            src="/logo-god-info-sombre.png"
+            alt=""
+            aria-hidden
+            width={900}
+            height={307}
+            priority
+            className="mb-3 hidden h-12 w-auto dark:block"
+          />
+          <CardTitle className="text-xl">Cockpit</CardTitle>
           <CardDescription>Connecte-toi à ton espace de gestion</CardDescription>
         </CardHeader>
         <CardContent>

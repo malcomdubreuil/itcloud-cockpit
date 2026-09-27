@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { Cloud, LogOut } from "lucide-react";
+import Image from "next/image";
+import { LogOut } from "lucide-react";
 import { auth, signOut } from "@/auth";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { DivisionSwitch } from "@/components/division-switch";
@@ -22,11 +23,28 @@ export default async function DashboardLayout({
         data-masquer-plein-ecran
         className="hidden w-60 shrink-0 flex-col border-r bg-background md:flex"
       >
-        <div className="flex h-14 items-center gap-2 px-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Cloud className="h-4 w-4" />
-          </div>
-          <span className="font-semibold">Cockpit</span>
+        <div className="flex h-14 items-center px-4">
+          {/* Deux fichiers plutot qu'un filtre CSS : le texte du logo est NOIR,
+              donc invisible sur la barre en mode sombre. La variante claire
+              n'eclaircit que les gris et le noir — les bleus de la marque
+              restent exacts. */}
+          <Image
+            src="/logo-god-info.png"
+            alt="God-Info — Solutions informatiques"
+            width={900}
+            height={307}
+            priority
+            className="h-8 w-auto dark:hidden"
+          />
+          <Image
+            src="/logo-god-info-sombre.png"
+            alt=""
+            aria-hidden
+            width={900}
+            height={307}
+            priority
+            className="hidden h-8 w-auto dark:block"
+          />
         </div>
         <Separator />
         <DivisionSwitch current={division} divisions={DIVISIONS} />
