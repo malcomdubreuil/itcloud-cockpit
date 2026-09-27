@@ -24,21 +24,21 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <Image
-            src="/logo-god-info.png"
+            src="/logo-god-info-compact.png"
             alt="God-Info — Solutions informatiques"
-            width={900}
-            height={307}
+            width={760}
+            height={251}
             priority
-            className="mb-3 h-12 w-auto dark:hidden"
+            className="mb-3 h-16 w-auto dark:hidden"
           />
           <Image
-            src="/logo-god-info-sombre.png"
+            src="/logo-god-info-compact-sombre.png"
             alt=""
             aria-hidden
-            width={900}
-            height={307}
+            width={760}
+            height={251}
             priority
-            className="mb-3 hidden h-12 w-auto dark:block"
+            className="mb-3 hidden h-16 w-auto dark:block"
           />
           <CardTitle className="text-xl">Cockpit</CardTitle>
           <CardDescription>Connecte-toi à ton espace de gestion</CardDescription>

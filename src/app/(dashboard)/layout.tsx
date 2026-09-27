@@ -23,7 +23,7 @@ export default async function DashboardLayout({
         data-masquer-plein-ecran
         className="hidden w-60 shrink-0 flex-col border-r bg-background md:flex"
       >
-        <div className="flex h-14 items-center px-4">
+        <div className="flex h-20 items-center px-3">
           {/* Deux fichiers plutot qu'un filtre CSS : le texte du logo est NOIR,
               donc invisible sur la barre en mode sombre. La variante claire
               n'eclaircit que les gris et le noir — les bleus de la marque
@@ -40,7 +40,7 @@ export default async function DashboardLayout({
             width={760}
             height={251}
             priority
-            className="h-9 w-auto dark:hidden"
+            className="h-14 w-auto dark:hidden"
           />
           <Image
             src="/logo-god-info-compact-sombre.png"
@@ -49,7 +49,7 @@ export default async function DashboardLayout({
             width={760}
             height={251}
             priority
-            className="hidden h-9 w-auto dark:block"
+            className="hidden h-14 w-auto dark:block"
           />
         </div>
         <Separator />
@@ -68,7 +68,7 @@ export default async function DashboardLayout({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-end gap-2 border-b px-4">
+        <header className="flex h-20 items-center justify-end gap-2 border-b px-4">
           <PleinEcran />
           <ThemeToggle />
           <form
