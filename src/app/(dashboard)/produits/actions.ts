@@ -290,3 +290,121 @@ export async function toggleProductActive(productId: string, active: boolean) {
 
   revalidatePath("/produits");
 }
+
+// ── Produits maison ─────────────────────────────────────────────────────────
+
+/** Transforme un nom en SKU lisible : « Forfait site web » → « FORFAIT-SITE-WEB ».
+ *  Les accents sautent, parce qu'un SKU sert de clé de rapprochement et voyage
+ *  mal avec eux. */
+function skuDepuisNom(nom: string): string {
+  return (
+    nom
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 40) || "PRODUIT"
+  );
+}
+
+/** Crée un produit MAISON (hébergement, domaines, SSL…).
+ *
+ *  Réservé aux divisions autres qu'ITCloud : là-bas le catalogue vient de la
+ *  synchronisation, et un produit créé à la main se ferait doubler ou écraser
+ *  au prochain rapport. D'où `itcloudManaged: false`, qui dit explicitement à
+ *  la synchro de ne jamais y toucher. */
+export async function creerProduitMaison(formData: FormData): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "products:write");
+  const tenantId = session.user.tenantId;
+
+  const nom = String(formData.get("nom") ?? "").trim().slice(0, 191);
+  const division = String(formData.get("division") ?? "").trim();
+  const cycle = String(formData.get("cycle") ?? "MENSUEL").trim();
+  const groupe = String(formData.get("groupe") ?? "").trim().slice(0, 191);
+
+  const lire = (cle: string) => {
+    const v = String(formData.get(cle) ?? "").replace(",", ".").trim();
+    if (!v) return 0;
+    const n = parseFloat(v);
+    return Number.isFinite(n) && n >= 0 ? n : NaN;
+  };
+  // Les montants sont saisis AU CYCLE (un forfait mensuel à 75 $, c'est
+  // 75 $ par mois), comme sur la facture — pas ramenés au mois comme ailleurs
+  // dans l'écran, où l'on compare des produits de cycles différents.
+  const pdsf = lire("pdsf");
+  const cout = lire("cout");
+  const prix = lire("prix");
+
+  if (!nom) throw new Error("Donne un nom au produit.");
+  if (!["MENSUEL", "TRIMESTRIEL", "ANNUEL"].includes(cycle)) {
+    throw new Error("Cycle de facturation invalide.");
+  }
+  if (division === "ITCLOUD") {
+    throw new Error(
+      "Le catalogue ITCloud vient de la synchronisation : un produit créé à la main y serait écrasé.",
+    );
+  }
+  if ([pdsf, cout, prix].some((n) => Number.isNaN(n))) {
+    throw new Error("Montant invalide.");
+  }
+  if (prix <= 0) throw new Error("Le prix facturé doit être supérieur à zéro.");
+
+  // Un produit maison n'a pas de fournisseur externe : on reprend celui que
+  // portent déjà les produits de la division, et à défaut le premier connu.
+  const fournisseur =
+    (await prisma.product.findFirst({
+      where: { tenantId, division, deletedAt: null },
+      orderBy: { createdAt: "asc" },
+      select: { supplierId: true },
+    }))?.supplierId ??
+    (await prisma.supplier.findFirst({ where: { tenantId }, select: { id: true } }))?.id;
+
+  if (!fournisseur) throw new Error("Aucun fournisseur en base : impossible de créer un produit.");
+
+  // Le SKU est unique par (tenant, sku, cycle) : on suffixe si le nom existe
+  // déjà, plutôt que d'échouer sur une contrainte que l'utilisateur ne voit pas.
+  const base = skuDepuisNom(nom);
+  let sku = base;
+  for (let i = 2; i < 50; i++) {
+    const pris = await prisma.product.findFirst({
+      where: { tenantId, sku, billingCycle: cycle as "MENSUEL" },
+      select: { id: true },
+    });
+    if (!pris) break;
+    sku = `${base}-${i}`;
+  }
+
+  const cree = await prisma.product.create({
+    data: {
+      tenantId,
+      supplierId: fournisseur,
+      name: nom,
+      group: groupe || "Autre",
+      sku,
+      msrp: (pdsf || prix).toFixed(4),
+      partnerCost: cout.toFixed(4),
+      suggestedPrice: prix.toFixed(4),
+      // Prix saisis à la main : ni la synchro ni un ré-import ne les écrasent.
+      priceManual: true,
+      itcloudManaged: false,
+      division,
+      billingCycle: cycle as "MENSUEL",
+      active: true,
+    },
+    select: { id: true, name: true },
+  });
+
+  await audit({
+    tenantId,
+    userId: session.user.id,
+    action: "product.create_maison",
+    entityType: "Product",
+    entityId: cree.id,
+    after: { nom, sku, cycle, division, pdsf, cout, prix },
+  });
+
+  revalidatePath("/produits");
+}

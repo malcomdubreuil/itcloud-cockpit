@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, PackageSearch } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision } from "@/lib/division";
+import { NouveauProduit } from "@/components/nouveau-produit";
 import { ProductActiveToggle } from "@/components/product-active-toggle";
 import { MoneyInput } from "@/components/money-input";
 import {
@@ -119,13 +120,19 @@ export default async function ProduitsPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Produits</h1>
-        <p className="text-sm text-muted-foreground">
-          {activeCount} produits actifs sur {catalogCount} au catalogue.
-          Active seulement ceux que tu utilises — les vues de travail
-          n&apos;affichent que les produits actifs.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Produits</h1>
+          <p className="text-sm text-muted-foreground">
+            {activeCount} produits actifs sur {catalogCount} au catalogue.
+            Active seulement ceux que tu utilises — les vues de travail
+            n&apos;affichent que les produits actifs.
+          </p>
+        </div>
+        {/* Pas de creation a la main cote ITCloud : le catalogue y vient de la
+            synchronisation, et un produit ajoute ici se ferait doubler ou
+            ecraser au prochain rapport. */}
+        {division !== "ITCLOUD" && <NouveauProduit division={division} />}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
