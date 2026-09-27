@@ -27,23 +27,29 @@ export default async function DashboardLayout({
           {/* Deux fichiers plutot qu'un filtre CSS : le texte du logo est NOIR,
               donc invisible sur la barre en mode sombre. La variante claire
               n'eclaircit que les gris et le noir — les bleus de la marque
-              restent exacts. */}
+              restent exacts.
+
+              Version COMPACTE ici (sans la baseline « Solutions
+              informatiques ») : a 36 px de haut dans une barre de 240 px, la
+              baseline du logo complet n'est plus qu'une bouillie de pixels.
+              Le logo entier reste sur la page de connexion, ou il a la place
+              d'etre lu. */}
           <Image
-            src="/logo-god-info.png"
+            src="/logo-god-info-compact.png"
             alt="God-Info — Solutions informatiques"
-            width={900}
-            height={307}
+            width={760}
+            height={251}
             priority
-            className="h-8 w-auto dark:hidden"
+            className="h-9 w-auto dark:hidden"
           />
           <Image
-            src="/logo-god-info-sombre.png"
+            src="/logo-god-info-compact-sombre.png"
             alt=""
             aria-hidden
-            width={900}
-            height={307}
+            width={760}
+            height={251}
             priority
-            className="hidden h-8 w-auto dark:block"
+            className="hidden h-9 w-auto dark:block"
           />
         </div>
         <Separator />
