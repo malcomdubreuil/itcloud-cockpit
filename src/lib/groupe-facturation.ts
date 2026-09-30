@@ -20,7 +20,7 @@ import { domaineDeService, domainePrincipal } from "@/lib/domaine";
 export type ServiceGroupable = {
   id: string;
   notes: string | null;
-  domain?: { name: string; endClientName?: string | null } | null;
+  domain?: { name: string } | null;
   lastQbInvoiceNo: string | null;
   renewalDate: Date | null;
   product: { name: string };
@@ -29,13 +29,7 @@ export type ServiceGroupable = {
 // « client » n'est jamais produit par cleDeGroupe : c'est le motif du bouton
 // « Facturer tous les services » de la fiche client, qui prend le client en
 // entier au lieu d'un seul groupe.
-export type MotifGroupe =
-  | "client-final"
-  | "facture"
-  | "domaine"
-  | "echeance"
-  | "isole"
-  | "client";
+export type MotifGroupe = "facture" | "domaine" | "echeance" | "isole" | "client";
 
 export type GroupeFacturation<T extends ServiceGroupable> = {
   cle: string;
@@ -51,31 +45,27 @@ const iso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
 
 /** Clé de regroupement d'un service, et pourquoi.
  *
- *  `revendeur` change tout. Chez Pclogic, UNE facture couvre les 152 sites de
- *  ses propres clients : le numéro de facture ne délimite alors aucun client,
- *  et grouper par lui empilait 150 sites sans rapport sous un seul nom
- *  (« aicq-cochleaire.org · 150 services »). Pire, « Facturer ce groupe »
- *  avançait les 150 échéances d'un coup — c'est ce qui a envoyé 128 services
- *  jusqu'en 2028.
+ *  ATTENTION avant de changer l'ordre. Le 2026-09-16, une facturation de groupe
+ *  a estampillé « 2026-1066 » sur 149 services de Pclogic d'un coup, alors que
+ *  cette facture ne couvre qu'un site. Le regroupement par facture a donc
+ *  empilé 150 sites sans rapport sous un seul nom, et « Facturer ce groupe »
+ *  avançait les 150 échéances ensemble — ce qui a envoyé 128 services jusqu'en
+ *  2028. On a cru un moment que la règle était en cause ; elle ne l'était pas,
+ *  c'était la donnée. Les numéros ont été rendus le 2026-09-29 depuis
+ *  l'historique, et vérifiés contre QuickBooks.
  *
- *  Chez un revendeur on groupe donc par client final, à défaut par site. Chez
- *  un client ordinaire, le numéro de facture reste le meilleur repère : ces
- *  services étaient sur la même facture l'an dernier, c'est une décision
- *  d'affaires déjà prise. */
-export function cleDeGroupe(
-  s: ServiceGroupable,
-  revendeur = false,
-): { cle: string; motif: MotifGroupe } {
-  const domaine = domaineDeService(s);
-
-  if (revendeur) {
-    const final = s.domain?.endClientName?.trim();
-    if (final) return { cle: `c:${final.toLowerCase()}`, motif: "client-final" };
-    if (domaine) return { cle: `d:${domaine}`, motif: "domaine" };
-  }
-
+ *  Le numéro de facture reste donc le meilleur repère, y compris chez un
+ *  revendeur : une facture = un vrai client. Chez Pclogic, 152 services
+ *  deviennent 52 groupes (Manicouagan et ses 12 domaines, Audi Québec et ses 8,
+ *  Porsche Québec…), exactement les blocs de couleur du fichier de Keven. Par
+ *  domaine on en aurait 99, c'est-à-dire un client éclaté en autant de sites.
+ *
+ *  Le garde-fou contre une nouvelle dérive n'est pas ici : il est dans
+ *  advanceMonths, qui plafonne l'échéance quoi qu'il arrive. */
+export function cleDeGroupe(s: ServiceGroupable): { cle: string; motif: MotifGroupe } {
   const facture = s.lastQbInvoiceNo?.trim();
   if (facture) return { cle: `f:${facture}`, motif: "facture" };
+  const domaine = domaineDeService(s);
   if (domaine) return { cle: `d:${domaine}`, motif: "domaine" };
   const date = iso(s.renewalDate);
   if (date) return { cle: `e:${date}`, motif: "echeance" };
@@ -85,12 +75,11 @@ export function cleDeGroupe(
 /** Regroupe des services d'UN MÊME client. Trié par échéance la plus proche. */
 export function grouperPourFacturation<T extends ServiceGroupable>(
   services: T[],
-  revendeur = false,
 ): GroupeFacturation<T>[] {
   const par = new Map<string, GroupeFacturation<T>>();
 
   for (const s of services) {
-    const { cle, motif } = cleDeGroupe(s, revendeur);
+    const { cle, motif } = cleDeGroupe(s);
     let g = par.get(cle);
     if (!g) {
       g = {
@@ -106,11 +95,10 @@ export function grouperPourFacturation<T extends ServiceGroupable>(
   }
 
   for (const g of par.values()) {
-    // Un groupe de revendeur s'annonce par le nom du client final quand on le
-    // connaît : c'est l'information qui manquait pour s'y retrouver.
-    const final = g.services[0].domain?.endClientName?.trim();
+    // Le groupe porte le nom de son site principal : chez un revendeur, c'est
+    // ce qui désigne le client. Un groupe de 12 domaines s'annonce donc par
+    // celui qui porte l'hébergement, pas par le premier venu.
     g.titre =
-      (g.motif === "client-final" && final) ||
       domainePrincipal(g.services) ||
       domaineDeService(g.services[0]) ||
       "Sans domaine";
@@ -127,7 +115,6 @@ export function grouperPourFacturation<T extends ServiceGroupable>(
 }
 
 export const LIBELLE_MOTIF: Record<MotifGroupe, string> = {
-  "client-final": "même client final",
   facture: "même facture",
   domaine: "même domaine — aucun n° de facture",
   echeance: "même échéance — aucun n° de facture ni domaine",

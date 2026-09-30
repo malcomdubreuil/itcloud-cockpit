@@ -135,12 +135,9 @@ export default async function DashboardPage() {
   // Repli : les services partis sur la MÊME facture d'un MÊME client forment
   // une seule ligne dépliable. Sans ça, les 9 services de Demers Bicycle
   // occupent 9 rangées et poussent les autres dossiers hors de l'écran.
-  // Chez un revendeur, la facture unique couvre tous ses clients : elle ne
-  // délimite rien, et grouper par elle empilait ici les 150 sites de Pclogic
-  // sur une seule ligne. Voir cleDeGroupe.
   const parGroupe = new Map<string, typeof sorted>();
   for (const s of sorted) {
-    const cle = `${s.clientId}|${cleDeGroupe(s, s.client.isReseller).cle}`;
+    const cle = `${s.clientId}|${cleDeGroupe(s).cle}`;
     const l = parGroupe.get(cle);
     if (l) l.push(s);
     else parGroupe.set(cle, [s]);

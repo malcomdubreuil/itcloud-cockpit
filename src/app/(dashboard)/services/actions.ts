@@ -783,13 +783,9 @@ export async function previewGroupeFacturation(serviceId: string): Promise<{
 
   const base = await prisma.clientService.findUnique({
     where: { id: serviceId },
-    select: {
-      id: true, tenantId: true, clientId: true,
-      client: { select: { isReseller: true } },
-    },
+    select: { id: true, tenantId: true, clientId: true },
   });
   if (!base || base.tenantId !== session.user.tenantId) throw new Error("Service introuvable");
-  const revendeur = base.client.isReseller;
 
   const division = await currentDivision();
   const tous = await prisma.clientService.findMany({
@@ -809,8 +805,8 @@ export async function previewGroupeFacturation(serviceId: string): Promise<{
     },
   });
 
-  const cible = cleDeGroupe(tous.find((x) => x.id === serviceId) ?? tous[0], revendeur);
-  const groupe = tous.filter((x) => cleDeGroupe(x, revendeur).cle === cible.cle);
+  const cible = cleDeGroupe(tous.find((x) => x.id === serviceId) ?? tous[0]);
+  const groupe = tous.filter((x) => cleDeGroupe(x).cle === cible.cle);
 
   return {
     motif: cible.motif,

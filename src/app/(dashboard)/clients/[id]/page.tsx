@@ -154,9 +154,7 @@ export default async function ClientPage({ params }: Props) {
   // se retrouvent ensemble. Chez un revendeur, c'est ce qui fait apparaître le
   // vrai client final — Demers Bicycle et ses 9 services, plutôt que 8 groupes
   // de domaines éparpillés parmi les 57 sites d'Acxzon.
-  // Le revendeur change la clé de regroupement : sa facture unique couvre
-  // tous ses clients, donc elle ne délimite rien. Voir cleDeGroupe.
-  const groupes = grouperPourFacturation(active, client.isReseller);
+  const groupes = grouperPourFacturation(active);
   const grouper = division !== "ITCLOUD" && groupes.length >= 2;
 
   return (
