@@ -20,7 +20,7 @@ import { domaineDeService, domainePrincipal } from "@/lib/domaine";
 export type ServiceGroupable = {
   id: string;
   notes: string | null;
-  domain?: { name: string } | null;
+  domain?: { name: string; principal?: boolean } | null;
   lastQbInvoiceNo: string | null;
   renewalDate: Date | null;
   product: { name: string };

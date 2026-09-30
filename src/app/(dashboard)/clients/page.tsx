@@ -135,7 +135,7 @@ export default async function ClientsPage({
           select: {
             quantity: true, unitPrice: true, unitCost: true, renewalDate: true, notes: true,
             product: { select: { billingCycle: true, name: true } },
-            domain: { select: { name: true, endClientName: true } },
+            domain: { select: { name: true, endClientName: true, principal: true } },
           },
         },
       },

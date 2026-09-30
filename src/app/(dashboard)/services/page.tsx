@@ -86,7 +86,7 @@ export default async function ServicesPage({
         billingMode: true, monthlyBilling: true,
         client: { select: { id: true, companyName: true, urgencyDays: true, isReseller: true } },
         product: { select: { name: true, billingCycle: true, msrp: true } },
-        domain: { select: { id: true, name: true, endClientName: true } },
+        domain: { select: { id: true, name: true, endClientName: true, principal: true } },
       },
     }),
     prisma.clientService.count({ where }),

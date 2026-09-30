@@ -20,7 +20,7 @@ async function domaineDuLocataire(id: string) {
   assertCan(session.user, "services:write");
   const d = await prisma.domain.findUniqueOrThrow({
     where: { id },
-    select: { id: true, tenantId: true, name: true, notes: true },
+    select: { id: true, tenantId: true, name: true, notes: true, principal: true },
   });
   if (d.tenantId !== session.user.tenantId) throw new Error("Introuvable");
   return { session, d };
@@ -32,6 +32,28 @@ function rafraichir(id: string) {
   revalidatePath("/services");
   revalidatePath("/clients");
   revalidatePath("/dashboard");
+}
+
+/** Marque ce site comme celui qui nomme son groupe de facturation.
+ *
+ *  Le titre se devine d'habitude (le domaine qui porte l'hébergement), mais
+ *  quand tous les domaines d'un client se valent — 21 réservations au même prix
+ *  chez le cabinet Bellemare — seule une décision humaine tranche. */
+export async function setDomainPrincipal(domainId: string, value: boolean) {
+  const { session, d } = await domaineDuLocataire(domainId);
+  if (value === d.principal) return;
+
+  await prisma.domain.update({ where: { id: domainId }, data: { principal: value } });
+  await audit({
+    tenantId: d.tenantId,
+    userId: session.user.id,
+    action: "domain.set_principal",
+    entityType: "Domain",
+    entityId: domainId,
+    before: { principal: d.principal },
+    after: { principal: value },
+  });
+  rafraichir(domainId);
 }
 
 export async function updateDomainNotes(domainId: string, value: string) {

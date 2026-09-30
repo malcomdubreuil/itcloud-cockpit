@@ -79,7 +79,7 @@ export default async function DashboardPage() {
         select: {
           id: true, clientId: true, quantity: true, unitPrice: true, renewalDate: true,
           lastQbInvoiceNo: true, monthlyBilling: true, notes: true,
-          domain: { select: { name: true, endClientName: true } },
+          domain: { select: { name: true, endClientName: true, principal: true } },
           client: {
             select: {
               companyName: true, clientCode: true, urgencyDays: true,

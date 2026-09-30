@@ -81,7 +81,7 @@ export default async function ClientPage({ params }: Props) {
           id: true, quantity: true, quantityManual: true, renewalDateManual: true, unitCost: true, unitPrice: true,
           status: true, billingMode: true, renewalDate: true,
           lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true, serverName: true,
-          domain: { select: { id: true, name: true, endClientName: true } },
+          domain: { select: { id: true, name: true, endClientName: true, principal: true } },
           monthlyBilling: true,
           product: { select: { name: true, billingCycle: true, msrp: true } },
         },

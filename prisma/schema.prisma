@@ -908,6 +908,14 @@ model Domain {
   name     String
   /// Client final derrière un revendeur. NULL = le client de l'ERP suffit.
   endClientName String?
+  /// Ce site représente son groupe de facturation, et lui donne son titre.
+  ///
+  /// Sans ça, le titre se devine — le domaine qui porte l'hébergement, sinon le
+  /// premier par ordre alphabétique. Ça suffit presque toujours, mais pas pour
+  /// un client dont les 21 domaines sont TOUS de simples réservations au même
+  /// prix : le cabinet Bellemare s'annonçait alors « avocat-ivac.ca ». Rien
+  /// dans la donnée ne désigne le bon ; seul Keven le sait.
+  principal     Boolean   @default(false)
   notes         String?   @db.Text
   deletedAt     DateTime?
 

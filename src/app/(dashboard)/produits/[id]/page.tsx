@@ -89,7 +89,7 @@ export default async function ProduitPage({ params }: Props) {
           renewalDate: true,
           serverName: true,
           notes: true,
-          domain: { select: { name: true, endClientName: true } },
+          domain: { select: { name: true, endClientName: true, principal: true } },
           lastQbInvoiceNo: true,
           client: { select: { id: true, companyName: true, isReseller: true } },
         },

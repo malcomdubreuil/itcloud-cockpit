@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { InlineTextInput } from "@/components/inline-text-input";
+import { DomainePrincipalToggle } from "@/components/domaine-principal-toggle";
 import { ServiceCard } from "@/components/service-card";
 import {
   renameDomain,
@@ -41,6 +42,7 @@ export default async function DomainePage({
       tenantId: true,
       name: true,
       notes: true,
+      principal: true,
       clients: {
         where: { deletedAt: null },
         select: { id: true, companyName: true },
@@ -98,6 +100,10 @@ export default async function DomainePage({
               hébergé via {revendeur.companyName}
             </Badge>
           )}
+          <DomainePrincipalToggle
+            domainId={domaine.id}
+            principal={domaine.principal}
+          />
         </div>
       </div>
 

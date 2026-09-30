@@ -98,7 +98,7 @@ export async function updateServiceDomain(serviceId: string, value: string) {
 
   const service = await prisma.clientService.findUniqueOrThrow({
     where: { id: serviceId },
-    select: { id: true, tenantId: true, domainId: true, domain: { select: { name: true } } },
+    select: { id: true, tenantId: true, domainId: true, domain: { select: { name: true, principal: true } } },
   });
   if (service.tenantId !== tenantId) throw new Error("Introuvable");
 
@@ -801,7 +801,7 @@ export async function previewGroupeFacturation(serviceId: string): Promise<{
       id: true, notes: true, lastQbInvoiceNo: true, renewalDate: true,
       quantity: true, unitPrice: true, monthlyBilling: true,
       product: { select: { name: true, billingCycle: true } },
-      domain: { select: { name: true, endClientName: true } },
+      domain: { select: { name: true, endClientName: true, principal: true } },
     },
   });
 
@@ -880,7 +880,7 @@ export async function previewClientFacturation(clientId: string): Promise<{
       id: true, notes: true, lastQbInvoiceNo: true, renewalDate: true,
       quantity: true, unitPrice: true, monthlyBilling: true,
       product: { select: { name: true, billingCycle: true } },
-      domain: { select: { name: true, endClientName: true } },
+      domain: { select: { name: true, endClientName: true, principal: true } },
     },
   });
   if (!services.length) throw new Error("Aucun service à facturer pour ce client");
@@ -1012,7 +1012,7 @@ export async function markDomainBilled(
     select: {
       id: true, renewalDate: true, lastQbInvoiceNo: true, monthlyBilling: true,
       notes: true,
-      domain: { select: { name: true, endClientName: true } },
+      domain: { select: { name: true, endClientName: true, principal: true } },
       product: { select: { billingCycle: true } },
     },
   });
