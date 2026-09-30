@@ -141,37 +141,6 @@ export async function updateServiceDomain(serviceId: string, value: string) {
   revalidateBillingViews();
 }
 
-/** Le client final derrière un revendeur. Porté par le domaine, pas par le
- *  service : les 4 services d'un site appartiennent au même monde. */
-export async function updateDomainEndClient(domainId: string, value: string) {
-  const session = await auth();
-  if (!session?.user) throw new Error("Non authentifié");
-  assertCan(session.user, "services:write");
-  const tenantId = session.user.tenantId;
-
-  const d = await prisma.domain.findUniqueOrThrow({
-    where: { id: domainId },
-    select: { id: true, tenantId: true, endClientName: true },
-  });
-  if (d.tenantId !== tenantId) throw new Error("Introuvable");
-
-  const nom = value.trim().slice(0, 190) || null;
-  if (nom === d.endClientName) return;
-
-  await prisma.domain.update({ where: { id: domainId }, data: { endClientName: nom } });
-  await audit({
-    tenantId,
-    userId: session.user.id,
-    action: "domain.update_end_client",
-    entityType: "Domain",
-    entityId: domainId,
-    before: { endClientName: d.endClientName },
-    after: { endClientName: nom },
-  });
-
-  revalidateBillingViews();
-}
-
 // Marque un service comme « facturé au mois » : la refacturation avancera
 // alors les dates de +1 mois au lieu du cycle du produit.
 // Ré-exprime une échéance dans un autre cycle : on repart de la dernière

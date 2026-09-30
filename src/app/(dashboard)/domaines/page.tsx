@@ -20,7 +20,7 @@ export const metadata: Metadata = { title: "Domaines" };
 
 const PAGE_SIZE = 60;
 
-type SearchParams = Promise<{ q?: string; sans?: string; page?: string }>;
+type SearchParams = Promise<{ q?: string; page?: string }>;
 
 export default async function DomainesPage({
   searchParams,
@@ -33,7 +33,7 @@ export default async function DomainesPage({
   const division = await currentDivision();
   if (division === "ITCLOUD") redirect("/clients");
 
-  const { q = "", sans = "", page: pageRaw } = await searchParams;
+  const { q = "", page: pageRaw } = await searchParams;
   const page = Math.max(1, parseInt(pageRaw ?? "1") || 1);
 
   const where = {
@@ -43,22 +43,13 @@ export default async function DomainesPage({
       ? {
           OR: [
             { name: { contains: q } },
-            { endClientName: { contains: q } },
             { services: { some: { deletedAt: null, client: { companyName: { contains: q } } } } },
           ],
         }
       : {}),
-    // « À identifier » : les sites d'un revendeur dont on ne sait pas encore à
-    // qui ils sont. C'est la liste de travail pour remplir les clients finaux.
-    ...(sans === "1"
-      ? {
-          endClientName: null,
-          services: { some: { deletedAt: null, client: { isReseller: true } } },
-        }
-      : {}),
   };
 
-  const [domaines, total, aIdentifier] = await Promise.all([
+  const [domaines, total] = await Promise.all([
     prisma.domain.findMany({
       where,
       orderBy: { name: "asc" },
@@ -67,7 +58,6 @@ export default async function DomainesPage({
       select: {
         id: true,
         name: true,
-        endClientName: true,
         services: {
           where: { deletedAt: null },
           select: {
@@ -80,20 +70,12 @@ export default async function DomainesPage({
       },
     }),
     prisma.domain.count({ where }),
-    prisma.domain.count({
-      where: {
-        tenantId,
-        deletedAt: null,
-        endClientName: null,
-        services: { some: { deletedAt: null, client: { isReseller: true } } },
-      },
-    }),
   ]);
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const url = (o: Record<string, string>) => {
     const p = new URLSearchParams();
-    for (const [k, v] of Object.entries({ q, sans, page: "", ...o })) if (v) p.set(k, v);
+    for (const [k, v] of Object.entries({ q, page: "", ...o })) if (v) p.set(k, v);
     const s = p.toString();
     return s ? `/domaines?${s}` : "/domaines";
   };
@@ -115,10 +97,9 @@ export default async function DomainesPage({
         <Input
           name="q"
           defaultValue={q}
-          placeholder="Chercher un domaine, un client final, un revendeur…"
+          placeholder="Chercher un domaine ou un client…"
           className="h-9 max-w-md"
         />
-        {sans === "1" && <input type="hidden" name="sans" value="1" />}
         <Button type="submit" size="sm">
           Chercher
         </Button>
@@ -132,14 +113,6 @@ export default async function DomainesPage({
             Effacer
           </Button>
         )}
-        <Button
-          size="sm"
-          variant={sans === "1" ? "default" : "outline"}
-          nativeButton={false}
-          render={<Link href={url({ sans: sans === "1" ? "" : "1", page: "" })} />}
-        >
-          À identifier ({aIdentifier})
-        </Button>
       </form>
 
       {domaines.length === 0 ? (
@@ -174,15 +147,6 @@ export default async function DomainesPage({
                   <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 flex-1 basis-56 truncate font-medium">
                     {d.name}
-                  </span>
-                  <span
-                    className={
-                      d.endClientName
-                        ? "min-w-0 basis-48 truncate text-sm"
-                        : "min-w-0 basis-48 truncate text-sm text-muted-foreground italic"
-                    }
-                  >
-                    {d.endClientName ?? "client à identifier"}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {actifs.length} service{actifs.length > 1 ? "s" : ""}

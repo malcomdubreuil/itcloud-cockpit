@@ -9,9 +9,10 @@ import { normaliserDomaine } from "@/lib/domaine";
 
 // Actions de la fiche d'un domaine.
 //
-// Le domaine est le vrai objet de l'hébergement : c'est lui qui porte le site,
-// ses services, et — chez un revendeur — le client final. Ces actions sont
-// volontairement étroites : renommer, dire à qui est le site, prendre une note.
+// Le domaine est le vrai objet de l'hébergement : c'est lui qui porte le site
+// et ses services. Chez un revendeur, c'est le nom du domaine — et lui seul —
+// qui désigne le vrai client. Ces actions sont volontairement étroites :
+// renommer le site, prendre une note.
 
 async function domaineDuLocataire(id: string) {
   const session = await auth();
@@ -19,7 +20,7 @@ async function domaineDuLocataire(id: string) {
   assertCan(session.user, "services:write");
   const d = await prisma.domain.findUniqueOrThrow({
     where: { id },
-    select: { id: true, tenantId: true, name: true, endClientName: true, notes: true },
+    select: { id: true, tenantId: true, name: true, notes: true },
   });
   if (d.tenantId !== session.user.tenantId) throw new Error("Introuvable");
   return { session, d };
@@ -31,25 +32,6 @@ function rafraichir(id: string) {
   revalidatePath("/services");
   revalidatePath("/clients");
   revalidatePath("/dashboard");
-}
-
-/** Le client final : à qui appartient ce site, derrière le revendeur. */
-export async function updateEndClientName(domainId: string, value: string) {
-  const { session, d } = await domaineDuLocataire(domainId);
-  const nom = value.trim().slice(0, 190) || null;
-  if (nom === d.endClientName) return;
-
-  await prisma.domain.update({ where: { id: domainId }, data: { endClientName: nom } });
-  await audit({
-    tenantId: d.tenantId,
-    userId: session.user.id,
-    action: "domain.update_end_client",
-    entityType: "Domain",
-    entityId: domainId,
-    before: { endClientName: d.endClientName },
-    after: { endClientName: nom },
-  });
-  rafraichir(domainId);
 }
 
 export async function updateDomainNotes(domainId: string, value: string) {

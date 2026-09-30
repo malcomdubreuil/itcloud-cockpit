@@ -13,7 +13,6 @@ import { ServiceCard } from "@/components/service-card";
 import {
   renameDomain,
   updateDomainNotes,
-  updateEndClientName,
 } from "@/app/(dashboard)/domaines/actions";
 
 // LA FICHE D'UN SITE.
@@ -41,7 +40,6 @@ export default async function DomainePage({
       id: true,
       tenantId: true,
       name: true,
-      endClientName: true,
       notes: true,
       clients: {
         where: { deletedAt: null },
@@ -106,25 +104,6 @@ export default async function DomainePage({
       <Card>
         <CardContent className="space-y-3 py-4">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-            {/* LE champ qui manquait. Le service reste facturé au revendeur ;
-                ceci dit de qui est le site. */}
-            <label className="flex min-w-0 flex-1 basis-72 flex-col gap-1">
-              <span className="text-xs font-medium text-muted-foreground">
-                Client du site
-              </span>
-              <InlineTextInput
-                id={domaine.id}
-                value={domaine.endClientName ?? ""}
-                action={updateEndClientName}
-                label="Client final propriétaire du site"
-                placeholder={
-                  revendeur ? "à qui appartient ce site ?" : "—"
-                }
-                copyButton={false}
-                inputClassName="w-full"
-              />
-            </label>
-
             <label className="flex min-w-0 flex-1 basis-56 flex-col gap-1">
               <span className="text-xs font-medium text-muted-foreground">
                 Nom de domaine

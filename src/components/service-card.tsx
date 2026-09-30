@@ -16,7 +16,6 @@ import {
   updateItcloudInvoiceNo,
   updateServiceNotes,
   updateServiceDomain,
-  updateDomainEndClient,
   updateServiceQuantity,
 } from "@/app/(dashboard)/services/actions";
 
@@ -240,29 +239,6 @@ export function ServiceCard({
                     <Globe className="h-3.5 w-3.5" />
                   </Link>
                 )}
-              </span>
-            )}
-            {/* Chez un revendeur, on facture Pclogic mais le site est à
-                quelqu'un d'autre. Sans ce champ, 152 sites portaient le même
-                nom de client. */}
-            {!itcloud && s.isReseller && s.domain && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span
-                  className={cn(
-                    s.domain.endClientName && "font-medium text-foreground",
-                  )}
-                >
-                  Client du site
-                </span>
-                <InlineTextInput
-                  id={s.domain.id}
-                  value={s.domain.endClientName ?? ""}
-                  action={updateDomainEndClient}
-                  label="Client final propriétaire du site"
-                  placeholder="à qui est ce site ?"
-                  copyButton={false}
-                  inputClassName="w-40"
-                />
               </span>
             )}
             <span className="inline-flex min-w-0 flex-1 basis-52 items-center gap-1.5 text-xs text-muted-foreground">
