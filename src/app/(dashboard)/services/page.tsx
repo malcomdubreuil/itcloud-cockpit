@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
 import { ServiceCard } from "@/components/service-card";
+import { CarteOrdonnee, OrdreFige } from "@/components/ordre-fige";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -52,12 +53,19 @@ export default async function ServicesPage({
     ...(facturation !== "TOUS" ? { billingMode: facturation as never } : {}),
     // le tri par échéance sert à la refacturation : seuls les services datés comptent
     ...(byRenewal ? { renewalDate: { not: null } } : {}),
+    // La recherche doit atteindre le CLIENT FINAL, pas seulement celui qu'on
+    // facture. Chez un revendeur (Pclogic, Acxzon), companyName dit « Pclogic »
+    // pour 152 sites : chercher le site d'un vrai client ne donnait rien. Le
+    // domaine et le nom du client final sont donc dans le filtre.
     ...(q
       ? {
           OR: [
             { client: { companyName: { contains: q } } },
             { client: { clientCode: { contains: q } } },
             { product: { name: { contains: q } } },
+            { domain: { name: { contains: q } } },
+            { domain: { endClientName: { contains: q } } },
+            { notes: { contains: q } },
           ],
         }
       : {}),
@@ -76,8 +84,9 @@ export default async function ServicesPage({
         status: true, renewalDate: true,
         lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true,
         billingMode: true, monthlyBilling: true,
-        client: { select: { id: true, companyName: true, urgencyDays: true } },
+        client: { select: { id: true, companyName: true, urgencyDays: true, isReseller: true } },
         product: { select: { name: true, billingCycle: true, msrp: true } },
+        domain: { select: { id: true, name: true, endClientName: true } },
       },
     }),
     prisma.clientService.count({ where }),
@@ -155,11 +164,11 @@ export default async function ServicesPage({
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <OrdreFige ordre={services.map((s) => s.id)} className="gap-2">
           {services.map((s) => (
+            <CarteOrdonnee key={s.id} id={s.id}>
             <ServiceCard
               division={division}
-              key={s.id}
               service={{
                 id: s.id,
                 clientId: s.clientId,
@@ -182,10 +191,13 @@ export default async function ServicesPage({
                   msrp: Number(s.product.msrp),
                 },
                 client: s.client,
+                domain: s.domain,
+                isReseller: s.client.isReseller,
               }}
             />
+            </CarteOrdonnee>
           ))}
-        </div>
+        </OrdreFige>
       )}
 
       {pageCount > 1 && (

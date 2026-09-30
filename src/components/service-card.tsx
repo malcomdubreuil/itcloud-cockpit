@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Globe } from "lucide-react";
 import { MoneyInput } from "@/components/money-input";
 import { InlineTextInput } from "@/components/inline-text-input";
 import { ServiceActions } from "@/components/service-actions";
@@ -14,6 +15,8 @@ import {
   updateQbInvoiceNo,
   updateItcloudInvoiceNo,
   updateServiceNotes,
+  updateServiceDomain,
+  updateDomainEndClient,
   updateServiceQuantity,
 } from "@/app/(dashboard)/services/actions";
 
@@ -104,6 +107,11 @@ export type ServiceCardData = {
   internal?: boolean;
   product: { name: string; billingCycle: string; msrp: number };
   client?: { id: string; companyName: string };
+  /** Le site. NULL = pas encore renseigné (3 services sur 491). */
+  domain?: { id: string; name: string; endClientName: string | null } | null;
+  /** Le client de l'ERP est un revendeur : le vrai propriétaire du site est
+   *  ailleurs, et c'est la seule information qui permet de s'y retrouver. */
+  isReseller?: boolean;
 };
 
 export function ServiceCard({
@@ -201,6 +209,54 @@ export function ServiceCard({
                   action={updateItcloudInvoiceNo}
                   label="N° facture ITCloud"
                   placeholder="n° facture"
+                />
+              </span>
+            )}
+            {/* Le domaine a sa propre colonne depuis 2026-09-29 : il vivait dans
+                la note, ce qui empêchait de chercher un site ou de savoir à qui
+                il appartenait sous un revendeur. */}
+            {!itcloud && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                Domaine
+                <InlineTextInput
+                  id={s.id}
+                  value={s.domain?.name ?? ""}
+                  action={updateServiceDomain}
+                  label="Domaine du service"
+                  placeholder="exemple.com"
+                  inputClassName="w-44"
+                />
+                {s.domain && (
+                  <Link
+                    href={`/domaines/${s.domain.id}`}
+                    title="Fiche du site : à qui il est, ses autres services"
+                    className="opacity-50 hover:opacity-100"
+                  >
+                    <Globe className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+              </span>
+            )}
+            {/* Chez un revendeur, on facture Pclogic mais le site est à
+                quelqu'un d'autre. Sans ce champ, 152 sites portaient le même
+                nom de client. */}
+            {!itcloud && s.isReseller && s.domain && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span
+                  className={cn(
+                    s.domain.endClientName && "font-medium text-foreground",
+                  )}
+                >
+                  Client du site
+                </span>
+                <InlineTextInput
+                  id={s.domain.id}
+                  value={s.domain.endClientName ?? ""}
+                  action={updateDomainEndClient}
+                  label="Client final propriétaire du site"
+                  placeholder="à qui est ce site ?"
+                  copyButton={false}
+                  inputClassName="w-40"
                 />
               </span>
             )}

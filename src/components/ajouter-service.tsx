@@ -9,8 +9,8 @@ import { addServiceToClient } from "@/app/(dashboard)/services/actions";
 
 // Ajouter un service sous un client. Keven choisit le produit dans la liste :
 // le prix se remplit tout seul depuis le PDSF, et le coût vient du produit. Il
-// n'a plus qu'à mettre l'échéance, et s'il veut le n° de facture et une note
-// (le domaine, côté hébergement).
+// n'a plus qu'à mettre l'échéance, le domaine côté hébergement, et s'il veut
+// le n° de facture et une note.
 
 const cad = new Intl.NumberFormat("fr-CA", { style: "currency", currency: "CAD" });
 const todayPlusYear = () => {
@@ -55,6 +55,9 @@ export function AjouterService({
   const [prix, setPrix] = useState("");
   const [echeance, setEcheance] = useState(todayPlusYear());
   const [note, setNote] = useState("");
+  // Le domaine a son propre champ : il finissait dans la note, ce qui le rendait
+  // introuvable et empêchait de savoir à qui était le site sous un revendeur.
+  const [domaine, setDomaine] = useState("");
   const [facture, setFacture] = useState("");
   const [serveur, setServeur] = useState(serveurSuggere ?? "");
   const [pending, start] = useTransition();
@@ -85,6 +88,7 @@ export function AjouterService({
           unitPrice: parsed,
           qbInvoiceNo: facture || undefined,
           notes: note || undefined,
+          domaine: domaine || undefined,
           serverName: serveur || undefined,
         });
         toast.success(`${produit?.name} ajouté.`);
@@ -92,6 +96,7 @@ export function AjouterService({
         setProductId("");
         setPrix("");
         setNote("");
+        setDomaine("");
         setFacture("");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Échec de l'ajout");
@@ -158,9 +163,19 @@ export function AjouterService({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        {hebergement && (
+          <input
+            className={cn(champ, "w-48")}
+            placeholder="Domaine — exemple.com"
+            value={domaine}
+            disabled={pending}
+            onChange={(e) => setDomaine(e.target.value)}
+            aria-label="Domaine du site"
+          />
+        )}
         <input
           className={cn(champ, "min-w-0 flex-1 basis-56")}
-          placeholder={hebergement ? "Note — ex. exemple.com" : "Note (optionnel)"}
+          placeholder={hebergement ? "Note — ex. Certificat SSL" : "Note (optionnel)"}
           value={note}
           disabled={pending}
           onChange={(e) => setNote(e.target.value)}

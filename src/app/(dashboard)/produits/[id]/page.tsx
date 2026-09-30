@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { ApplyPriceAll } from "@/components/apply-price-all";
-import { domaineDeNote } from "@/lib/domaine";
+import { domaineDeService } from "@/lib/domaine";
 import { PrixParServeur } from "@/components/prix-par-serveur";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -89,8 +89,9 @@ export default async function ProduitPage({ params }: Props) {
           renewalDate: true,
           serverName: true,
           notes: true,
+          domain: { select: { name: true, endClientName: true } },
           lastQbInvoiceNo: true,
-          client: { select: { id: true, companyName: true } },
+          client: { select: { id: true, companyName: true, isReseller: true } },
         },
       },
     },
@@ -271,10 +272,25 @@ export default async function ProduitPage({ params }: Props) {
                     title={s.client.companyName}
                     className="min-w-0 flex-1 basis-56 truncate font-medium hover:underline"
                   >
-                    {(product.division === "ITCLOUD" ? "" : domaineDeNote(s.notes)) ||
+                    {/* Chercher un produit doit mener au CLIENT, pas au
+                        revendeur qui le facture : sous Pclogic, 152 lignes
+                        affichaient toutes « Pclogic Inc. ». On montre donc le
+                        client final, à défaut le site. */}
+                    {(product.division === "ITCLOUD"
+                      ? ""
+                      : s.domain?.endClientName?.trim() || domaineDeService(s)) ||
                       s.client.companyName}
                   </Link>
                   <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    {/* Qui paie, quand ce n'est pas le propriétaire du site. */}
+                    {s.client.isReseller && (
+                      <span
+                        className="text-muted-foreground"
+                        title={`Facturé à ${s.client.companyName} (revendeur)`}
+                      >
+                        via {s.client.companyName}
+                      </span>
+                    )}
                     {s.status !== "ACTIF" && (
                       <Badge variant="secondary">{STATUS_LABEL[s.status]}</Badge>
                     )}

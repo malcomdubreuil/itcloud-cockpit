@@ -33,6 +33,7 @@ model Tenant {
   mailingCampaigns MailingCampaign[]
   stickyNotes      StickyNote[]
   qboCustomers     QboCustomer[]
+  domains          Domain[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -162,12 +163,18 @@ model Client {
   // prix des services forcés à 0, affichage des prix masqué, pas de bouton
   // « Facturé ». Les services restent listables et annulables.
   internal      Boolean        @default(false)
+  // Domaine principal : LE site du client, quand il n'en a qu'un. On le saisit
+  // sur sa fiche plutôt que de le répéter sur chacun de ses services. Un client
+  // qui a plusieurs sites laisse ce champ vide — ses domaines vivent alors sur
+  // ses services, là où ils se facturent séparément.
+  mainDomainId  String?
   anniversary   DateTime?
   deletedAt     DateTime?
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   services         ClientService[]
+  mainDomain    Domain?        @relation(fields: [mainDomainId], references: [id])
   recurringTasks   RecurringTask[]
   mailingContacts  MailingContact[]
   invoices         Invoice[]
@@ -389,6 +396,12 @@ model ClientService {
 
   // Aide à la refacturation : derniers numéros de facture (éditables ;
   // celui d'ITCloud sera aussi alimenté par la sync invoice-items en phase 1)
+  // Domaine du service — sa propre colonne, pas un bout de la note. La note
+  // sert à autre chose (« Certificat SSL », « Elementor Pro »…) et mélanger les
+  // deux empêchait de chercher un site, de le facturer seul, ou de savoir à qui
+  // il appartient vraiment. Voir le modèle Domain.
+  domainId             String?
+
   lastQbInvoiceNo      String? // dernière facture QuickBooks (GOD-INFO) au client
   lastItcloudInvoiceNo String? // dernière facture ITCloud pour ce service
   notes                String? @db.Text // notes libres par service (ex-colonne M du fichier Excel)
@@ -397,6 +410,7 @@ model ClientService {
 
   client  Client  @relation(fields: [clientId], references: [id])
   product Product @relation(fields: [productId], references: [id])
+  domain  Domain? @relation(fields: [domainId], references: [id])
 
   changes      ServiceChange[]
   invoiceItems InvoiceItem[]
@@ -408,6 +422,7 @@ model ClientService {
   @@index([tenantId, renewalDate])
   @@index([tenantId, status])
   @@index([tenantId, clientId])
+  @@index([tenantId, domainId])
 }
 
 enum ChangeType {
@@ -871,4 +886,38 @@ model QboCustomer {
 
   @@unique([tenantId, qboId])
   @@index([tenantId, active])
+}
+
+// UN DOMAINE — le site, distinct du client qui le paie.
+//
+// Côté hébergement, le vrai objet n'est ni le client ni le produit : c'est le
+// site. Un domaine porte plusieurs services (hébergement + SSL + courriel +
+// domaines de rechange) qui se facturent ensemble, et chez un revendeur il
+// appartient à quelqu'un dont l'ERP ne connaissait pas le nom.
+//
+// C'est ce trou qui faisait afficher « aicq-cochleaire.org · 150 services » :
+// 150 sites sans rapport, empilés sous un seul nom parce que le seul
+// discriminant vivait dans une note en texte libre.
+//
+// endClientName sert exactement à ça : le service reste facturé au revendeur
+// (Pclogic), mais on sait enfin de qui est le site, et la recherche le trouve.
+model Domain {
+  id       String @id @default(uuid())
+  tenantId String
+  /// Toujours en minuscules, sans www. — c'est la clé de rapprochement.
+  name     String
+  /// Client final derrière un revendeur. NULL = le client de l'ERP suffit.
+  endClientName String?
+  notes         String?   @db.Text
+  deletedAt     DateTime?
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id])
+  services ClientService[]
+  clients  Client[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId, endClientName])
 }

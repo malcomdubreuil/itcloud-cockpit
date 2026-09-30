@@ -54,6 +54,18 @@ export function NewClientButton() {
                 <Input id="nc-company" name="companyName" required autoFocus placeholder="ex. Boulangerie Tremblay inc." />
               </div>
 
+              {/* Le domaine est une donnée À PART du nom : le client s'appelle
+                  « Boulangerie Tremblay inc. » et son site « boultremblay.com ».
+                  Les confondre, c'est ce qui rendait les sites introuvables. */}
+              <div className="space-y-1.5">
+                <Label htmlFor="nc-domaine">Domaine principal</Label>
+                <Input id="nc-domaine" name="domaine" placeholder="ex. boultremblay.com" />
+                <p className="text-xs text-muted-foreground">
+                  Le site du client. À laisser vide s&apos;il en a plusieurs —
+                  ses domaines se saisissent alors sur chaque service.
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="nc-contact">Personne-ressource</Label>

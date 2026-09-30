@@ -16,15 +16,28 @@ export function domaineDeNote(notes: string | null | undefined): string {
   return m ? m[1].toLowerCase() : "";
 }
 
+// Depuis le 2026-09-29 le domaine a sa propre colonne (table Domain). La note
+// reste lue en REPLI : elle a porté le domaine pendant des mois, et un service
+// créé avant la migration — ou saisi à l'ancienne — doit continuer de marcher.
+export type PorteurDeDomaine = {
+  notes?: string | null;
+  domain?: { name: string } | null;
+};
+
+/** Le domaine d'un service : sa colonne d'abord, sa note ensuite. */
+export function domaineDeService(s: PorteurDeDomaine): string {
+  return s.domain?.name?.toLowerCase() || domaineDeNote(s.notes);
+}
+
 /** Domaine PRINCIPAL d'un client : celui qui porte son site (l'hébergement),
  *  sinon celui qui a le plus de services, sinon le premier par ordre alpha.
  *  Un client a souvent plusieurs domaines pointant vers un seul vrai site. */
 export function domainePrincipal(
-  services: { notes: string | null; product: { name: string } }[],
+  services: (PorteurDeDomaine & { product: { name: string } })[],
 ): string {
   const par = new Map<string, { n: number; heberge: boolean }>();
   for (const s of services) {
-    const d = domaineDeNote(s.notes);
+    const d = domaineDeService(s);
     if (!d) continue;
     const e = par.get(d) ?? { n: 0, heberge: false };
     e.n++;
@@ -38,4 +51,19 @@ export function domainePrincipal(
       a[0].localeCompare(b[0]),
   );
   return tries[0]?.[0] ?? "";
+}
+
+/** Normalise un domaine saisi a la main : minuscules, sans protocole, sans
+ *  www., sans chemin. « https://WWW.Audiste-Foy.com/contact » devient
+ *  « audiste-foy.com » — c'est la cle de rapprochement de la table Domain, et
+ *  deux orthographes du meme site ne doivent pas creer deux fiches. */
+export function normaliserDomaine(saisie: string): string {
+  return saisie
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:[/][/]/, "")
+    .replace(/^www[.]/, "")
+    .split("/")[0]
+    .split("?")[0]
+    .trim();
 }

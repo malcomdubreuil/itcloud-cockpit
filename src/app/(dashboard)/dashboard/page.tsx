@@ -5,7 +5,7 @@ import { ArrowRight, Receipt } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
-import { domaineDeNote, domainePrincipal } from "@/lib/domaine";
+import { domaineDeService, domainePrincipal } from "@/lib/domaine";
 import { cleDeGroupe } from "@/lib/groupe-facturation";
 import { LigneAFacturer } from "@/components/ligne-a-facturer";
 import { Badge } from "@/components/ui/badge";
@@ -79,7 +79,13 @@ export default async function DashboardPage() {
         select: {
           id: true, clientId: true, quantity: true, unitPrice: true, renewalDate: true,
           lastQbInvoiceNo: true, monthlyBilling: true, notes: true,
-          client: { select: { companyName: true, clientCode: true, urgencyDays: true } },
+          domain: { select: { name: true, endClientName: true } },
+          client: {
+            select: {
+              companyName: true, clientCode: true, urgencyDays: true,
+              isReseller: true,
+            },
+          },
           product: { select: { name: true, billingCycle: true } },
         },
       }),
@@ -129,9 +135,12 @@ export default async function DashboardPage() {
   // Repli : les services partis sur la MÊME facture d'un MÊME client forment
   // une seule ligne dépliable. Sans ça, les 9 services de Demers Bicycle
   // occupent 9 rangées et poussent les autres dossiers hors de l'écran.
+  // Chez un revendeur, la facture unique couvre tous ses clients : elle ne
+  // délimite rien, et grouper par elle empilait ici les 150 sites de Pclogic
+  // sur une seule ligne. Voir cleDeGroupe.
   const parGroupe = new Map<string, typeof sorted>();
   for (const s of sorted) {
-    const cle = `${s.clientId}|${cleDeGroupe(s).cle}`;
+    const cle = `${s.clientId}|${cleDeGroupe(s, s.client.isReseller).cle}`;
     const l = parGroupe.get(cle);
     if (l) l.push(s);
     else parGroupe.set(cle, [s]);
@@ -203,7 +212,10 @@ export default async function DashboardPage() {
                     clientId={premier.clientId}
                     clientName={premier.client.companyName}
                     titre={
-                      (division === "ITCLOUD" ? "" : domainePrincipal(liste)) ||
+                      (division === "ITCLOUD"
+                        ? ""
+                        : premier.domain?.endClientName?.trim() ||
+                          domainePrincipal(liste)) ||
                       premier.client.companyName
                     }
                     facture={premier.lastQbInvoiceNo?.trim() || null}
@@ -214,7 +226,9 @@ export default async function DashboardPage() {
                       return {
                         id: s.id,
                         titre:
-                          (division === "ITCLOUD" ? "" : domaineDeNote(s.notes)) ||
+                          (division === "ITCLOUD"
+                            ? ""
+                            : s.domain?.endClientName?.trim() || domaineDeService(s)) ||
                           s.client.companyName,
                         produit: s.product.name,
                         quantite: s.quantity,

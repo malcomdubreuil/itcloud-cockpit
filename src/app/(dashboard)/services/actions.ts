@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { assertCan } from "@/application/policies/can";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, divisionLabel, serviceDivisionFilter } from "@/lib/division";
-import { domaineDeNote, domainePrincipal } from "@/lib/domaine";
+import { domaineDeService, domainePrincipal, normaliserDomaine } from "@/lib/domaine";
 import { cleDeGroupe, type MotifGroupe } from "@/lib/groupe-facturation";
 import { audit } from "@/infrastructure/db/audit";
 
@@ -82,6 +82,94 @@ export async function updateServiceNotes(serviceId: string, value: string) {
   });
 
   revalidatePath("/services");
+}
+
+// ── Le domaine d'un service ──────────────────────────────────────────────
+// Le domaine a sa propre table. On le saisit quand même en texte libre : taper
+// « audiste-foy.com » est plus rapide que de choisir parmi 325 entrées, et le
+// domaine est connu par cœur. L'action retrouve la fiche du domaine ou la crée
+// — Keven ne gère jamais un catalogue à la main.
+
+export async function updateServiceDomain(serviceId: string, value: string) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+  const tenantId = session.user.tenantId;
+
+  const service = await prisma.clientService.findUniqueOrThrow({
+    where: { id: serviceId },
+    select: { id: true, tenantId: true, domainId: true, domain: { select: { name: true } } },
+  });
+  if (service.tenantId !== tenantId) throw new Error("Introuvable");
+
+  const nom = normaliserDomaine(value);
+  if (nom.length > 190) throw new Error("Domaine trop long");
+  // Un domaine sans point n'est pas un domaine : mieux vaut refuser que de
+  // polluer la table avec « voir avec le client ».
+  if (nom && !nom.includes(".")) {
+    throw new Error("Ça ne ressemble pas à un domaine (il manque le point).");
+  }
+  if (nom === (service.domain?.name ?? "")) return;
+
+  const domainId = nom
+    ? (
+        await prisma.domain.upsert({
+          where: { tenantId_name: { tenantId, name: nom } },
+          update: { deletedAt: null },
+          create: { tenantId, name: nom },
+          select: { id: true },
+        })
+      ).id
+    : null;
+
+  await prisma.$transaction([
+    prisma.clientService.update({ where: { id: serviceId }, data: { domainId } }),
+    prisma.serviceChange.create({
+      data: {
+        tenantId,
+        serviceId,
+        changeType: "MODIFICATION",
+        field: "domainId",
+        oldValue: { domaine: service.domain?.name ?? null },
+        newValue: { domaine: nom || null },
+        source: "MANUEL",
+        userId: session.user.id,
+      },
+    }),
+  ]);
+
+  revalidateBillingViews();
+}
+
+/** Le client final derrière un revendeur. Porté par le domaine, pas par le
+ *  service : les 4 services d'un site appartiennent au même monde. */
+export async function updateDomainEndClient(domainId: string, value: string) {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+  const tenantId = session.user.tenantId;
+
+  const d = await prisma.domain.findUniqueOrThrow({
+    where: { id: domainId },
+    select: { id: true, tenantId: true, endClientName: true },
+  });
+  if (d.tenantId !== tenantId) throw new Error("Introuvable");
+
+  const nom = value.trim().slice(0, 190) || null;
+  if (nom === d.endClientName) return;
+
+  await prisma.domain.update({ where: { id: domainId }, data: { endClientName: nom } });
+  await audit({
+    tenantId,
+    userId: session.user.id,
+    action: "domain.update_end_client",
+    entityType: "Domain",
+    entityId: domainId,
+    before: { endClientName: d.endClientName },
+    after: { endClientName: nom },
+  });
+
+  revalidateBillingViews();
 }
 
 // Marque un service comme « facturé au mois » : la refacturation avancera
@@ -521,9 +609,58 @@ export async function markServiceBilled(
   return { count: 1 };
 }
 
+// Jusqu'à combien de jours d'avance on accepte de facturer.
+//
+// 35 jours au plus : c'est ce qui garantit la règle de Keven — une échéance ne
+// dépasse jamais 400 jours (365 + 35). 20 jours au moins, sinon un mensuel
+// facturé deux semaines d'avance serait pris pour une anomalie.
+function toleranceJours(months: number): number {
+  return Math.min(35, Math.max(20, Math.round(months * 15)));
+}
+
+const JOUR = 86_400_000;
+
+/** Échéance après facturation — avec le garde-fou qui manquait.
+ *
+ *  Sans lui, facturer deux fois le même service ajoutait deux cycles. C'est
+ *  arrivé pour de vrai : 128 services de Pclogic sont partis jusqu'en 2028, et
+ *  deux jusqu'en 2066, parce que le groupe « facture 2026-1066 » compte 150
+ *  services et qu'un seul clic les avançait tous — y compris ceux déjà facturés
+ *  le mois précédent.
+ *
+ *  Deux questions, dans cet ordre :
+ *
+ *  1. Le service est-il DÛ ? Seulement si son échéance tombe dans les jours qui
+ *     viennent (la tolérance). Au-delà, la période est déjà payée : re-facturer
+ *     ne doit RIEN déplacer. C'est aussi ce qui garantit qu'une échéance ne
+ *     dépasse jamais 400 jours — au plus 35 jours d'avance sur un cycle de 365.
+ *
+ *  2. L'échéance est-elle au-delà du plafond ? Auquel cas on retire des cycles
+ *     entiers jusqu'à retomber dessous. C'est la réparation des dates déjà
+ *     parties — et comme on ne retire que des mois entiers, la date
+ *     anniversaire (jour et mois) ne change jamais.
+ */
 function advanceMonths(base: Date | null, months: number): Date {
+  const aujourdhui = new Date();
   const d = base ? new Date(base) : new Date();
-  d.setMonth(d.getMonth() + months);
+
+  const joursAvant = (d.getTime() - aujourdhui.getTime()) / JOUR;
+  const du = joursAvant <= toleranceJours(months);
+
+  if (du) {
+    d.setMonth(d.getMonth() + months);
+    return d;
+  }
+
+  const plafond = new Date(aujourdhui);
+  plafond.setMonth(plafond.getMonth() + months);
+  plafond.setDate(plafond.getDate() + toleranceJours(months));
+
+  // Borne sur la boucle : une date importée absurde (2065, vue en production)
+  // demande une quarantaine de tours, jamais deux cents.
+  for (let garde = 0; d > plafond && garde < 200; garde++) {
+    d.setMonth(d.getMonth() - months);
+  }
   return d;
 }
 
@@ -540,6 +677,8 @@ export async function addServiceToClient(
     unitPrice?: number;
     qbInvoiceNo?: string;
     notes?: string;
+    /** Le site, côté hébergement. Crée la fiche du domaine si elle manque. */
+    domaine?: string;
     serverName?: string;
   },
 ): Promise<{ id: string }> {
@@ -584,11 +723,27 @@ export async function addServiceToClient(
   const notes = input.notes?.trim() || null;
   const serverName = input.serverName?.trim() || null;
 
+  // Le domaine va dans sa table, pas dans la note.
+  const nomDomaine = normaliserDomaine(input.domaine ?? "");
+  if (nomDomaine && !nomDomaine.includes(".")) {
+    throw new Error("Ça ne ressemble pas à un domaine (il manque le point).");
+  }
+  const domainId = nomDomaine
+    ? (
+        await prisma.domain.upsert({
+          where: { tenantId_name: { tenantId, name: nomDomaine } },
+          update: { deletedAt: null },
+          create: { tenantId, name: nomDomaine },
+          select: { id: true },
+        })
+      ).id
+    : null;
+
   // matchKey préfixée MANUEL : la synchro ITCloud rapproche par
   // « codeClient|produit|cycle » et signale les services ERP absents du
   // rapport. Un préfixe qui n'est pas un code client ITCloud garde donc les
   // ajouts manuels hors de cette liste.
-  const base = `MANUEL|${notes || product.name}|${product.name}`;
+  const base = `MANUEL|${nomDomaine || notes || product.name}|${product.name}`;
   let matchKey = base.slice(0, 191);
   for (let n = 2; await prisma.clientService.findFirst({ where: { tenantId, matchKey }, select: { id: true } }); n++) {
     matchKey = `${base} (${n})`.slice(0, 191);
@@ -607,6 +762,7 @@ export async function addServiceToClient(
       status: "ACTIF",
       billingMode: "INDIRECT",
       notes,
+      domainId,
       serverName,
       lastQbInvoiceNo: input.qbInvoiceNo?.trim() || null,
     },
@@ -658,9 +814,13 @@ export async function previewGroupeFacturation(serviceId: string): Promise<{
 
   const base = await prisma.clientService.findUnique({
     where: { id: serviceId },
-    select: { id: true, tenantId: true, clientId: true },
+    select: {
+      id: true, tenantId: true, clientId: true,
+      client: { select: { isReseller: true } },
+    },
   });
   if (!base || base.tenantId !== session.user.tenantId) throw new Error("Service introuvable");
+  const revendeur = base.client.isReseller;
 
   const division = await currentDivision();
   const tous = await prisma.clientService.findMany({
@@ -676,11 +836,12 @@ export async function previewGroupeFacturation(serviceId: string): Promise<{
       id: true, notes: true, lastQbInvoiceNo: true, renewalDate: true,
       quantity: true, unitPrice: true, monthlyBilling: true,
       product: { select: { name: true, billingCycle: true } },
+      domain: { select: { name: true, endClientName: true } },
     },
   });
 
-  const cible = cleDeGroupe(tous.find((x) => x.id === serviceId) ?? tous[0]);
-  const groupe = tous.filter((x) => cleDeGroupe(x).cle === cible.cle);
+  const cible = cleDeGroupe(tous.find((x) => x.id === serviceId) ?? tous[0], revendeur);
+  const groupe = tous.filter((x) => cleDeGroupe(x, revendeur).cle === cible.cle);
 
   return {
     motif: cible.motif,
@@ -691,7 +852,7 @@ export async function previewGroupeFacturation(serviceId: string): Promise<{
         const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
         return {
           id: s.id,
-          domaine: domaineDeNote(s.notes) || "—",
+          domaine: domaineDeService(s) || "—",
           produit: s.product.name,
           montant: Number(s.unitPrice) * s.quantity,
           echeance: s.renewalDate?.toISOString().slice(0, 10) ?? null,
@@ -754,6 +915,7 @@ export async function previewClientFacturation(clientId: string): Promise<{
       id: true, notes: true, lastQbInvoiceNo: true, renewalDate: true,
       quantity: true, unitPrice: true, monthlyBilling: true,
       product: { select: { name: true, billingCycle: true } },
+      domain: { select: { name: true, endClientName: true } },
     },
   });
   if (!services.length) throw new Error("Aucun service à facturer pour ce client");
@@ -770,7 +932,7 @@ export async function previewClientFacturation(clientId: string): Promise<{
         const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
         return {
           id: s.id,
-          domaine: domaineDeNote(s.notes) || "—",
+          domaine: domaineDeService(s) || "—",
           produit: s.product.name,
           montant: Number(s.unitPrice) * s.quantity,
           echeance: s.renewalDate?.toISOString().slice(0, 10) ?? null,
@@ -885,14 +1047,16 @@ export async function markDomainBilled(
     select: {
       id: true, renewalDate: true, lastQbInvoiceNo: true, monthlyBilling: true,
       notes: true,
+      domain: { select: { name: true, endClientName: true } },
       product: { select: { billingCycle: true } },
     },
   });
 
-  // Le domaine vit dans la note ; on filtre en mémoire car la reconnaissance
-  // (« Certificat SSL - x.com », « x.com Elementor Pro ») n'est pas exprimable
-  // en SQL. Le SSL et l'Elementor du site suivent donc bien leur domaine.
-  const services = tous.filter((s) => domaineDeNote(s.notes) === cible);
+  // Le domaine a sa propre colonne, mais on filtre toujours en mémoire : la
+  // note reste lue en repli pour les services d'avant la migration, et cette
+  // reconnaissance (« Certificat SSL - x.com ») n'est pas exprimable en SQL. Le
+  // SSL et l'Elementor du site suivent donc bien leur domaine.
+  const services = tous.filter((s) => domaineDeService(s) === cible);
   if (services.length === 0) {
     throw new Error(`Aucun service actif à facturer pour ${cible}.`);
   }

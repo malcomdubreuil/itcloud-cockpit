@@ -13,6 +13,8 @@ import { InternalToggle } from "@/components/internal-toggle";
 import { FacturerGroupe } from "@/components/facturer-groupe";
 import { AjouterService } from "@/components/ajouter-service";
 import { grouperPourFacturation } from "@/lib/groupe-facturation";
+import { InlineTextInput } from "@/components/inline-text-input";
+import { updateClientMainDomain } from "@/app/(dashboard)/clients/actions";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -68,6 +70,7 @@ export default async function ClientPage({ params }: Props) {
       id: true, tenantId: true, companyName: true, contactName: true,
       clientCode: true, email: true, phone: true, status: true,
       paymentMethod: true, billingType: true, urgencyDays: true, isReseller: true, internal: true,
+      mainDomain: { select: { id: true, name: true } },
       services: {
         // Fiche cloisonnee : cote Hebergement on ne voit que les domaines et
         // l'hebergement du client, cote ITCloud que ses licences. Ses KPI se
@@ -78,6 +81,7 @@ export default async function ClientPage({ params }: Props) {
           id: true, quantity: true, quantityManual: true, renewalDateManual: true, unitCost: true, unitPrice: true,
           status: true, billingMode: true, renewalDate: true,
           lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true, serverName: true,
+          domain: { select: { id: true, name: true, endClientName: true } },
           monthlyBilling: true,
           product: { select: { name: true, billingCycle: true, msrp: true } },
         },
@@ -125,6 +129,10 @@ export default async function ClientPage({ params }: Props) {
     lastQbInvoiceNo: s.lastQbInvoiceNo,
     lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
     notes: s.notes,
+    // Sans ces deux lignes, le champ Domaine s'affiche vide et « Client du
+    // site » disparaît — alors que la note ne porte plus le domaine.
+    domain: s.domain,
+    isReseller: client.isReseller,
     monthlyBilling: s.monthlyBilling,
     urgencyDays: client.urgencyDays,
     internal: client.internal,
@@ -146,7 +154,9 @@ export default async function ClientPage({ params }: Props) {
   // se retrouvent ensemble. Chez un revendeur, c'est ce qui fait apparaître le
   // vrai client final — Demers Bicycle et ses 9 services, plutôt que 8 groupes
   // de domaines éparpillés parmi les 57 sites d'Acxzon.
-  const groupes = grouperPourFacturation(active);
+  // Le revendeur change la clé de regroupement : sa facture unique couvre
+  // tous ses clients, donc elle ne délimite rien. Voir cleDeGroupe.
+  const groupes = grouperPourFacturation(active, client.isReseller);
   const grouper = division !== "ITCLOUD" && groupes.length >= 2;
 
   return (
@@ -183,6 +193,32 @@ export default async function ClientPage({ params }: Props) {
           )}
           <InternalToggle clientId={client.id} internal={client.internal} />
         </div>
+        {/* Le domaine principal : LE site du client, à part de sa raison
+            sociale. Vide chez un revendeur — ses 152 sites appartiennent à
+            d'autres, et c'est la fiche de chaque domaine qui le dit. */}
+        {division !== "ITCLOUD" && !client.isReseller && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-xs font-medium text-muted-foreground">
+              Domaine principal
+            </span>
+            <InlineTextInput
+              id={client.id}
+              value={client.mainDomain?.name ?? ""}
+              action={updateClientMainDomain}
+              label="Domaine principal du client"
+              placeholder="exemple.com"
+              inputClassName="w-52"
+            />
+            {client.mainDomain && (
+              <Link
+                href={`/domaines/${client.mainDomain.id}`}
+                className="text-xs text-muted-foreground hover:underline"
+              >
+                voir la fiche du site
+              </Link>
+            )}
+          </div>
+        )}
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
           {client.contactName && <span>{client.contactName}</span>}
           {client.clientCode && (

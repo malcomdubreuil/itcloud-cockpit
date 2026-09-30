@@ -1,4 +1,4 @@
-import { domaineDeNote, domainePrincipal } from "@/lib/domaine";
+import { domaineDeService, domainePrincipal } from "@/lib/domaine";
 
 // LE GROUPE DE FACTURATION — une notion, trois usages.
 //
@@ -20,6 +20,7 @@ import { domaineDeNote, domainePrincipal } from "@/lib/domaine";
 export type ServiceGroupable = {
   id: string;
   notes: string | null;
+  domain?: { name: string; endClientName?: string | null } | null;
   lastQbInvoiceNo: string | null;
   renewalDate: Date | null;
   product: { name: string };
@@ -28,7 +29,13 @@ export type ServiceGroupable = {
 // « client » n'est jamais produit par cleDeGroupe : c'est le motif du bouton
 // « Facturer tous les services » de la fiche client, qui prend le client en
 // entier au lieu d'un seul groupe.
-export type MotifGroupe = "facture" | "domaine" | "echeance" | "isole" | "client";
+export type MotifGroupe =
+  | "client-final"
+  | "facture"
+  | "domaine"
+  | "echeance"
+  | "isole"
+  | "client";
 
 export type GroupeFacturation<T extends ServiceGroupable> = {
   cle: string;
@@ -42,11 +49,33 @@ export type GroupeFacturation<T extends ServiceGroupable> = {
 
 const iso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
 
-/** Clé de regroupement d'un service, et pourquoi. */
-export function cleDeGroupe(s: ServiceGroupable): { cle: string; motif: MotifGroupe } {
+/** Clé de regroupement d'un service, et pourquoi.
+ *
+ *  `revendeur` change tout. Chez Pclogic, UNE facture couvre les 152 sites de
+ *  ses propres clients : le numéro de facture ne délimite alors aucun client,
+ *  et grouper par lui empilait 150 sites sans rapport sous un seul nom
+ *  (« aicq-cochleaire.org · 150 services »). Pire, « Facturer ce groupe »
+ *  avançait les 150 échéances d'un coup — c'est ce qui a envoyé 128 services
+ *  jusqu'en 2028.
+ *
+ *  Chez un revendeur on groupe donc par client final, à défaut par site. Chez
+ *  un client ordinaire, le numéro de facture reste le meilleur repère : ces
+ *  services étaient sur la même facture l'an dernier, c'est une décision
+ *  d'affaires déjà prise. */
+export function cleDeGroupe(
+  s: ServiceGroupable,
+  revendeur = false,
+): { cle: string; motif: MotifGroupe } {
+  const domaine = domaineDeService(s);
+
+  if (revendeur) {
+    const final = s.domain?.endClientName?.trim();
+    if (final) return { cle: `c:${final.toLowerCase()}`, motif: "client-final" };
+    if (domaine) return { cle: `d:${domaine}`, motif: "domaine" };
+  }
+
   const facture = s.lastQbInvoiceNo?.trim();
   if (facture) return { cle: `f:${facture}`, motif: "facture" };
-  const domaine = domaineDeNote(s.notes);
   if (domaine) return { cle: `d:${domaine}`, motif: "domaine" };
   const date = iso(s.renewalDate);
   if (date) return { cle: `e:${date}`, motif: "echeance" };
@@ -56,11 +85,12 @@ export function cleDeGroupe(s: ServiceGroupable): { cle: string; motif: MotifGro
 /** Regroupe des services d'UN MÊME client. Trié par échéance la plus proche. */
 export function grouperPourFacturation<T extends ServiceGroupable>(
   services: T[],
+  revendeur = false,
 ): GroupeFacturation<T>[] {
   const par = new Map<string, GroupeFacturation<T>>();
 
   for (const s of services) {
-    const { cle, motif } = cleDeGroupe(s);
+    const { cle, motif } = cleDeGroupe(s, revendeur);
     let g = par.get(cle);
     if (!g) {
       g = {
@@ -76,7 +106,14 @@ export function grouperPourFacturation<T extends ServiceGroupable>(
   }
 
   for (const g of par.values()) {
-    g.titre = domainePrincipal(g.services) || domaineDeNote(g.services[0].notes) || "Sans domaine";
+    // Un groupe de revendeur s'annonce par le nom du client final quand on le
+    // connaît : c'est l'information qui manquait pour s'y retrouver.
+    const final = g.services[0].domain?.endClientName?.trim();
+    g.titre =
+      (g.motif === "client-final" && final) ||
+      domainePrincipal(g.services) ||
+      domaineDeService(g.services[0]) ||
+      "Sans domaine";
   }
 
   const echeance = (g: GroupeFacturation<T>) =>
@@ -90,6 +127,7 @@ export function grouperPourFacturation<T extends ServiceGroupable>(
 }
 
 export const LIBELLE_MOTIF: Record<MotifGroupe, string> = {
+  "client-final": "même client final",
   facture: "même facture",
   domaine: "même domaine — aucun n° de facture",
   echeance: "même échéance — aucun n° de facture ni domaine",

@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
-import { domaineDeNote, domainePrincipal } from "@/lib/domaine";
+import { domaineDeService, domainePrincipal } from "@/lib/domaine";
 import { CYCLE_MONTHS, daysUntil, renewalUrgency } from "@/components/service-card";
 import { NewClientButton } from "@/components/new-client-button";
 import { Badge } from "@/components/ui/badge";
@@ -88,11 +88,28 @@ export default async function ClientsPage({
                 { contactName: { contains: q } },
                 { clientCode: { contains: q } },
                 { email: { contains: q } },
-                // Cote Hebergement, la ligne s'INTITULE par le domaine
+                // Côté Hébergement, la ligne s'INTITULE par le domaine
                 // (« dianerenaudcpa.com ») et la raison sociale n'est qu'en
-                // sous-titre : chercher ce qu'on lit a l'ecran doit marcher.
-                // Le domaine vit dans la note du service, d'ou ce detour.
-                { services: { some: { deletedAt: null, ...inDivision, notes: { contains: q } } } },
+                // sous-titre : chercher ce qu'on lit à l'écran doit marcher.
+                //
+                // Le domaine a sa propre table depuis le 2026-09-29. On cherche
+                // aussi le CLIENT FINAL : sous un revendeur, c'est le seul nom
+                // qui désigne le vrai propriétaire du site, et le chercher ne
+                // donnait rien. La note reste fouillée — elle a porté le domaine
+                // pendant des mois, et elle porte encore « Certificat SSL ».
+                {
+                  services: {
+                    some: {
+                      deletedAt: null,
+                      ...inDivision,
+                      OR: [
+                        { domain: { name: { contains: q } } },
+                        { domain: { endClientName: { contains: q } } },
+                        { notes: { contains: q } },
+                      ],
+                    },
+                  },
+                },
               ],
             },
           ]
@@ -118,6 +135,7 @@ export default async function ClientsPage({
           select: {
             quantity: true, unitPrice: true, unitCost: true, renewalDate: true, notes: true,
             product: { select: { billingCycle: true, name: true } },
+            domain: { select: { name: true, endClientName: true } },
           },
         },
       },
@@ -138,11 +156,11 @@ export default async function ClientsPage({
         nextRenewal = s.renewalDate;
       }
     }
-    // Le domaine identifie le site aux yeux de Keven. Il est noyé dans la note
-    // avec le type d'article (« Certificat SSL - axe-id.com ») — d'où
-    // domaineDeNote, qui range le SSL sous son site plutôt qu'à part.
+    // Le domaine identifie le site aux yeux de Keven. Il a sa propre colonne
+    // depuis le 2026-09-29 ; domaineDeService lit encore la note en repli, pour
+    // les services d'avant la migration.
     const domaines = [
-      ...new Set(c.services.map((x) => domaineDeNote(x.notes)).filter(Boolean)),
+      ...new Set(c.services.map((x) => domaineDeService(x)).filter(Boolean)),
     ].sort();
     // Côté Hébergement, Keven identifie un client par son site, pas par sa
     // raison sociale. Un revendeur garde son nom : « domaine principal » n'a

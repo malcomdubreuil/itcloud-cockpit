@@ -8,6 +8,7 @@ import {
   Calendar,
   Coins,
   FileText,
+  Globe,
   LayoutDashboard,
   Package,
   Receipt,
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/clients", label: "Clients", icon: Users },
+  { href: "/domaines", label: "Domaines", icon: Globe },
   { href: "/produits", label: "Produits", icon: Package },
   { href: "/couts", label: "Coûts", icon: Coins },
   { href: "/services", label: "Services", icon: Wrench },
@@ -66,6 +68,9 @@ export function SidebarNav({ division }: { division: string }) {
     // Les couts fixes (un serveur, une licence illimitee) sont propres a
     // l'hebergement : cote ITCloud le cout est par licence, sur le produit.
     if (i.href === "/couts") return division !== "ITCLOUD";
+    // Les domaines sont une notion d'hébergement : côté ITCloud on vend des
+    // licences, aucun site n'est en jeu.
+    if (i.href === "/domaines") return division !== "ITCLOUD";
     return true;
   });
 
