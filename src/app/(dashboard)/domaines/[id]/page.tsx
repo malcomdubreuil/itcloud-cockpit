@@ -196,6 +196,7 @@ export default async function DomainePage({
             <ServiceCard
               key={s.id}
               division={division}
+              montrerDomaine={false}
               service={{
                 id: s.id,
                 clientId: s.clientId,
@@ -219,8 +220,9 @@ export default async function DomainePage({
                   msrp: Number(s.product.msrp),
                 },
                 client: s.client,
-                // Le domaine est déjà le titre de la page : inutile de le
-                // répéter sur chaque carte.
+                // Le domaine est déjà le titre de la page, et « Client du site »
+                // a son propre champ en haut : les répéter sur chaque carte
+                // n'apporte rien.
                 domain: null,
                 isReseller: false,
               }}

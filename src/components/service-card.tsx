@@ -117,9 +117,14 @@ export type ServiceCardData = {
 export function ServiceCard({
   service: s,
   division = "ITCLOUD",
+  montrerDomaine = true,
 }: {
   service: ServiceCardData;
   division?: string;
+  /** Faux sur la fiche d'un domaine : le site est déjà le titre de la page.
+   *  Un champ vide y laisserait croire que le service n'a pas de domaine, et
+   *  une frappe involontaire le rattacherait à un autre site. */
+  montrerDomaine?: boolean;
 }) {
   // Cote Hebergement, plusieurs champs n'ont aucun sens : le n° de facture
   // ITCloud (ces produits ne viennent pas d'ITCloud) et le cout unitaire (les
@@ -215,7 +220,7 @@ export function ServiceCard({
             {/* Le domaine a sa propre colonne depuis 2026-09-29 : il vivait dans
                 la note, ce qui empêchait de chercher un site ou de savoir à qui
                 il appartenait sous un revendeur. */}
-            {!itcloud && (
+            {!itcloud && montrerDomaine && (
               <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                 Domaine
                 <InlineTextInput
