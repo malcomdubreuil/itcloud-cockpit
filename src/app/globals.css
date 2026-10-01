@@ -139,6 +139,29 @@
   .note-breathe { animation: none; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.28); }
 }
 
+/* ── Saisie d'un post-it ──────────────────────────────────────────────────
+   Le corps d'un post-it est une zone de texte TRANSPARENTE posée sur un calque
+   qui, lui, affiche la mise en forme. Pour que chaque caractère se superpose,
+   les deux boîtes doivent couper les lignes exactement au même endroit — donc
+   avoir la même largeur utile.
+
+   Or dès que le texte dépasse la hauteur, le navigateur ajoute une barre de
+   défilement À LA ZONE DE SAISIE SEULEMENT (le calque est en overflow-hidden).
+   La zone perd une quinzaine de pixels, se met à couper ses lignes plus tôt
+   que le calque, et le texte visible glisse d'une ligne sous le curseur.
+
+   On masque donc la barre : le défilement continue de fonctionner — à la
+   molette, et automatiquement pour suivre le curseur — mais il ne vole plus de
+   largeur. Sur un post-it de 250 px affiché sur un mur, cette barre n'apportait
+   de toute façon rien. */
+.sans-barre-defilement {
+  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;   /* Edge ancien */
+}
+.sans-barre-defilement::-webkit-scrollbar {
+  display: none;              /* Chrome, Safari */
+}
+
 /* ── Plein écran ──────────────────────────────────────────────────────────
    Le tableau de post-it vit sur un écran mural : en plein écran on efface
    tout ce qui n'est pas le contenu — barre latérale, titre de page, mode

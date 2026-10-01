@@ -701,7 +701,7 @@ export function Postit({
             placeholder="Écrire…"
             spellCheck
             style={{ fontSize: taille }}
-            className="absolute inset-0 h-full w-full resize-none bg-transparent px-2.5 py-2 leading-relaxed break-words whitespace-pre-wrap text-transparent caret-neutral-900 placeholder:text-neutral-900/35 selection:bg-sky-400/30 focus-visible:outline-none"
+            className="sans-barre-defilement absolute inset-0 h-full w-full resize-none bg-transparent px-2.5 py-2 leading-relaxed break-words whitespace-pre-wrap text-transparent caret-neutral-900 placeholder:text-neutral-900/35 selection:bg-sky-400/30 focus-visible:outline-none"
           />
         </div>
       ) : (
@@ -721,7 +721,10 @@ export function Postit({
           }}
           onPointerDown={(e) => e.stopPropagation()}
           style={{ fontSize: taille }}
-          className="min-h-0 flex-1 cursor-text overflow-auto px-2.5 py-2 leading-relaxed focus-visible:outline-none"
+          // Même barre masquée qu'en édition : sinon la lecture et la saisie
+          // n'ont pas la même largeur utile, et le texte se recompose sous les
+          // yeux au moment où l'on clique pour écrire.
+          className="sans-barre-defilement min-h-0 flex-1 cursor-text overflow-auto px-2.5 py-2 leading-relaxed focus-visible:outline-none"
         >
           {texte.trim() === "" ? (
             <span className="opacity-35">Écrire…</span>
