@@ -256,6 +256,19 @@ export function Postit({
     return () => clearTimeout(t);
   }, [sale, enregistrer]);
 
+  // Ouvrir le corps pour ecrire, en RAMENANT d'abord le post-it devant.
+  //
+  // Le corps arrete la propagation du pointeur (sinon cliquer dedans
+  // demarrerait un deplacement), si bien que le geste de glissement — seul
+  // endroit qui appelait onDevant — ne se declenche jamais ici. Un post-it
+  // partiellement recouvert passait donc en edition SOUS celui du dessus : on
+  // tapait dans une zone invisible, et on croyait avoir donne le focus a la
+  // mauvaise note.
+  const ouvrirEdition = useCallback(() => {
+    onDevant(note.id);
+    setEdition(true);
+  }, [onDevant, note.id]);
+
   // Entree en edition : on donne le focus au champ qui vient d'apparaitre.
   useEffect(() => {
     if (!edition) return;
@@ -664,11 +677,11 @@ export function Postit({
             onChange={(e) => setTexte(e.target.value)}
             onKeyDown={auClavierCorps}
             onFocus={() => {
-                onOccupe(note.id, true);
+              onOccupe(note.id, true);
               onDevant(note.id);
             }}
             onBlur={() => {
-                // Sans ceci le post-it reste en edition indefiniment : on continue
+              // Sans ceci le post-it reste en edition indefiniment : on continue
               // de voir les marqueurs bruts (**gras**) au lieu du texte mis en
               // forme, et seul un rechargement de page le remet en lecture.
               setEdition(false);
@@ -699,11 +712,11 @@ export function Postit({
           role="button"
           tabIndex={0}
           aria-label="Modifier le texte"
-          onClick={() => setEdition(true)}
+          onClick={() => ouvrirEdition()}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              setEdition(true);
+              ouvrirEdition();
             }
           }}
           onPointerDown={(e) => e.stopPropagation()}

@@ -6,6 +6,7 @@ import { assertCan } from "@/application/policies/can";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, divisionLabel, serviceDivisionFilter } from "@/lib/division";
 import { domaineDeService, domainePrincipal, normaliserDomaine } from "@/lib/domaine";
+import { prixSuggere } from "@/lib/prix";
 import { cleDeGroupe, type MotifGroupe } from "@/lib/groupe-facturation";
 import { audit } from "@/infrastructure/db/audit";
 
@@ -670,26 +671,38 @@ export async function addServiceToClient(
   const division = await currentDivision();
   const product = await prisma.product.findFirst({
     where: { id: input.productId, tenantId, division, deletedAt: null },
-    select: { id: true, name: true, msrp: true, partnerCost: true, billingCycle: true },
+    select: {
+      id: true, name: true, msrp: true, partnerCost: true, billingCycle: true,
+      suggestedPrice: true,
+    },
   });
   if (!product) throw new Error("Produit introuvable dans cette division");
 
-  // Le prix est stocké AU CYCLE du produit. Par défaut on prend le PDSF ; le
-  // coût vient du produit (côté hébergement il est à 0, les vrais coûts sont
-  // dans les coûts fixes).
-  // Client interne (mon entreprise) : on ne se facture pas → prix 0. Sinon prix
-  // fourni, à défaut le PDSF du produit.
+  // Le prix est stocké AU CYCLE du produit. Par défaut on prend le prix de
+  // VENTE suggéré, pas le PDSF : le PDSF est ce que le fournisseur affiche, pas
+  // ce qu'on facture, et le prendre faisait arriver un M365 annuel 24 $ trop
+  // bas. Le coût vient du produit (côté hébergement il est à 0, les vrais coûts
+  // sont dans les coûts fixes).
+  // Client interne (mon entreprise) : on ne se facture pas → prix 0.
   const unitPrice = client.internal
     ? 0
     : Number.isFinite(input.unitPrice) && (input.unitPrice as number) >= 0
       ? (input.unitPrice as number)
-      : Number(product.msrp);
+      : prixSuggere({
+          msrp: Number(product.msrp),
+          suggestedPrice:
+            product.suggestedPrice === null ? null : Number(product.suggestedPrice),
+          billingCycle: product.billingCycle,
+        });
 
   // Minuit LOCAL : minuit UTC afficherait la veille au Québec.
   const [y, m, d] = input.renewalDate.split("-").map(Number);
   const renewalDate = new Date(y, m - 1, d);
 
-  const notes = input.notes?.trim() || null;
+  // Un service qui vient d'être ajouté n'est pas encore sur une facture. La
+  // note le rappelle, et la carte la met en évidence — c'est déjà la convention
+  // de l'ERP : « note remplie = à traiter à la prochaine facture ».
+  const notes = input.notes?.trim() || "Ajouter dans la prochaine facture";
   const serverName = input.serverName?.trim() || null;
 
   // Le domaine va dans sa table, pas dans la note.

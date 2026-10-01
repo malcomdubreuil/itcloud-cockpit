@@ -131,6 +131,10 @@ export function ServiceCard({
   const itcloud = division === "ITCLOUD";
   // Note remplie = à prendre en compte à la prochaine facture → mise en évidence.
   const hasNote = !!s.notes?.trim();
+  // Jamais facturé = ajouté depuis la dernière facture. Son produit et sa
+  // quantité passent au bleu pour qu'il saute aux yeux dans une liste de 150
+  // lignes, jusqu'à ce qu'il reçoive un numéro de facture.
+  const jamaisFacture = !s.lastQbInvoiceNo?.trim() && s.billingMode === "INDIRECT";
   const months = CYCLE_MONTHS[s.product.billingCycle] ?? 1;
   const suffix = CYCLE_SUFFIX[s.product.billingCycle] ?? "";
   const margin = s.unitPrice > 0 ? ((s.unitPrice - s.unitCost) / s.unitPrice) * 100 : null;
@@ -159,7 +163,14 @@ export function ServiceCard({
             </Link>
           ) : null}
           {/* Nom complet, sur plusieurs lignes au besoin (jamais tronqué). */}
-          <p className={cn("break-words", s.client ? "text-sm text-muted-foreground" : "font-medium")}>
+          <p
+            className={cn(
+              "break-words",
+              s.client ? "text-sm text-muted-foreground" : "font-medium",
+              jamaisFacture && "font-medium text-blue-600 dark:text-blue-400",
+            )}
+            title={jamaisFacture ? "Jamais facturé — à ajouter à la prochaine facture" : undefined}
+          >
             {s.product.name}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -263,13 +274,24 @@ export function ServiceCard({
 
         <div className="flex items-center gap-4 text-sm">
           <div className="text-right">
-            <p className="text-xs text-muted-foreground">Qté</p>
-            <QuantityInput
-              id={s.id}
-              value={s.quantity}
-              manual={s.quantityManual}
-              action={updateServiceQuantity}
-            />
+            <p
+              className={cn(
+                "text-xs",
+                jamaisFacture
+                  ? "font-medium text-blue-600 dark:text-blue-400"
+                  : "text-muted-foreground",
+              )}
+            >
+              Qté
+            </p>
+            <div className={cn(jamaisFacture && "text-blue-600 dark:text-blue-400")}>
+              <QuantityInput
+                id={s.id}
+                value={s.quantity}
+                manual={s.quantityManual}
+                action={updateServiceQuantity}
+              />
+            </div>
           </div>
           {/* Client interne (mon entreprise) : aucun prix affiché. */}
           {!s.internal && (

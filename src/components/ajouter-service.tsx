@@ -6,9 +6,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { addServiceToClient } from "@/app/(dashboard)/services/actions";
+import { prixSuggere } from "@/lib/prix";
 
 // Ajouter un service sous un client. Keven choisit le produit dans la liste :
-// le prix se remplit tout seul depuis le PDSF, et le coût vient du produit. Il
+// le prix se remplit tout seul au PRIX SUGGÉRÉ (pas le PDSF — voir lib/prix),
+// et le coût vient du produit. Il
 // n'a plus qu'à mettre l'échéance, le domaine côté hébergement, et s'il veut
 // le n° de facture et une note.
 
@@ -24,6 +26,8 @@ export type ProduitDispo = {
   name: string;
   msrp: number;        // au cycle du produit
   partnerCost: number; // au cycle du produit
+  /** Prix de vente fixé sur le produit, au cycle. NULL = PDSF majoré. */
+  suggestedPrice: number | null;
   cycle: string;
 };
 
@@ -65,11 +69,20 @@ export function AjouterService({
   const produit = produits.find((p) => p.id === productId) ?? null;
 
   // Choisir un produit remplit le prix : c'est ce que Keven attend, et il peut
-  // toujours l'écraser pour un tarif négocié.
+  // toujours l'écraser pour un tarif négocié. On propose le prix de VENTE
+  // suggéré — proposer le PDSF faisait arriver un M365 annuel 24 $ trop bas.
   const choisirProduit = (id: string) => {
     setProductId(id);
     const p = produits.find((x) => x.id === id);
-    setPrix(p ? p.msrp.toFixed(2) : "");
+    setPrix(
+      p
+        ? prixSuggere({
+            msrp: p.msrp,
+            suggestedPrice: p.suggestedPrice,
+            billingCycle: p.cycle,
+          }).toFixed(2)
+        : "",
+    );
   };
 
   const ajouter = () => {
@@ -127,7 +140,14 @@ export function AjouterService({
           <option value="">— choisir un produit —</option>
           {produits.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name} — {cad.format(p.msrp)}
+              {p.name} —{" "}
+              {cad.format(
+                prixSuggere({
+                  msrp: p.msrp,
+                  suggestedPrice: p.suggestedPrice,
+                  billingCycle: p.cycle,
+                }),
+              )}
               {SUFFIXE[p.cycle] ?? ""}
             </option>
           ))}

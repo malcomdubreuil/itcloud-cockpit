@@ -95,7 +95,10 @@ export default async function ClientPage({ params }: Props) {
   const produitsDispo = await prisma.product.findMany({
     where: { tenantId: session.user.tenantId, division, deletedAt: null, active: true },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, msrp: true, partnerCost: true, billingCycle: true },
+    select: {
+      id: true, name: true, msrp: true, partnerCost: true, billingCycle: true,
+      suggestedPrice: true,
+    },
   });
 
   const active = client.services.filter((s) => s.status === "ACTIF");
@@ -287,6 +290,7 @@ export default async function ClientPage({ params }: Props) {
           name: p.name,
           msrp: Number(p.msrp),
           partnerCost: Number(p.partnerCost),
+          suggestedPrice: p.suggestedPrice === null ? null : Number(p.suggestedPrice),
           cycle: p.billingCycle,
         }))}
       />
