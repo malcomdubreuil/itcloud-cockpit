@@ -147,6 +147,13 @@ export type BillResult =
 
 const messageDe = (e: unknown) => (e instanceof Error ? e.message : "Erreur inattendue");
 
+/** La valeur la plus fréquente d'une liste, ou null si elle est vide. */
+function plusFrequent(valeurs: string[]): string | null {
+  const n = new Map<string, number>();
+  for (const v of valeurs) n.set(v, (n.get(v) ?? 0) + 1);
+  return [...n.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+}
+
 
 // ── RECONSTRUCTION DANS LA NOUVELLE COMPAGNIE ──────────────────────────────
 //
@@ -247,7 +254,18 @@ async function chargerGroupe(
   // Les correspondances utiles, en une requête.
   const s = (src ?? {}) as Record<string, unknown>;
   const custId = (s.CustomerRef as { value?: string } | undefined)?.value ?? null;
-  const taxId = (s.TxnTaxDetail as { TxnTaxCodeRef?: { value?: string } } | undefined)?.TxnTaxCodeRef?.value ?? null;
+  // QuickBooks Canada exige un code de taxe sur CHAQUE ligne (erreur 6000
+  // « assurez-vous que toutes vos opérations comprennent un taux de TPS/TVH »
+  // le 2026-10-12 sur la première vraie facture). Les anciennes factures ne
+  // portent pas toujours de code global : on prend alors celui de leurs
+  // lignes, le plus fréquent.
+  const taxId =
+    (s.TxnTaxDetail as { TxnTaxCodeRef?: { value?: string } } | undefined)?.TxnTaxCodeRef?.value ??
+    plusFrequent(
+      ((src?.Line ?? []) as { SalesItemLineDetail?: { TaxCodeRef?: { value?: string } } }[])
+        .map((l) => l.SalesItemLineDetail?.TaxCodeRef?.value)
+        .filter((v): v is string => !!v),
+    );
   const termId = (s.SalesTermRef as { value?: string } | undefined)?.value ?? null;
   const corrs = await prisma.qboCorrespondance.findMany({
     where: {
@@ -297,7 +315,17 @@ async function chargerGroupe(
     if (cands.length === 1) client = cands[0];
   }
 
-  const taxCode = src && sourceDejaNouvelle && taxId ? { id: taxId, nom: taxId } : corr("TAXCODE", taxId);
+  let taxCode = src && sourceDejaNouvelle && taxId ? { id: taxId, nom: taxId } : corr("TAXCODE", taxId);
+  if (!taxCode) {
+    // Sans source (ou source sans taxe) : le code porté par les articles
+    // cibles eux-mêmes — ils ont tous été créés avec « TPS/TVQ QC - 9,975 ».
+    const parArticle = plusFrequent(
+      [...articleParProduit.values()]
+        .map((a) => items.find((i) => i.Id === a.id)?.SalesTaxCodeRef?.value)
+        .filter((v): v is string => !!v),
+    );
+    if (parArticle) taxCode = { id: parArticle, nom: parArticle };
+  }
   const terme = src && sourceDejaNouvelle && termId ? { id: termId, nom: termId } : corr("TERM", termId);
 
   // Les textes de la source : période, N.B., message.
@@ -336,7 +364,7 @@ async function chargerGroupe(
         memo: typeof memo === "string" ? memo : undefined,
         ligneFacturation,
         lignesTexte,
-        avaitTaxe: !!taxId,
+        avaitTaxe: true,
       },
       unite: servicesAFacturer.every((x) => uniteDuService(x) === "month") ? "month" : "year",
     },
