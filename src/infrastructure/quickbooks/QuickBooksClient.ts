@@ -106,13 +106,23 @@ export class QuickBooksClient {
   }
 
   // Nom de la compagnie — sert à valider la connexion.
+  //
+  // Et à la nommer : les connexions d'avant octobre 2026 ont été stockées sans
+  // nom. Plutôt que d'exiger une reconnexion pour ça, on mémorise le nom la
+  // première fois qu'on le lit — c'est lui qui s'affiche à côté des numéros
+  // de facture (« 2026-0984 · God-info »).
   async getCompanyName(): Promise<string> {
     await this.ensureAuth();
     const data = await this.request<{ CompanyInfo: { CompanyName: string } }>(
       "GET",
       `companyinfo/${this.realmId}`,
     );
-    return data.CompanyInfo.CompanyName;
+    const nom = data.CompanyInfo.CompanyName;
+    const conn = await getConnection(this.tenantId, this.compagnie);
+    if (conn && conn.companyName !== nom) {
+      await saveConnection(this.tenantId, { ...conn, companyName: nom }, this.compagnie);
+    }
+    return nom;
   }
 
   // Requête SQL-like de l'API QuickBooks.
