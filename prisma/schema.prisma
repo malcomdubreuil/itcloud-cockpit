@@ -34,6 +34,7 @@ model Tenant {
   stickyNotes      StickyNote[]
   qboCustomers     QboCustomer[]
   domains          Domain[]
+  qboCorrespondances QboCorrespondance[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -945,4 +946,42 @@ model Domain {
 
   @@unique([tenantId, name])
   @@index([tenantId, endClientName])
+}
+
+// CORRESPONDANCE ENTRE LES DEUX COMPAGNIES QUICKBOOKS.
+//
+// Pour reconstruire une facture de l'ancienne compagnie dans la nouvelle, il
+// faut traduire chaque identifiant : l'article 8 de god-info n'existe pas dans
+// God-Info Inc., où le même article porte un autre numéro. Idem pour les codes
+// de taxe, les conditions de paiement et les clients.
+//
+// Une ligne par objet source. `auto` dit si le rapprochement vient du nom
+// (vérifiable, rejouable) ou d'un choix de Keven dans l'écran de révision —
+// un choix manuel n'est jamais écrasé par un nouveau passage automatique.
+// `targetId` NULL = orphelin : rien trouvé, à régler avant de facturer.
+model QboCorrespondance {
+  id       String @id @default(uuid())
+  tenantId String
+  /// ITEM | TAXCODE | TERM | CUSTOMER
+  kind     String
+
+  sourceRealm String
+  sourceId    String
+  sourceName  String
+
+  targetRealm String
+  targetId    String?
+  targetName  String?
+
+  auto     Boolean @default(true)
+  /// Pourquoi ce choix : « nom identique », « nom normalisé », « manuel »…
+  methode  String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, kind, sourceRealm, sourceId])
+  @@index([tenantId, kind, targetId])
 }

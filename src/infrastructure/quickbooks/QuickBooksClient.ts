@@ -43,6 +43,27 @@ export type QboCustomer = {
   PrimaryEmailAddr?: { Address?: string };
 };
 
+/** Un article (produit/service) tel que QuickBooks le décrit. Les noms sont
+ *  hiérarchiques quand l'article a un parent : « Hébergement Site Web:08 ». */
+export type QboItem = {
+  Id: string;
+  Name: string;
+  FullyQualifiedName?: string;
+  Sku?: string;
+  Type?: string; // Service | NonInventory | Inventory | Category
+  Active?: boolean;
+  UnitPrice?: number;
+  Description?: string;
+  Taxable?: boolean;
+  SubItem?: boolean;
+  ParentRef?: { value: string; name?: string };
+  IncomeAccountRef?: { value: string; name?: string };
+  SalesTaxCodeRef?: { value: string; name?: string };
+};
+
+export type QboTaxCode = { Id: string; Name: string; Active?: boolean; Taxable?: boolean };
+export type QboTerm = { Id: string; Name: string; Active?: boolean; DueDays?: number };
+
 export class QuickBooksClient {
   private accessToken: string | null = null;
   private realmId: string | null = null;
@@ -139,29 +160,49 @@ export class QuickBooksClient {
     return data.QueryResponse.Invoice?.[0] ?? null;
   }
 
-  /** Tous les clients de QuickBooks, actifs et inactifs.
+  /** Toutes les lignes d'une entité, actives et inactives.
    *
    *  L'API plafonne a 1000 lignes par requete : on pagine avec STARTPOSITION
    *  (qui commence a 1, pas a 0) jusqu'a recevoir une page incomplete. Sans
    *  cette boucle, une compagnie de plus de mille clients en perdrait
    *  silencieusement une partie — le pire genre de bogue, puisque la liste
    *  aurait l'air correcte. */
-  async getCustomers(): Promise<QboCustomer[]> {
+  private async queryAll<T>(entity: string): Promise<T[]> {
     const LOT = 1000;
-    const tous: QboCustomer[] = [];
+    const tous: T[] = [];
     let debut = 1;
 
     for (let garde = 0; garde < 50; garde++) {
-      const data = await this.query<{ QueryResponse: { Customer?: QboCustomer[] } }>(
-        `SELECT * FROM Customer STARTPOSITION ${debut} MAXRESULTS ${LOT}`,
+      const data = await this.query<{ QueryResponse: Record<string, T[] | undefined> }>(
+        `SELECT * FROM ${entity} STARTPOSITION ${debut} MAXRESULTS ${LOT}`,
       );
-      const page = data.QueryResponse.Customer ?? [];
+      const page = data.QueryResponse[entity] ?? [];
       tous.push(...page);
       if (page.length < LOT) break;
       debut += LOT;
     }
 
     return tous;
+  }
+
+  /** Tous les clients de QuickBooks, actifs et inactifs. */
+  getCustomers(): Promise<QboCustomer[]> {
+    return this.queryAll<QboCustomer>("Customer");
+  }
+
+  /** Tous les articles — c'est avec EUX qu'on reconstruit une facture dans la
+   *  nouvelle compagnie : le ItemRef de l'article cible remplit description,
+   *  compte et taxe tout seul, comme quand on le choisit dans QuickBooks. */
+  getItems(): Promise<QboItem[]> {
+    return this.queryAll<QboItem>("Item");
+  }
+
+  getTaxCodes(): Promise<QboTaxCode[]> {
+    return this.queryAll<QboTaxCode>("TaxCode");
+  }
+
+  getTerms(): Promise<QboTerm[]> {
+    return this.queryAll<QboTerm>("Term");
   }
 
   async getInvoiceById(id: string): Promise<QboInvoice> {
