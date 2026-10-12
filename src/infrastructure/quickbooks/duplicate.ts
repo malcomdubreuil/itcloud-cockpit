@@ -29,10 +29,16 @@ export function bumpDates(text: string, unit: "year" | "month"): string {
           year += 1;
         }
       }
+      // Le mois d'arrivée peut être plus court : « au 31-10 » avancé d'un
+      // mois donnait « au 31-11 », un jour qui n'existe pas ; et un 29 février
+      // avancé d'un an doit retomber sur le 28. On borne au dernier jour du
+      // mois visé (le jour 0 du mois suivant, en UTC).
+      const dernierJour = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      const jour = Math.min(day, dernierJour);
       const p2 = (n: number) => String(n).padStart(2, "0");
       return isIso
-        ? `${year}-${p2(month)}-${p2(day)}`
-        : `${p2(day)}-${p2(month)}-${year}`;
+        ? `${year}-${p2(month)}-${p2(jour)}`
+        : `${p2(jour)}-${p2(month)}-${year}`;
     },
   );
 }
