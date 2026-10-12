@@ -93,8 +93,8 @@ const source = {
 {
   const r = reconstruire({
     services: [
-      svc({ id: "h", productId: "p-heb", productName: "Hébergement Site Web", unitPrice: 179.88, factureAuMois: true, commitmentEndDate: null, domaine: "carllambert.ca" }),
-      svc({ id: "d", productId: "p-dom", productName: "Réservation nom de domaine", unitPrice: 20.99, commitmentEndDate: null, domaine: "carllambert.ca" }),
+      svc({ id: "h", productId: "p-heb", productName: "Hébergement Site Web", unitPrice: 179.88, factureAuMois: true, commitmentEndDate: null, renewalDate: new Date("2026-11-01T00:00:00Z"), domaine: "carllambert.ca", sansEngagement: true }),
+      svc({ id: "d", productId: "p-dom", productName: "Réservation nom de domaine", unitPrice: 20.99, commitmentEndDate: null, renewalDate: new Date("2026-11-01T00:00:00Z"), domaine: "carllambert.ca", sansEngagement: true }),
     ],
     correspondances: corr(), source, txnDate: "2026-10-15", docNumber: "2026-0003", unite: "year",
   });
@@ -107,9 +107,9 @@ const source = {
     verifie("3. le domaine suit la ligne", lignes[1].Description === "carllambert.ca", lignes[1]);
     verifie("3. domaine : 1 × 20,99", lignes[2].SalesItemLineDetail?.Qty === 1 && lignes[2].SalesItemLineDetail?.UnitPrice === 20.99, lignes[2]);
     verifie("3. écart de prix signalé (14,99 ≠ 11,00)", r.avertissements.length === 1 && /14.99/.test(r.avertissements[0]), r.avertissements);
-    verifie("3. pas d'engagement sans date", !lignes.some((l) => /^Engagement/.test(l.Description ?? "")));
+    verifie("3. hébergement : aucune ligne d'engagement, même avec une échéance", !lignes.some((l) => /^Engagement/.test(l.Description ?? "")), lignes);
     const periode = lignes.find((l) => /^Facturation/.test(l.Description ?? ""));
-    verifie("3. période avancée d'un an", periode?.Description === "Facturation du 01-11-2026 au 31-10-2027", periode);
+    verifie("3. période d'un an depuis l'échéance", periode?.Description === "Facturation du 01-11-2026 au 31-10-2027", periode);
     verifie("3. la période est après les articles", lignes.indexOf(periode!) > 2);
     verifie("3. N.B. reconduit en dernier", lignes[lignes.length - 1].Description?.startsWith("N.B."));
     const memo = (r.payload.CustomerMemo as { value: string }).value;

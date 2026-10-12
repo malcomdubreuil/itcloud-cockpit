@@ -48,6 +48,9 @@ export type ServiceAFacturer = {
   renewalDate?: Date | null;
   /** Le site, côté hébergement : écrit sous la ligne, comme avant. */
   domaine?: string | null;
+  /** Côté hébergement, Keven ne veut PAS de ligne « Engagement » sous les
+   *  produits (2026-10-12) : le domaine suffit. */
+  sansEngagement?: boolean;
 };
 
 export type ArticleCible = {
@@ -268,11 +271,13 @@ export function reconstruire(args: {
     // UNE ligne d'engagement pour le bloc : depuis la fin d'engagement
     // d'ITCloud quand il l'a donnée, sinon depuis l'échéance de l'ERP, qui
     // est le premier jour de la nouvelle période.
-    const texte = premier.commitmentEndDate
-      ? texteEngagement(premier.commitmentEndDate, uniteBloc)
-      : premier.renewalDate
-        ? texteEngagementDepuis(premier.renewalDate, uniteBloc)
-        : null;
+    const texte = premier.sansEngagement
+      ? null
+      : premier.commitmentEndDate
+        ? texteEngagement(premier.commitmentEndDate, uniteBloc)
+        : premier.renewalDate
+          ? texteEngagementDepuis(premier.renewalDate, uniteBloc)
+          : null;
     if (texte) {
       lines.push({ DetailType: "DescriptionOnly", Description: texte });
       apercu.push({ type: "engagement", texte });
