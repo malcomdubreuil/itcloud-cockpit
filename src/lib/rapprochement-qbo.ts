@@ -19,7 +19,9 @@ export function normaliser(s: string): string {
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
-    .replace(/\bgb\b/g, "go")
+    // « 60GB » et « 60Go » sont le même forfait : le chiffre est collé à
+    // l'unité, donc pas de frontière de mot — on accroche le suffixe lui-même.
+    .replace(/gb\b/g, "go")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }

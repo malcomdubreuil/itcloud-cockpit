@@ -129,12 +129,45 @@ export default async function RapprochementPage() {
       {KINDS.map((kind) => {
         const l = parKind.get(kind) ?? [];
         if (l.length === 0) return null;
-        const orphelins = l.filter((x) => !x.targetId);
+        const orphelins = l
+          .filter((x) => !x.targetId)
+          .sort((a, b) => (poids.get(b.sourceId) ?? 0) - (poids.get(a.sourceId) ?? 0));
         const trouves = l.filter((x) => x.targetId);
-        const tries = [
-          ...orphelins.sort((a, b) => (poids.get(b.sourceId) ?? 0) - (poids.get(a.sourceId) ?? 0)),
-          ...trouves,
-        ];
+        // 657 clients rapprochés listés un à un noieraient les orphelins, qui
+        // sont la seule chose à régler : au-delà d'une poignée, les lignes
+        // trouvées se replient — elles restent consultables, pas imposées.
+        const replier = trouves.length > 12;
+        const ligne = (x: (typeof l)[number]) => (
+          <div key={x.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 text-sm">
+            {x.targetId ? (
+              <Check className="h-4 w-4 shrink-0 text-emerald-500" />
+            ) : (
+              <CircleAlert className="h-4 w-4 shrink-0 text-amber-500" />
+            )}
+            <span className="min-w-0 flex-1 basis-64 truncate font-medium" title={x.sourceName}>
+              {x.sourceName}
+              {kind === "PRODUCT" && poids.get(x.sourceId) ? (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  {poids.get(x.sourceId)} service{(poids.get(x.sourceId) ?? 0) > 1 ? "s" : ""}
+                </span>
+              ) : null}
+            </span>
+            <span className="text-muted-foreground">→</span>
+            {x.targetId && x.auto ? (
+              <span className="min-w-0 flex-1 basis-64 truncate" title={x.targetName ?? ""}>
+                {x.targetName}
+                <span className="ml-2 text-xs text-muted-foreground">par le nom</span>
+              </span>
+            ) : (
+              <span className="min-w-0 flex-1 basis-64">
+                <SelectCible kind={kind} sourceId={x.sourceId} valeur={x.targetId} candidats={candidats[kind]} />
+                {!x.auto && x.targetId && (
+                  <span className="ml-2 text-xs text-muted-foreground">choisi à la main</span>
+                )}
+              </span>
+            )}
+          </div>
+        );
         return (
           <Card key={kind}>
             <CardHeader>
@@ -152,37 +185,17 @@ export default async function RapprochementPage() {
               <CardDescription>{EXPLICATION[kind]}</CardDescription>
             </CardHeader>
             <CardContent className="divide-y px-0">
-              {tries.map((x) => (
-                <div key={x.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 text-sm">
-                  {x.targetId ? (
-                    <Check className="h-4 w-4 shrink-0 text-emerald-500" />
-                  ) : (
-                    <CircleAlert className="h-4 w-4 shrink-0 text-amber-500" />
-                  )}
-                  <span className="min-w-0 flex-1 basis-64 truncate font-medium" title={x.sourceName}>
-                    {x.sourceName}
-                    {kind === "PRODUCT" && poids.get(x.sourceId) ? (
-                      <span className="ml-2 text-xs font-normal text-muted-foreground">
-                        {poids.get(x.sourceId)} service{(poids.get(x.sourceId) ?? 0) > 1 ? "s" : ""}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="text-muted-foreground">→</span>
-                  {x.targetId && x.auto ? (
-                    <span className="min-w-0 flex-1 basis-64 truncate" title={x.targetName ?? ""}>
-                      {kind === "PRODUCT" ? x.targetName : x.targetName}
-                      <span className="ml-2 text-xs text-muted-foreground">par le nom</span>
-                    </span>
-                  ) : (
-                    <span className="min-w-0 flex-1 basis-64">
-                      <SelectCible kind={kind} sourceId={x.sourceId} valeur={x.targetId} candidats={candidats[kind]} />
-                      {!x.auto && x.targetId && (
-                        <span className="ml-2 text-xs text-muted-foreground">choisi à la main</span>
-                      )}
-                    </span>
-                  )}
-                </div>
-              ))}
+              {orphelins.map(ligne)}
+              {replier ? (
+                <details className="px-4 py-2">
+                  <summary className="cursor-pointer text-sm text-muted-foreground">
+                    {trouves.length} trouvés par le nom — afficher
+                  </summary>
+                  <div className="-mx-4 mt-2 divide-y border-t">{trouves.map(ligne)}</div>
+                </details>
+              ) : (
+                trouves.map(ligne)
+              )}
             </CardContent>
           </Card>
         );
