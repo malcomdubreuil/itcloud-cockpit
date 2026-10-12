@@ -7,7 +7,7 @@ import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, divisionLabel, serviceDivisionFilter } from "@/lib/division";
 import { domaineDeService, domainePrincipal, normaliserDomaine } from "@/lib/domaine";
 import { prixSuggere } from "@/lib/prix";
-import { getConnection } from "@/infrastructure/quickbooks/store";
+import { getConnections, nomDeCompagnie } from "@/infrastructure/quickbooks/store";
 import { cleDeGroupe, type MotifGroupe } from "@/lib/groupe-facturation";
 import { audit } from "@/infrastructure/db/audit";
 
@@ -22,11 +22,49 @@ const CYCLE_MONTHS: Record<string, number> = {
 };
 
 // Numéros de facture (aide à la refacturation §UI Services)
-// Un numéro de facture QuickBooks tapé à la main aujourd'hui vient de la
-// compagnie où l'on facture : la nouvelle. Sans ce realm, le numéro serait
-// cherché dans l'ancienne au prochain renouvellement, et introuvable.
-async function realmDeFacturation(tenantId: string): Promise<string | null> {
-  return (await getConnection(tenantId, "nouvelle"))?.realmId ?? null;
+// La compagnie d'un numéro de facture tapé à la main se lit dans son format :
+// God-Info Inc. numérote « GI-2026-004 », l'ancienne « 2025-1130 ». Rattacher
+// d'office à la nouvelle était faux dès qu'un ancien numéro était saisi —
+// Pclogic 2025-1130 est devenu introuvable le 2026-10-12. En cas de doute, le
+// bouton à côté du numéro permet de basculer (toggleQbInvoiceCompany).
+async function realmPourNumero(tenantId: string, numero: string): Promise<string | null> {
+  const c = await getConnections(tenantId);
+  const nouvelle = /^GI-/i.test(numero.trim());
+  return (nouvelle ? c.nouvelle : c.ancienne)?.realmId ?? c.nouvelle?.realmId ?? null;
+}
+
+/** Bascule la compagnie QuickBooks rattachée au numéro de facture d'un
+ *  service, et renvoie le nom de celle qui est maintenant retenue. */
+export async function toggleQbInvoiceCompany(serviceId: string): Promise<{ compagnie: string }> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "services:write");
+  const tenantId = session.user.tenantId;
+
+  const service = await prisma.clientService.findUniqueOrThrow({
+    where: { id: serviceId },
+    select: { id: true, tenantId: true, clientId: true, lastQbInvoiceNo: true, lastQbInvoiceRealm: true },
+  });
+  if (service.tenantId !== tenantId) throw new Error("Introuvable");
+  if (!service.lastQbInvoiceNo?.trim()) throw new Error("Aucun numéro de facture sur ce service.");
+
+  const c = await getConnections(tenantId);
+  if (!c.nouvelle || !c.ancienne) throw new Error("Les deux compagnies QuickBooks doivent être connectées.");
+  // Sans realm = ancienne (même lecture que compagniePourRealm).
+  const actuelleNouvelle = service.lastQbInvoiceRealm === c.nouvelle.realmId;
+  const realm = actuelleNouvelle ? c.ancienne.realmId : c.nouvelle.realmId;
+
+  await prisma.clientService.update({ where: { id: serviceId }, data: { lastQbInvoiceRealm: realm } });
+  await audit({
+    tenantId, userId: session.user.id,
+    action: "service.update_qb_invoice_realm", entityType: "ClientService", entityId: serviceId,
+    before: { lastQbInvoiceRealm: service.lastQbInvoiceRealm },
+    after: { lastQbInvoiceRealm: realm, numero: service.lastQbInvoiceNo },
+  });
+  revalidatePath("/services");
+  revalidatePath(`/clients/${service.clientId}`);
+  revalidatePath("/dashboard");
+  return { compagnie: (await nomDeCompagnie(tenantId, realm)) ?? realm };
 }
 
 async function updateInvoiceNo(
@@ -50,7 +88,7 @@ async function updateInvoiceNo(
     data: {
       [field]: value || null,
       ...(field === "lastQbInvoiceNo"
-        ? { lastQbInvoiceRealm: value ? await realmDeFacturation(session.user.tenantId) : null }
+        ? { lastQbInvoiceRealm: value ? await realmPourNumero(session.user.tenantId, value) : null }
         : {}),
     },
   });
@@ -956,7 +994,7 @@ export async function markServicesBilled(
   input: {
     qbInvoiceNo: string;
     /** Compagnie QuickBooks (realm) qui a émis le numéro. Absent = saisie
-     *  manuelle, donc la compagnie où l'on facture aujourd'hui. */
+     *  manuelle, devinée au format du numéro (« GI-… » = nouvelle). */
     qbInvoiceRealm?: string;
   },
 ): Promise<{ count: number }> {
@@ -969,7 +1007,7 @@ export async function markServicesBilled(
   if (qb.length > 100) throw new Error("Numéro trop long");
   const ids = [...new Set(serviceIds)].filter(Boolean);
   if (ids.length === 0) throw new Error("Aucun service sélectionné");
-  const realm = input.qbInvoiceRealm ?? (await realmDeFacturation(session.user.tenantId));
+  const realm = input.qbInvoiceRealm ?? (await realmPourNumero(session.user.tenantId, qb));
 
   const division = await currentDivision();
   const services = await prisma.clientService.findMany({

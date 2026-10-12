@@ -6,6 +6,7 @@ import { ServiceActions } from "@/components/service-actions";
 import { QuantityInput } from "@/components/quantity-input";
 import { RenewalDateInput } from "@/components/renewal-date-input";
 import { MonthlyBillingToggle } from "@/components/monthly-billing-toggle";
+import { CompagnieFactureToggle } from "@/components/compagnie-facture-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -219,7 +220,7 @@ export function ServiceCard({
                 placeholder="n° facture"
               />
               {s.lastQbInvoiceNo?.trim() && s.qbCompagnie && (
-                <span title="Compagnie QuickBooks qui a émis cette facture">· {s.qbCompagnie}</span>
+                <CompagnieFactureToggle serviceId={s.id} compagnie={s.qbCompagnie} />
               )}
             </span>
             {itcloud && (
