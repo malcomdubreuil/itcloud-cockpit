@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { CheckCircle2, Link2, Plug, TriangleAlert } from "lucide-react";
@@ -107,6 +108,14 @@ export default async function ParametresPage({ searchParams }: Props) {
             etat={nouvelle}
             configured={configured}
           />
+          <p className="text-sm">
+            Une fois les deux compagnies connectées :{" "}
+            <Link href="/parametres/quickbooks" className="font-medium underline underline-offset-2">
+              rapprocher les produits, clients, taxes et conditions de paiement
+            </Link>
+            {" "}— c&apos;est ce qui permet de reconstruire une facture dans la nouvelle.
+          </p>
+
           <BlocCompagnie
             compagnie="ancienne"
             titre="Ancienne compagnie — lecture seule"
