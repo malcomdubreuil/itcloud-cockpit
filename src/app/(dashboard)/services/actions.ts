@@ -553,6 +553,7 @@ export async function markServiceBilled(
       id: true, tenantId: true, clientId: true, renewalDate: true,
       lastQbInvoiceNo: true, monthlyBilling: true, billingMode: true,
       product: { select: { billingCycle: true } },
+      client: { select: { urgencyDays: true } },
     },
   });
   if (!s || s.tenantId !== session.user.tenantId) throw new Error("Service introuvable");
@@ -561,7 +562,7 @@ export async function markServiceBilled(
   }
 
   const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
-  const newRenewal = advanceMonths(s.renewalDate, months);
+  const newRenewal = advanceMonths(s.renewalDate, months, s.client.urgencyDays);
 
   await prisma.$transaction([
     prisma.clientService.update({
@@ -597,8 +598,17 @@ export async function markServiceBilled(
 // 35 jours au plus : c'est ce qui garantit la règle de Keven — une échéance ne
 // dépasse jamais 400 jours (365 + 35). 20 jours au moins, sinon un mensuel
 // facturé deux semaines d'avance serait pris pour une anomalie.
-function toleranceJours(months: number): number {
-  return Math.min(35, Math.max(20, Math.round(months * 15)));
+//
+// …sauf que Keven facture dès que le service entre en alerte, et l'alerte peut
+// être à 60 jours : le 2026-10-12, JACKSALOONDIX30 (alerte 60 j, échéance dans
+// 58 j) a reçu son numéro mais pas sa nouvelle échéance, le service n'étant pas
+// « dû » à 35 jours. La tolérance monte donc jusqu'au seuil d'alerte du client,
+// sans jamais atteindre un cycle entier (sinon un mensuel serait toujours dû,
+// et la protection contre la double facturation tomberait).
+function toleranceJours(months: number, alerteJours = 30): number {
+  const base = Math.min(35, Math.max(20, Math.round(months * 15)));
+  const parAlerte = Math.min(alerteJours, months * 30 - 5);
+  return Math.max(base, parAlerte);
 }
 
 const JOUR = 86_400_000;
@@ -623,12 +633,12 @@ const JOUR = 86_400_000;
  *     parties — et comme on ne retire que des mois entiers, la date
  *     anniversaire (jour et mois) ne change jamais.
  */
-function advanceMonths(base: Date | null, months: number): Date {
+function advanceMonths(base: Date | null, months: number, alerteJours = 30): Date {
   const aujourdhui = new Date();
   const d = base ? new Date(base) : new Date();
 
   const joursAvant = (d.getTime() - aujourdhui.getTime()) / JOUR;
-  const du = joursAvant <= toleranceJours(months);
+  const du = joursAvant <= toleranceJours(months, alerteJours);
 
   if (du) {
     d.setMonth(d.getMonth() + months);
@@ -637,7 +647,7 @@ function advanceMonths(base: Date | null, months: number): Date {
 
   const plafond = new Date(aujourdhui);
   plafond.setMonth(plafond.getMonth() + months);
-  plafond.setDate(plafond.getDate() + toleranceJours(months));
+  plafond.setDate(plafond.getDate() + toleranceJours(months, alerteJours));
 
   // Borne sur la boucle : une date importée absurde (2065, vue en production)
   // demande une quarantaine de tours, jamais deux cents.
@@ -827,6 +837,7 @@ export async function previewGroupeFacturation(serviceId: string): Promise<{
       id: true, notes: true, lastQbInvoiceNo: true, renewalDate: true,
       quantity: true, unitPrice: true, monthlyBilling: true,
       product: { select: { name: true, billingCycle: true } },
+      client: { select: { urgencyDays: true } },
       domain: { select: { name: true, endClientName: true, principal: true } },
     },
   });
@@ -847,7 +858,7 @@ export async function previewGroupeFacturation(serviceId: string): Promise<{
           produit: s.product.name,
           montant: Number(s.unitPrice) * s.quantity,
           echeance: s.renewalDate?.toISOString().slice(0, 10) ?? null,
-          nouvelleEcheance: advanceMonths(s.renewalDate, months).toISOString().slice(0, 10),
+          nouvelleEcheance: advanceMonths(s.renewalDate, months, s.client.urgencyDays).toISOString().slice(0, 10),
           facture: s.lastQbInvoiceNo?.trim() || null,
         };
       })
@@ -906,6 +917,7 @@ export async function previewClientFacturation(clientId: string): Promise<{
       id: true, notes: true, lastQbInvoiceNo: true, renewalDate: true,
       quantity: true, unitPrice: true, monthlyBilling: true,
       product: { select: { name: true, billingCycle: true } },
+      client: { select: { urgencyDays: true } },
       domain: { select: { name: true, endClientName: true, principal: true } },
     },
   });
@@ -927,7 +939,7 @@ export async function previewClientFacturation(clientId: string): Promise<{
           produit: s.product.name,
           montant: Number(s.unitPrice) * s.quantity,
           echeance: s.renewalDate?.toISOString().slice(0, 10) ?? null,
-          nouvelleEcheance: advanceMonths(s.renewalDate, months).toISOString().slice(0, 10),
+          nouvelleEcheance: advanceMonths(s.renewalDate, months, s.client.urgencyDays).toISOString().slice(0, 10),
           facture: s.lastQbInvoiceNo?.trim() || null,
         };
       })
@@ -972,13 +984,14 @@ export async function markServicesBilled(
     select: {
       id: true, renewalDate: true, lastQbInvoiceNo: true, monthlyBilling: true,
       product: { select: { billingCycle: true } },
+      client: { select: { urgencyDays: true } },
     },
   });
   if (services.length === 0) throw new Error("Aucun service facturable dans la sélection.");
 
   for (const s of services) {
     const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
-    const newRenewal = advanceMonths(s.renewalDate, months);
+    const newRenewal = advanceMonths(s.renewalDate, months, s.client.urgencyDays);
     await prisma.$transaction([
       prisma.clientService.update({
         where: { id: s.id },
@@ -1049,6 +1062,7 @@ export async function markDomainBilled(
       notes: true,
       domain: { select: { name: true, endClientName: true, principal: true } },
       product: { select: { billingCycle: true } },
+      client: { select: { urgencyDays: true } },
     },
   });
 
@@ -1063,7 +1077,7 @@ export async function markDomainBilled(
 
   for (const s of services) {
     const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
-    const newRenewal = advanceMonths(s.renewalDate, months);
+    const newRenewal = advanceMonths(s.renewalDate, months, s.client.urgencyDays);
     await prisma.$transaction([
       prisma.clientService.update({
         where: { id: s.id },
@@ -1131,6 +1145,7 @@ export async function markClientBilled(
       lastQbInvoiceNo: true,
       monthlyBilling: true,
       product: { select: { billingCycle: true } },
+      client: { select: { urgencyDays: true } },
     },
   });
   if (services.length === 0) {
@@ -1141,7 +1156,7 @@ export async function markClientBilled(
 
   for (const s of services) {
     const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
-    const newRenewal = advanceMonths(s.renewalDate, months);
+    const newRenewal = advanceMonths(s.renewalDate, months, s.client.urgencyDays);
     await prisma.$transaction([
       prisma.clientService.update({
         where: { id: s.id },
