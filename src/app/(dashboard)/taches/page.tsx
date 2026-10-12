@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { daysUntil, taskUrgency, yearlyRevenue } from "@/lib/taches";
+import { filtreMots } from "@/lib/recherche";
 
 export const metadata: Metadata = { title: "Tâches récurrentes" };
 
@@ -40,16 +41,14 @@ export default async function TachesPage({
     deletedAt: null,
     ...(statut === "actives" ? { active: true } : {}),
     ...(statut === "pause" ? { active: false } : {}),
-    ...(q
-      ? {
-          OR: [
-            { title: { contains: q } },
-            { notes: { contains: q } },
-            { client: { companyName: { contains: q } } },
-            { qboCustomer: { displayName: { contains: q } } },
-          ],
-        }
-      : {}),
+    ...filtreMots(q, (m) => ({
+      OR: [
+        { title: { contains: m } },
+        { notes: { contains: m } },
+        { client: { companyName: { contains: m } } },
+        { qboCustomer: { displayName: { contains: m } } },
+      ],
+    })),
   };
 
   const [taches, clientsQboRaw] = await Promise.all([

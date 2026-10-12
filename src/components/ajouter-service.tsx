@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { addServiceToClient } from "@/app/(dashboard)/services/actions";
 import { prixSuggere } from "@/lib/prix";
+import { correspondMots } from "@/lib/recherche";
 
 // Ajouter un service sous un client. Keven choisit le produit dans la liste :
 // le prix se remplit tout seul au PRIX SUGGÉRÉ (pas le PDSF — voir lib/prix),
@@ -65,8 +66,21 @@ export function AjouterService({
   const [facture, setFacture] = useState("");
   const [serveur, setServeur] = useState(serveurSuggere ?? "");
   const [pending, start] = useTransition();
+  // Quelques lettres ou plusieurs mots filtrent la liste — 60 produits à
+  // dérouler, c'était trop. Un seul produit restant est choisi d'office.
+  const [filtre, setFiltre] = useState("");
+  const produitsFiltres = filtre.trim() ? produits.filter((p) => correspondMots(p.name, filtre)) : produits;
 
   const produit = produits.find((p) => p.id === productId) ?? null;
+
+  // Côté ITCloud, Keven lit les licences AU MOIS (« 31,80 $/mois »), comme
+  // sur la fiche article QuickBooks — pas « 381,60 $/an ». Le prix saisi et
+  // enregistré reste au cycle du produit.
+  const libellePrix = (p: ProduitDispo) => {
+    const prix = prixSuggere({ msrp: p.msrp, suggestedPrice: p.suggestedPrice, billingCycle: p.cycle });
+    if (!hebergement && p.cycle === "ANNUEL") return `${cad.format(prix / 12)}/mois (${cad.format(prix)}/an)`;
+    return `${cad.format(prix)}${SUFFIXE[p.cycle] ?? ""}`;
+  };
 
   // Choisir un produit remplit le prix : c'est ce que Keven attend, et il peut
   // toujours l'écraser pour un tarif négocié. On propose le prix de VENTE
@@ -107,6 +121,7 @@ export function AjouterService({
         toast.success(`${produit?.name} ajouté.`);
         setOuvert(false);
         setProductId("");
+        setFiltre("");
         setPrix("");
         setNote("");
         setDomaine("");
@@ -130,6 +145,20 @@ export function AjouterService({
     <div className="space-y-2 rounded-md border bg-muted/40 p-3">
       <p className="text-sm font-medium">Ajouter un produit à ce client</p>
       <div className="flex flex-wrap items-center gap-2">
+        <input
+          className={cn(champ, "w-44")}
+          value={filtre}
+          disabled={pending}
+          onChange={(e) => {
+            const v = e.target.value;
+            setFiltre(v);
+            const restants = v.trim() ? produits.filter((p) => correspondMots(p.name, v)) : produits;
+            if (restants.length === 1 && restants[0].id !== productId) choisirProduit(restants[0].id);
+            else if (productId && !restants.some((p) => p.id === productId)) choisirProduit("");
+          }}
+          placeholder="Chercher un produit…"
+          aria-label="Chercher un produit"
+        />
         <select
           className={cn(champ, "min-w-0 flex-1 basis-56")}
           value={productId}
@@ -137,18 +166,14 @@ export function AjouterService({
           onChange={(e) => choisirProduit(e.target.value)}
           aria-label="Produit"
         >
-          <option value="">— choisir un produit —</option>
-          {produits.map((p) => (
+          <option value="">
+            {produitsFiltres.length === 0
+              ? "— aucun produit ne correspond —"
+              : `— choisir un produit (${produitsFiltres.length}) —`}
+          </option>
+          {produitsFiltres.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name} —{" "}
-              {cad.format(
-                prixSuggere({
-                  msrp: p.msrp,
-                  suggestedPrice: p.suggestedPrice,
-                  billingCycle: p.cycle,
-                }),
-              )}
-              {SUFFIXE[p.cycle] ?? ""}
+              {p.name} — {libellePrix(p)}
             </option>
           ))}
         </select>

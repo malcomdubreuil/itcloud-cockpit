@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
+import { filtreMots } from "@/lib/recherche";
 import { domaineDeService, domainePrincipal } from "@/lib/domaine";
 import { CYCLE_MONTHS, daysUntil, renewalUrgency } from "@/components/service-card";
 import { NewClientButton } from "@/components/new-client-button";
@@ -80,14 +81,15 @@ export default async function ClientsPage({
         ? []
         : [{ isReseller: vue === "revendeurs" }]),
       ...(statut && statut !== "TOUS" ? [{ status: statut as never }] : []),
+      // Et chaque MOT tapé doit s'y retrouver, où que ce soit (voir lib/recherche).
       ...(q
         ? [
-            {
+            filtreMots(q, (m) => ({
               OR: [
-                { companyName: { contains: q } },
-                { contactName: { contains: q } },
-                { clientCode: { contains: q } },
-                { email: { contains: q } },
+                { companyName: { contains: m } },
+                { contactName: { contains: m } },
+                { clientCode: { contains: m } },
+                { email: { contains: m } },
                 // Côté Hébergement, la ligne s'INTITULE par le domaine
                 // (« dianerenaudcpa.com ») et la raison sociale n'est qu'en
                 // sous-titre : chercher ce qu'on lit à l'écran doit marcher.
@@ -103,15 +105,15 @@ export default async function ClientsPage({
                       deletedAt: null,
                       ...inDivision,
                       OR: [
-                        { domain: { name: { contains: q } } },
-                        { domain: { endClientName: { contains: q } } },
-                        { notes: { contains: q } },
+                        { domain: { name: { contains: m } } },
+                        { domain: { endClientName: { contains: m } } },
+                        { notes: { contains: m } },
                       ],
                     },
                   },
                 },
               ],
-            },
+            })),
           ]
         : []),
     ],

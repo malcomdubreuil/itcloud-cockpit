@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { MailCheck } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
+import { filtreMots } from "@/lib/recherche";
 import { DiffusionTabs } from "@/components/diffusion-tabs";
 import { STATUT_ENVOI, dureeLisible } from "@/lib/diffusion";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +49,7 @@ export default async function HistoriquePage({
   const where = {
     tenantId,
     ...(statut !== "tous" ? { status: statut } : {}),
-    ...(q ? { email: { contains: q } } : {}),
+    ...filtreMots(q, (m) => ({ email: { contains: m } })),
   };
 
   const [lignes, total, parStatut, campagnesEnvoyees, derniere] =

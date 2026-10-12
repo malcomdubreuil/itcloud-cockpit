@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ChevronLeft, ChevronRight, Globe } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
+import { filtreMots } from "@/lib/recherche";
 import { currentDivision } from "@/lib/division";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,14 +40,13 @@ export default async function DomainesPage({
   const where = {
     tenantId,
     deletedAt: null,
-    ...(q
-      ? {
-          OR: [
-            { name: { contains: q } },
-            { services: { some: { deletedAt: null, client: { companyName: { contains: q } } } } },
-          ],
-        }
-      : {}),
+    ...filtreMots(q, (m) => ({
+      OR: [
+        { name: { contains: m } },
+        { endClientName: { contains: m } },
+        { services: { some: { deletedAt: null, client: { companyName: { contains: m } } } } },
+      ],
+    })),
   };
 
   const [domaines, total] = await Promise.all([

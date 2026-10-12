@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ChevronLeft, ChevronRight, PackageSearch } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
+import { filtreMots } from "@/lib/recherche";
 import { currentDivision } from "@/lib/division";
 import { NouveauProduit } from "@/components/nouveau-produit";
 import { ProductActiveToggle } from "@/components/product-active-toggle";
@@ -79,7 +80,7 @@ export default async function ProduitsPage({
     deletedAt: null,
     division,
     ...(showCatalog ? {} : { active: true }),
-    ...(q ? { name: { contains: q } } : {}),
+    ...filtreMots(q, (m) => ({ name: { contains: m } })),
     ...(groupe ? { group: groupe } : {}),
   };
 

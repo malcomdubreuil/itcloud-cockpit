@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { Mail } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
+import { filtreMots } from "@/lib/recherche";
 import { DiffusionOutils } from "@/components/diffusion-outils";
 import { ContactActions } from "@/components/contact-actions";
 import { SegmentExplorer } from "@/components/segment-explorer";
@@ -46,15 +47,13 @@ export default async function DiffusionPage({
     deletedAt: null,
     ...(statut === "abonnes" ? { unsubscribedAt: null, active: true } : {}),
     ...(statut === "desabonnes" ? { unsubscribedAt: { not: null } } : {}),
-    ...(q
-      ? {
-          OR: [
-            { email: { contains: q } },
-            { name: { contains: q } },
-            { client: { companyName: { contains: q } } },
-          ],
-        }
-      : {}),
+    ...filtreMots(q, (m) => ({
+      OR: [
+        { email: { contains: m } },
+        { name: { contains: m } },
+        { client: { companyName: { contains: m } } },
+      ],
+    })),
   };
 
   const [contacts, total, abonnes, desabonnes, rebonds, sansCourriel, groupesRaw, clients] =

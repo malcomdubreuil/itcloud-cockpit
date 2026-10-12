@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Wrench } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
+import { filtreMots } from "@/lib/recherche";
 import { nommeurDeCompagnie } from "@/infrastructure/quickbooks/store";
 import { ServiceCard } from "@/components/service-card";
 import { CarteOrdonnee, OrdreFige } from "@/components/ordre-fige";
@@ -58,18 +59,17 @@ export default async function ServicesPage({
     // facture. Chez un revendeur (Pclogic, Acxzon), companyName dit « Pclogic »
     // pour 152 sites : chercher le site d'un vrai client ne donnait rien. Le
     // domaine et le nom du client final sont donc dans le filtre.
-    ...(q
-      ? {
-          OR: [
-            { client: { companyName: { contains: q } } },
-            { client: { clientCode: { contains: q } } },
-            { product: { name: { contains: q } } },
-            { domain: { name: { contains: q } } },
-            { domain: { endClientName: { contains: q } } },
-            { notes: { contains: q } },
-          ],
-        }
-      : {}),
+    // Et chaque MOT tapé doit s'y retrouver, où que ce soit (voir lib/recherche).
+    ...filtreMots(q, (m) => ({
+      OR: [
+        { client: { companyName: { contains: m } } },
+        { client: { clientCode: { contains: m } } },
+        { product: { name: { contains: m } } },
+        { domain: { name: { contains: m } } },
+        { domain: { endClientName: { contains: m } } },
+        { notes: { contains: m } },
+      ],
+    })),
   };
 
   const [services, total] = await Promise.all([
