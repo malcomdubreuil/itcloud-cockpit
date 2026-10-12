@@ -63,6 +63,7 @@ const source = {
     const engagements = lignes.filter((l) => /^Engagement/.test(l.Description ?? ""));
     verifie("1. trois lignes d'article", articles.length === 3, articles.length);
     verifie("1. chacune à quantité 1", articles.every((l) => l.SalesItemLineDetail?.Qty === 1));
+    verifie("1. la description est le nom du produit", articles.every((l) => l.Description === "M365 Business Std P1Y-A"), articles[0]);
     verifie("1. une seule ligne d'engagement", engagements.length === 1, engagements);
     verifie("1. engagement = lendemain de la fin, un an", engagements[0]?.Description === "Engagement 2026-11-01→2027-10-31", engagements[0]);
     verifie("1. l'engagement suit les trois lignes", lignes.findIndex((l) => /^Engagement/.test(l.Description ?? "")) === 3);

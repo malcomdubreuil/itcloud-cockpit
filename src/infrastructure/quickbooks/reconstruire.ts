@@ -244,6 +244,10 @@ export function reconstruire(args: {
       for (let i = 0; i < licences; i++) {
         lines.push({
           DetailType: "SalesItemLineDetail",
+          // La description de la ligne = le nom du produit, en toutes
+          // lettres sur la facture (Keven, 2026-10-12) — l'article seul ne
+          // l'écrit pas.
+          Description: premier.productName,
           Amount: montant,
           SalesItemLineDetail: {
             ItemRef: { value: article.id, name: article.nom },
