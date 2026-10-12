@@ -86,7 +86,7 @@ model ApiCredential {
   id         String    @id @default(uuid())
   tenantId   String
   provider   String // "ITCLOUD"
-  keyEnc     String // AES-256-GCM
+  keyEnc     String    @db.Text // AES-256-GCM. TEXT et non VARCHAR(191) : le JSON chiffre (jeton + realm + nom de compagnie) depasse 191 caracteres, et MySQL tronquait en silence - les deux connexions QuickBooks ont ete perdues ainsi le 2026-10-12.
   keyVersion Int       @default(1)
   lastUsedAt DateTime?
   rotatedAt  DateTime?
