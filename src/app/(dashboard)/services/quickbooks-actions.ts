@@ -198,7 +198,7 @@ async function chargerGroupe(
     },
     select: {
       id: true, clientId: true, productId: true, quantity: true, unitPrice: true,
-      monthlyBilling: true, commitmentEndDate: true, lastQbInvoiceNo: true, lastQbInvoiceRealm: true,
+      monthlyBilling: true, commitmentEndDate: true, renewalDate: true, lastQbInvoiceNo: true, lastQbInvoiceRealm: true,
       product: { select: { name: true, billingCycle: true, factureAuMois: true } },
       domain: { select: { name: true } },
       client: { select: { companyName: true } },
@@ -310,6 +310,7 @@ async function chargerGroupe(
     monthlyBilling: x.monthlyBilling,
     factureAuMois: x.product.factureAuMois,
     commitmentEndDate: x.commitmentEndDate,
+    renewalDate: x.renewalDate,
     domaine: x.domain?.name ?? null,
   }));
 

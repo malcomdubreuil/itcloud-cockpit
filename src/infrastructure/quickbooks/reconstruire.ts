@@ -39,6 +39,10 @@ export type ServiceAFacturer = {
   /** Présentation « tarif mensuel × 12 » (Product.factureAuMois). */
   factureAuMois: boolean;
   commitmentEndDate: Date | null;
+  /** L'échéance du service dans l'ERP : le jour où la nouvelle période
+   *  commence. Donne l'engagement quand ITCloud n'a pas fourni de date, et
+   *  la période réellement facturée. */
+  renewalDate?: Date | null;
   /** Le site, côté hébergement : écrit sous la ligne, comme avant. */
   domaine?: string | null;
 };
@@ -95,7 +99,28 @@ export type Reconstruction =
   | { ok: false; manques: string[] };
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+const jjmmaaaa = (d: Date) => {
+  const [a, m, j] = isoDate(d).split("-");
+  return `${j}-${m}-${a}`;
+};
 const arrondi = (n: number) => Math.round(n * 100) / 100;
+
+/** Le même jour un cycle plus tard, borné au dernier jour du mois d'arrivée
+ *  (31 janvier + 1 mois = 28 février, pas le 3 mars). */
+function plusUnCycle(d: Date, unite: Unite): Date {
+  const annee = d.getUTCFullYear() + (unite === "year" ? 1 : 0);
+  const mois = d.getUTCMonth() + (unite === "month" ? 1 : 0);
+  const dernierJour = new Date(Date.UTC(annee, mois + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(annee, mois, Math.min(d.getUTCDate(), dernierJour)));
+}
+
+/** La période qui commence un jour donné et dure un cycle : « du 01-11 au
+ *  31-10 », la fin étant la veille du même jour un cycle plus tard. */
+function periodeDepuis(debut: Date, unite: Unite): { debut: Date; fin: Date } {
+  const fin = plusUnCycle(debut, unite);
+  fin.setUTCDate(fin.getUTCDate() - 1);
+  return { debut: new Date(debut), fin };
+}
 
 /** Le cycle d'un service, pour avancer ses dates. */
 export function uniteDuService(s: Pick<ServiceAFacturer, "billingCycle" | "monthlyBilling">): Unite {
@@ -111,18 +136,21 @@ export function texteEngagement(finPrecedente: Date, unite: Unite): string {
   // est en heure de l'Est, où minuit UTC s'appelle 19 h la veille.
   const debut = new Date(finPrecedente);
   debut.setUTCDate(debut.getUTCDate() + 1);
-  const fin = new Date(debut);
-  if (unite === "year") fin.setUTCFullYear(fin.getUTCFullYear() + 1);
-  else fin.setUTCMonth(fin.getUTCMonth() + 1);
-  fin.setUTCDate(fin.getUTCDate() - 1);
-  return `Engagement ${isoDate(debut)}→${isoDate(fin)}`;
+  return texteEngagementDepuis(debut, unite);
+}
+
+/** Le même texte, à partir du PREMIER jour de la nouvelle période. */
+export function texteEngagementDepuis(debut: Date, unite: Unite): string {
+  const p = periodeDepuis(debut, unite);
+  return `Engagement ${isoDate(p.debut)}→${isoDate(p.fin)}`;
 }
 
 /** La clé d'un bloc : même produit, même date d'engagement, même prix. Deux
  *  licences du même produit à des dates différentes font deux blocs — chacun
  *  avec sa propre ligne d'engagement. */
 function cleDeBloc(s: ServiceAFacturer): string {
-  return `${s.productId}|${s.commitmentEndDate ? isoDate(s.commitmentEndDate) : ""}|${s.unitPrice}`;
+  const date = s.commitmentEndDate ?? s.renewalDate;
+  return `${s.productId}|${date ? isoDate(date) : ""}|${s.unitPrice}`;
 }
 
 export function reconstruire(args: {
@@ -173,11 +201,25 @@ export function reconstruire(args: {
     const prixLigne = arrondi(premier.factureAuMois ? premier.unitPrice / 12 : premier.unitPrice);
     const montant = arrondi(prixLigne * qte);
 
+    // Dans la nouvelle compagnie, la fiche article d'une licence porte le
+    // tarif MENSUEL (31,80 $ pour un Business Premium) alors que l'ERP garde
+    // le prix du cycle (381,60 $). On compare dans l'unité qui colle le mieux
+    // au prix du client — × 12 quand c'est plus proche — sinon chaque licence
+    // annuelle serait signalée en écart.
+    let prixArticle = article.prixUnitaire === null ? null : arrondi(article.prixUnitaire);
+    let ficheAuMois = false;
+    if (prixArticle !== null && uniteBloc === "year" && !premier.factureAuMois) {
+      const annuel = arrondi(prixArticle * 12);
+      if (Math.abs(annuel - prixLigne) < Math.abs(prixArticle - prixLigne)) {
+        prixArticle = annuel;
+        ficheAuMois = true;
+      }
+    }
     let ecart: LigneApercu["ecartPrix"];
-    if (article.prixUnitaire !== null && arrondi(article.prixUnitaire) !== prixLigne) {
-      ecart = { article: arrondi(article.prixUnitaire), client: prixLigne };
+    if (prixArticle !== null && prixArticle !== prixLigne) {
+      ecart = { article: prixArticle, client: prixLigne };
       avertissements.push(
-        `${premier.productName} : prix du client ${prixLigne.toFixed(2)} $, prix de l'article ${arrondi(article.prixUnitaire).toFixed(2)} $`,
+        `${premier.productName} : prix du client ${prixLigne.toFixed(2)} $, prix de l'article ${prixArticle.toFixed(2)} $${ficheAuMois ? " (fiche au mois × 12)" : ""}`,
       );
     }
 
@@ -207,20 +249,40 @@ export function reconstruire(args: {
       }
     }
 
-    // UNE ligne d'engagement pour le bloc, quand la date est connue.
-    if (premier.commitmentEndDate) {
-      const texte = texteEngagement(premier.commitmentEndDate, uniteBloc);
+    // UNE ligne d'engagement pour le bloc : depuis la fin d'engagement
+    // d'ITCloud quand il l'a donnée, sinon depuis l'échéance de l'ERP, qui
+    // est le premier jour de la nouvelle période.
+    const texte = premier.commitmentEndDate
+      ? texteEngagement(premier.commitmentEndDate, uniteBloc)
+      : premier.renewalDate
+        ? texteEngagementDepuis(premier.renewalDate, uniteBloc)
+        : null;
+    if (texte) {
       lines.push({ DetailType: "DescriptionOnly", Description: texte });
       apercu.push({ type: "engagement", texte });
     }
   }
 
-  // 3. Le bas de la facture : la période avancée d'un cycle, puis les lignes
-  //    de texte reconduites telles quelles.
-  if (source.ligneFacturation) {
-    const texte = bumpDates(source.ligneFacturation, unite);
-    lines.push({ DetailType: "DescriptionOnly", Description: texte });
-    apercu.push({ type: "periode", texte });
+  // 3. Le bas de la facture : la période facturée. Quand tous les services
+  //    tombent à la même échéance, c'est elle qui ouvre la période — et non la
+  //    source avancée d'un cycle : une facture au prorata (« du 23-09 au
+  //    10-11 », faite pour rattraper l'échéance) avancée d'un an donnerait un
+  //    prorata imaginaire. Sans échéance commune, on avance la source. Le
+  //    format de date reste celui de la source. Puis les lignes de texte
+  //    reconduites telles quelles.
+  const echeances = [...new Set(services.map((s) => (s.renewalDate ? isoDate(s.renewalDate) : "")))];
+  const echeanceCommune = echeances.length === 1 && echeances[0] ? services[0].renewalDate! : null;
+  let textePeriode: string | undefined;
+  if (echeanceCommune) {
+    const p = periodeDepuis(echeanceCommune, unite);
+    const fmt = source.ligneFacturation && /\d{4}-\d{2}-\d{2}/.test(source.ligneFacturation) ? isoDate : jjmmaaaa;
+    textePeriode = `Facturation du ${fmt(p.debut)} au ${fmt(p.fin)}`;
+  } else if (source.ligneFacturation) {
+    textePeriode = bumpDates(source.ligneFacturation, unite);
+  }
+  if (textePeriode) {
+    lines.push({ DetailType: "DescriptionOnly", Description: textePeriode });
+    apercu.push({ type: "periode", texte: textePeriode });
   }
   for (const t of source.lignesTexte ?? []) {
     lines.push({ DetailType: "DescriptionOnly", Description: t });

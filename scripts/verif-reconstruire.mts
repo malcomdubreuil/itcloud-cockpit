@@ -164,5 +164,59 @@ const source = {
 // ── 7. Le texte d'engagement sur une fin d'année.
 verifie("7. engagement après le 31 déc.", texteEngagement(new Date("2026-12-31T00:00:00Z"), "year") === "Engagement 2027-01-01→2027-12-31");
 
+// ── 8. Cas réel (Brandon Girard, 2026-1118) : source au prorata, pas de date
+//      d'engagement ITCloud, échéance commune → période et engagement partent
+//      de l'échéance, dans le format de la source ; article au mois × 12.
+{
+  const c = corr();
+  c.articleParProduit.set("p-prem", { id: "40", nom: "Microsoft 365:M365 Business Premium P1Y-A", prixUnitaire: 31.8 });
+  const r = reconstruire({
+    services: [svc({ id: "bp", productId: "p-prem", productName: "M365 Business Premium P1Y-A", quantity: 2, unitPrice: 381.6, commitmentEndDate: null, renewalDate: new Date("2026-11-10T00:00:00Z") })],
+    correspondances: c,
+    source: { ...source, ligneFacturation: "Facturation du 2026-09-23 au 2026-11-10" },
+    txnDate: "2026-10-12", docNumber: "2026-0008", unite: "year",
+  });
+  verifie("8. réussite", r.ok, r);
+  if (r.ok) {
+    const lignes = r.payload.Line as { Description?: string }[];
+    verifie("8. période = un an depuis l'échéance, pas le prorata avancé", lignes.some((l) => l.Description === "Facturation du 2026-11-10 au 2027-11-09"), lignes);
+    verifie("8. engagement depuis l'échéance", lignes.filter((l) => l.Description === "Engagement 2026-11-10→2027-11-09").length === 1, lignes);
+    verifie("8. fiche au mois × 12 = prix du client : aucun écart", r.avertissements.length === 0, r.avertissements);
+  }
+  const r2 = reconstruire({
+    services: [svc({ id: "bp", productId: "p-prem", productName: "M365 Business Premium P1Y-A", unitPrice: 400, commitmentEndDate: null, renewalDate: new Date("2026-11-10T00:00:00Z") })],
+    correspondances: c, source, txnDate: "2026-10-12", docNumber: "2026-0009", unite: "year",
+  });
+  verifie("8. écart signalé contre le tarif × 12", r2.ok && r2.avertissements.length === 1 && /381\.60 \$ \(fiche au mois × 12\)/.test(r2.avertissements[0]), r2.ok && r2.avertissements);
+}
+
+// ── 9. Échéances différentes sans date d'engagement : la source est avancée.
+{
+  const r = reconstruire({
+    services: [
+      svc({ id: "x", commitmentEndDate: null, renewalDate: new Date("2026-11-10T00:00:00Z") }),
+      svc({ id: "y", commitmentEndDate: null, renewalDate: new Date("2026-12-01T00:00:00Z") }),
+    ],
+    correspondances: corr(), source, txnDate: "2026-10-12", docNumber: "2026-0010", unite: "year",
+  });
+  verifie("9. réussite", r.ok, r);
+  if (r.ok) {
+    const lignes = r.payload.Line as { Description?: string }[];
+    verifie("9. période = source avancée d'un an", lignes.some((l) => l.Description === "Facturation du 01-11-2026 au 31-10-2027"), lignes);
+    verifie("9. deux blocs, deux engagements", lignes.filter((l) => /^Engagement/.test(l.Description ?? "")).length === 2, lignes);
+  }
+}
+
+// ── 10. Fin de mois : 31 janvier + 1 mois = 28 février, pas le 3 mars.
+{
+  const r = reconstruire({
+    services: [svc({ id: "m", billingCycle: "MENSUEL", unitPrice: 21, commitmentEndDate: null, renewalDate: new Date("2027-01-31T00:00:00Z") })],
+    correspondances: corr(), source: { ...source, ligneFacturation: "Facturation du 01-12-2026 au 31-12-2026" },
+    txnDate: "2027-01-20", docNumber: "2027-0001", unite: "month",
+  });
+  const lignes = r.ok ? (r.payload.Line as { Description?: string }[]) : [];
+  verifie("10. période du 31-01 au 27-02", lignes.some((l) => l.Description === "Facturation du 31-01-2027 au 27-02-2027"), lignes);
+}
+
 console.log(echecs ? `\n${echecs} échec(s)` : "\ntous les cas passent");
 process.exit(echecs ? 1 : 0);
