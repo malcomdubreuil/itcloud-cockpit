@@ -1,6 +1,6 @@
 import { env } from "@/lib/env";
 import { refreshTokens } from "./oauth";
-import { getConnection, saveConnection, markUsed } from "./store";
+import { getConnection, saveConnection, markUsed, type Compagnie } from "./store";
 
 // Client de l'API QuickBooks Online (Accounting v3).
 // Gère le renouvellement de l'access token (à partir du refresh token stocké,
@@ -12,8 +12,12 @@ const API_BASE =
     : "https://quickbooks.api.intuit.com";
 
 export class QuickBooksNotConnectedError extends Error {
-  constructor() {
-    super("QuickBooks n'est pas connecté pour ce tenant.");
+  constructor(compagnie: Compagnie = "nouvelle") {
+    super(
+      compagnie === "ancienne"
+        ? "L'ancienne compagnie QuickBooks (god-info) n'est pas connectée : Paramètres → Connecter l'ancienne compagnie."
+        : "La nouvelle compagnie QuickBooks (God-Info Inc.) n'est pas connectée : Paramètres → Connecter QuickBooks.",
+    );
     this.name = "QuickBooksNotConnectedError";
   }
 }
@@ -43,25 +47,39 @@ export class QuickBooksClient {
   private accessToken: string | null = null;
   private realmId: string | null = null;
 
-  constructor(private readonly tenantId: string) {}
+  /** `compagnie` choisit la connexion : « nouvelle » (God-Info Inc., par
+   *  défaut — c'est là qu'on écrit) ou « ancienne » (god-info, lecture de la
+   *  facture source pendant la transition). Voir store.ts. */
+  constructor(
+    private readonly tenantId: string,
+    readonly compagnie: Compagnie = "nouvelle",
+  ) {}
 
   // Charge la connexion, renouvelle l'access token et repersiste le refresh
   // token (rotatif). À appeler avant toute requête.
   private async ensureAuth(): Promise<void> {
     if (this.accessToken && this.realmId) return;
-    const conn = await getConnection(this.tenantId);
-    if (!conn) throw new QuickBooksNotConnectedError();
+    const conn = await getConnection(this.tenantId, this.compagnie);
+    if (!conn) throw new QuickBooksNotConnectedError(this.compagnie);
     const tokens = await refreshTokens(conn.refreshToken);
     this.accessToken = tokens.accessToken;
     this.realmId = conn.realmId;
-    // le refresh token a pu changer → on le resauvegarde
+    // le refresh token a pu changer → on le resauvegarde (en gardant le nom)
     if (tokens.refreshToken && tokens.refreshToken !== conn.refreshToken) {
-      await saveConnection(this.tenantId, {
-        refreshToken: tokens.refreshToken,
-        realmId: conn.realmId,
-      });
+      await saveConnection(
+        this.tenantId,
+        { ...conn, refreshToken: tokens.refreshToken },
+        this.compagnie,
+      );
     }
-    await markUsed(this.tenantId);
+    await markUsed(this.tenantId, this.compagnie);
+  }
+
+  /** L'identifiant de compagnie Intuit de cette connexion. Sert à étiqueter
+   *  un numéro de facture avec la compagnie qui l'a émis. */
+  async realm(): Promise<string> {
+    await this.ensureAuth();
+    return this.realmId as string;
   }
 
   private async request<T>(

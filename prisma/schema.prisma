@@ -402,7 +402,12 @@ model ClientService {
   // il appartient vraiment. Voir le modèle Domain.
   domainId             String?
 
-  lastQbInvoiceNo      String? // dernière facture QuickBooks (GOD-INFO) au client
+  lastQbInvoiceNo      String? // dernière facture QuickBooks au client
+  // Compagnie QuickBooks (realmId Intuit) qui a émis ce numéro. Deux séries
+  // de numéros coexistent depuis l'incorporation : sans ceci, « 2026-0012 »
+  // ne dit pas s'il faut le chercher dans god-info ou dans God-Info Inc.
+  // NULL = émis avant la transition, donc par l'ancienne compagnie.
+  lastQbInvoiceRealm   String?
   lastItcloudInvoiceNo String? // dernière facture ITCloud pour ce service
   notes                String? @db.Text // notes libres par service (ex-colonne M du fichier Excel)
 
@@ -682,6 +687,8 @@ model RecurringTask {
   // avance de periodDays à chaque facturation.
   nextDueDate     DateTime?
   lastQbInvoiceNo String? // dernière facture QuickBooks (source à dupliquer)
+  // Compagnie QuickBooks qui a émis ce numéro — voir ClientService.
+  lastQbInvoiceRealm String?
   lastBilledAt    DateTime?
   notes           String?   @db.Text
 
@@ -863,8 +870,18 @@ model QboCustomer {
   tenantId String
 
   /**
-   * Identifiant chez QuickBooks. C'est la cle de rapprochement.
+   * Identifiant chez QuickBooks. C'est la cle de rapprochement — AVEC la
+   * compagnie : depuis l'incorporation (octobre 2026) deux compagnies
+   * QuickBooks coexistent, et leurs clients portent des numeros qui se
+   * chevauchent (le client 710 existe dans les deux, et ce n'est pas le meme).
+   * Sans realmId dans la cle, une synchro de la nouvelle compagnie aurait
+   * ecrase les clients de l'ancienne — et les taches qui pointent dessus
+   * auraient change de client sans que personne ne le voie.
+   *
+   * Vide = ligne d'avant la transition ; le script transition-quickbooks.mts
+   * y pose le realm de l'ancienne compagnie.
    */
+  realmId     String @default("")
   qboId       String
   displayName String
   companyName String?
@@ -884,7 +901,7 @@ model QboCustomer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([tenantId, qboId])
+  @@unique([tenantId, realmId, qboId])
   @@index([tenantId, active])
 }
 

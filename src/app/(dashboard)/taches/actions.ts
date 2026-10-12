@@ -9,6 +9,7 @@ import {
   QuickBooksClient,
   type QboInvoice,
 } from "@/infrastructure/quickbooks/QuickBooksClient";
+import { compagniePourRealm } from "@/infrastructure/quickbooks/store";
 import {
   buildDuplicatePayload,
   qbInvoiceUrl,
@@ -29,12 +30,19 @@ async function requireUser() {
   return session.user;
 }
 
+// TRANSITION — octobre 2026 : voir services/quickbooks-actions.ts. Même
+// règle ici : lecture de l'ancienne compagnie pour l'aperçu, refus de la
+// facturation automatique tant que la reconstruction n'est pas branchée.
+const RECONSTRUCTION_PRETE = false;
+const MESSAGE_TRANSITION =
+  "Facturation vers God-Info Inc. pas encore branchée (transition en cours) : crée la facture dans QuickBooks et saisis son numéro ici par la saisie manuelle.";
+
 async function loadTask(taskId: string, tenantId: string) {
   const task = await prisma.recurringTask.findUniqueOrThrow({
     where: { id: taskId },
     select: {
       id: true, tenantId: true, clientId: true, title: true, price: true,
-      periodDays: true, nextDueDate: true, lastQbInvoiceNo: true, notes: true,
+      periodDays: true, nextDueDate: true, lastQbInvoiceNo: true, lastQbInvoiceRealm: true, notes: true,
       active: true, deletedAt: true,
     },
   });
@@ -350,7 +358,8 @@ export async function previewLastTaskInvoice(
 
   let inv: QboInvoice | null;
   try {
-    inv = await new QuickBooksClient(user.tenantId).getInvoiceByDocNumber(docNumber);
+    const compagnie = await compagniePourRealm(user.tenantId, task.lastQbInvoiceRealm);
+    inv = await new QuickBooksClient(user.tenantId, compagnie).getInvoiceByDocNumber(docNumber);
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : "Erreur QuickBooks" };
   }
@@ -401,6 +410,7 @@ export async function billTaskViaQuickBooks(
   if (isNaN(new Date(`${input.txnDate}T00:00:00`).getTime())) {
     throw new Error("Date de facture invalide");
   }
+  if (!RECONSTRUCTION_PRETE) throw new Error(MESSAGE_TRANSITION);
 
   const client = new QuickBooksClient(user.tenantId);
   const src = await client.getInvoiceByDocNumber(docNumber);
@@ -485,7 +495,11 @@ export type ResultatSyncClients = {
 export async function synchroniserClientsQuickBooks(): Promise<ResultatSyncClients> {
   const user = await requireUser();
 
-  const qbo = new QuickBooksClient(user.tenantId);
+  // Toujours la NOUVELLE compagnie : c'est elle qu'on facture, donc ses
+  // clients sont la liste de référence. Le realm entre dans la clé pour ne
+  // jamais écraser les clients de l'ancienne, que des tâches référencent.
+  const qbo = new QuickBooksClient(user.tenantId, "nouvelle");
+  const realmId = await qbo.realm();
   const clients = await qbo.getCustomers();
 
   let ajoutes = 0;
@@ -501,9 +515,9 @@ export async function synchroniserClientsQuickBooks(): Promise<ResultatSyncClien
     };
 
     const res = await prisma.qboCustomer.upsert({
-      where: { tenantId_qboId: { tenantId: user.tenantId, qboId: c.Id } },
+      where: { tenantId_realmId_qboId: { tenantId: user.tenantId, realmId, qboId: c.Id } },
       update: donnees,
-      create: { tenantId: user.tenantId, qboId: c.Id, ...donnees },
+      create: { tenantId: user.tenantId, realmId, qboId: c.Id, ...donnees },
       select: { createdAt: true, updatedAt: true },
     });
     if (res.createdAt.getTime() === res.updatedAt.getTime()) ajoutes++;
@@ -514,7 +528,7 @@ export async function synchroniserClientsQuickBooks(): Promise<ResultatSyncClien
   const vus = clients.map((c) => c.Id);
   if (vus.length > 0) {
     await prisma.qboCustomer.updateMany({
-      where: { tenantId: user.tenantId, qboId: { notIn: vus }, active: true },
+      where: { tenantId: user.tenantId, realmId, qboId: { notIn: vus }, active: true },
       data: { active: false },
     });
   }

@@ -9,6 +9,7 @@ import {
   type QboInvoice,
 } from "@/infrastructure/quickbooks/QuickBooksClient";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
+import { compagniePourRealm } from "@/infrastructure/quickbooks/store";
 import { markClientBilled, markServicesBilled } from "./actions";
 import {
   buildDuplicatePayload,
@@ -24,6 +25,17 @@ import {
 // RÈGLE DE SÛRETÉ : on NE POSTE JAMAIS la facture au client automatiquement.
 // createInvoice crée la facture dans QuickBooks (brouillon envoyable) ; l'envoi
 // reste une action manuelle et explicite.
+
+// TRANSITION — octobre 2026. Keven s'est incorporé : les factures partent
+// désormais de God-Info Inc., une compagnie QuickBooks neuve, alors que les
+// factures SOURCE vivent encore dans l'ancienne. Dupliquer l'ancienne telle
+// quelle vers la nouvelle échouerait à la première ligne — chaque identifiant
+// (client, article, taxe) y est différent. Tant que le moteur de
+// reconstruction n'est pas branché, la facturation par QuickBooks est refusée
+// ici avec un message clair ; la saisie manuelle du numéro reste ouverte.
+const RECONSTRUCTION_PRETE = false;
+const MESSAGE_TRANSITION =
+  "Facturation vers God-Info Inc. pas encore branchée (transition en cours) : crée la facture dans QuickBooks et saisis son numéro ici par la saisie manuelle.";
 
 async function requireUser() {
   const session = await auth();
@@ -41,6 +53,7 @@ async function loadService(serviceId: string, tenantId: string) {
       clientId: true,
       renewalDate: true,
       lastQbInvoiceNo: true,
+      lastQbInvoiceRealm: true,
       quantity: true,
       monthlyBilling: true,
     },
@@ -80,7 +93,8 @@ export async function previewLastQbInvoice(
 
   let inv: QboInvoice | null;
   try {
-    inv = await new QuickBooksClient(user.tenantId).getInvoiceByDocNumber(docNumber);
+    const compagnie = await compagniePourRealm(user.tenantId, service.lastQbInvoiceRealm);
+    inv = await new QuickBooksClient(user.tenantId, compagnie).getInvoiceByDocNumber(docNumber);
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : "Erreur QuickBooks" };
   }
@@ -159,6 +173,7 @@ export async function billGroupViaQuickBooks(
   if (isNaN(new Date(`${input.txnDate}T00:00:00`).getTime())) {
     throw new Error("Date de facture invalide");
   }
+  if (!RECONSTRUCTION_PRETE) throw new Error(MESSAGE_TRANSITION);
 
   const division = await currentDivision();
   const services = await prisma.clientService.findMany({
@@ -302,6 +317,7 @@ export async function billViaQuickBooks(
   if (isNaN(new Date(`${input.txnDate}T00:00:00`).getTime())) {
     throw new Error("Date de facture invalide");
   }
+  if (!RECONSTRUCTION_PRETE) throw new Error(MESSAGE_TRANSITION);
 
   const client = new QuickBooksClient(user.tenantId);
   const src = await client.getInvoiceByDocNumber(docNumber);
