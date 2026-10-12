@@ -213,7 +213,7 @@ async function chargerGroupe(
     select: {
       id: true, clientId: true, productId: true, quantity: true, unitPrice: true,
       monthlyBilling: true, commitmentEndDate: true, renewalDate: true, lastQbInvoiceNo: true, lastQbInvoiceRealm: true,
-      product: { select: { name: true, billingCycle: true, factureAuMois: true } },
+      product: { select: { name: true, billingCycle: true, factureAuMois: true, division: true } },
       domain: { select: { name: true } },
       client: { select: { companyName: true } },
     },
@@ -343,7 +343,10 @@ async function chargerGroupe(
     unitPrice: Number(x.unitPrice),
     billingCycle: x.product.billingCycle,
     monthlyBilling: x.monthlyBilling,
-    factureAuMois: x.product.factureAuMois,
+    // Les licences ITCloud se facturent toutes « 12 × tarif mensuel » (la
+    // fiche article de la nouvelle compagnie est au mois) ; côté hébergement,
+    // seuls les produits marqués le sont, les autres sont tarifés à l'année.
+    factureAuMois: x.product.factureAuMois || x.product.division === "ITCLOUD",
     commitmentEndDate: x.commitmentEndDate,
     renewalDate: x.renewalDate,
     domaine: x.domain?.name ?? null,

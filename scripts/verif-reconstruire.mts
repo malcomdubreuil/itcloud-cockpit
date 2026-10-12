@@ -218,5 +218,37 @@ verifie("7. engagement après le 31 déc.", texteEngagement(new Date("2026-12-31
   verifie("10. période du 31-01 au 27-02", lignes.some((l) => l.Description === "Facturation du 31-01-2027 au 27-02-2027"), lignes);
 }
 
+// ── 11. Licence ITCloud « au mois » : 12 × 31,80 sur une facture annuelle ;
+//       refacturée au mois : 1 × 31,80 avec un engagement d'un mois.
+{
+  const c = corr();
+  c.articleParProduit.set("p-prem", { id: "40", nom: "Microsoft 365:M365 Business Premium P1Y-A", prixUnitaire: 31.8 });
+  const base = { productId: "p-prem", productName: "M365 Business Premium P1Y-A", unitPrice: 381.6, factureAuMois: true, commitmentEndDate: null, renewalDate: new Date("2026-11-10T00:00:00Z") };
+  const r = reconstruire({
+    services: [svc({ id: "bp", ...base, quantity: 2 })],
+    correspondances: c, source, txnDate: "2026-10-12", docNumber: "2026-0011", unite: "year",
+  });
+  verifie("11. réussite", r.ok, r);
+  if (r.ok) {
+    const articles = (r.payload.Line as { DetailType: string; Amount?: number; SalesItemLineDetail?: { Qty: number; UnitPrice: number } }[]).filter((l) => l.DetailType === "SalesItemLineDetail");
+    verifie("11. deux lignes 12 × 31,80", articles.length === 2 && articles.every((l) => l.SalesItemLineDetail?.Qty === 12 && l.SalesItemLineDetail?.UnitPrice === 31.8 && l.Amount === 381.6), articles);
+    verifie("11. total 763,20", r.total === 763.2, r.total);
+    verifie("11. aucun écart", r.avertissements.length === 0, r.avertissements);
+  }
+  const m = reconstruire({
+    services: [svc({ id: "bm", ...base, monthlyBilling: true })],
+    correspondances: c, source: { ...source, ligneFacturation: "Facturation du 01-10-2026 au 31-10-2026" },
+    txnDate: "2026-10-12", docNumber: "2026-0012", unite: "month",
+  });
+  verifie("11. réussite (au mois)", m.ok, m);
+  if (m.ok) {
+    const lignes = m.payload.Line as { DetailType: string; Description?: string; Amount?: number; SalesItemLineDetail?: { Qty: number; UnitPrice: number } }[];
+    const a = lignes.find((l) => l.DetailType === "SalesItemLineDetail");
+    verifie("11. au mois : 1 × 31,80", a?.SalesItemLineDetail?.Qty === 1 && a?.SalesItemLineDetail?.UnitPrice === 31.8, a);
+    verifie("11. au mois : engagement d'un mois", lignes.some((l) => l.Description === "Engagement 2026-11-10→2026-12-09"), lignes);
+    verifie("11. au mois : période d'un mois", lignes.some((l) => l.Description === "Facturation du 10-11-2026 au 09-12-2026"), lignes);
+  }
+}
+
 console.log(echecs ? `\n${echecs} échec(s)` : "\ntous les cas passent");
 process.exit(echecs ? 1 : 0);

@@ -18,7 +18,9 @@ import { bumpDates } from "./duplicate";
 //   - une ligne par licence, quantité 1 ;
 //   - UNE seule ligne « Engagement … → … » sous un bloc de licences identiques
 //     (même produit, même date d'engagement) ;
-//   - les produits « au mois » (hébergement, DNS) : tarif mensuel × 12 ;
+//   - les produits « au mois » (licences ITCloud, hébergement, DNS) :
+//     12 × le tarif mensuel sur une facture annuelle — 12 × 31,80 $, pas
+//     1 × 381,60 $ (Keven, après la facture d'essai GI-2026-002) ;
 //   - en bas, « Facturation du … au … » avancée d'un cycle ;
 //   - l'article de la NOUVELLE compagnie sur chaque ligne — c'est lui qui
 //     remplit description, compte et taxe. Le prix de la ligne est celui du
@@ -36,7 +38,8 @@ export type ServiceAFacturer = {
   billingCycle: string;
   /** Service annuel refacturé au mois : ses dates avancent d'un mois. */
   monthlyBilling: boolean;
-  /** Présentation « tarif mensuel × 12 » (Product.factureAuMois). */
+  /** Présentation « 12 × tarif mensuel » sur une facture annuelle
+   *  (Product.factureAuMois, ou toute licence ITCloud). */
   factureAuMois: boolean;
   commitmentEndDate: Date | null;
   /** L'échéance du service dans l'ERP : le jour où la nouvelle période
@@ -194,11 +197,20 @@ export function reconstruire(args: {
     const article = c.articleParProduit.get(premier.productId)!;
     const uniteBloc = uniteDuService(premier);
 
-    // Prix et quantité de LA ligne : au mois × 12 pour un produit « au mois »,
-    // sinon le prix du cycle × 1. Le prix vient du client (paliers), l'article
-    // ne sert que de référence.
-    const qte = premier.factureAuMois ? 12 : 1;
-    const prixLigne = arrondi(premier.factureAuMois ? premier.unitPrice / 12 : premier.unitPrice);
+    // Quantité et prix de LA ligne. Le prix vient du client (paliers),
+    // l'article ne sert que de référence.
+    //   - produit annuel « au mois » sur facture annuelle : 12 × le douzième ;
+    //   - produit annuel refacturé au mois (monthlyBilling) : 1 × le douzième ;
+    //   - produit annuel tarifé à l'année (SSL, nom de domaine) : 1 × l'an ;
+    //   - produit mensuel : 1 × son prix.
+    const annuel = premier.billingCycle !== "MENSUEL";
+    let qte = 1;
+    let prixLigne = arrondi(premier.unitPrice);
+    if (annuel && uniteBloc === "month") prixLigne = arrondi(premier.unitPrice / 12);
+    else if (annuel && premier.factureAuMois) {
+      qte = 12;
+      prixLigne = arrondi(premier.unitPrice / 12);
+    }
     const montant = arrondi(prixLigne * qte);
 
     // Dans la nouvelle compagnie, la fiche article d'une licence porte le
