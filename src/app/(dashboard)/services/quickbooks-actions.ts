@@ -138,7 +138,14 @@ export type BillResult =
       linesKept?: number;
       linesTotal?: number;
     }
-  | { status: "draft_no_number"; invoiceId: string; invoiceUrl: string };
+  | { status: "draft_no_number"; invoiceId: string; invoiceUrl: string }
+  // En production, Next cache le message d'une erreur levée par une action
+  // serveur (« An error occurred in the Server Components render… ») : Keven
+  // ne voyait pas pourquoi QuickBooks refusait. On renvoie donc l'échec comme
+  // un résultat, avec le message en clair.
+  | { status: "error"; message: string };
+
+const messageDe = (e: unknown) => (e instanceof Error ? e.message : "Erreur inattendue");
 
 
 // ── RECONSTRUCTION DANS LA NOUVELLE COMPAGNIE ──────────────────────────────
@@ -355,7 +362,12 @@ export async function previewReconstruction(
   sourceDocNumber?: string,
 ): Promise<ApercuReconstruction> {
   const user = await requireUser();
-  const g = await chargerGroupe(user, serviceIds, sourceDocNumber);
+  let g: Awaited<ReturnType<typeof chargerGroupe>>;
+  try {
+    g = await chargerGroupe(user, serviceIds, sourceDocNumber);
+  } catch (e) {
+    return { ok: false, manques: [messageDe(e)], docNumberSource: sourceDocNumber ?? null };
+  }
   const r = reconstruire({ ...g.entrees, txnDate: new Date().toISOString().slice(0, 10), docNumber: "(à attribuer)" });
   if (!r.ok) return { ok: false, manques: r.manques, docNumberSource: g.docNumberSource };
   return {
@@ -382,21 +394,31 @@ export async function billGroupViaQuickBooks(
 ): Promise<BillResult> {
   const user = await requireUser();
   if (isNaN(new Date(`${input.txnDate}T00:00:00`).getTime())) {
-    throw new Error("Date de facture invalide");
+    return { status: "error", message: "Date de facture invalide" };
   }
 
-  const g = await chargerGroupe(user, serviceIds, input.sourceDocNumber);
-
-  // Le numéro vient de l'ERP, AVANT la création : si ça échoue, rien n'est créé.
-  const newNumber = await g.nouvelle.getNextDocNumber();
-  const r = reconstruire({ ...g.entrees, txnDate: input.txnDate, docNumber: newNumber });
-  if (!r.ok) {
-    throw new Error(
-      `Impossible de reconstruire la facture : ${r.manques.join(" ; ")}. Règle les correspondances dans Paramètres → QuickBooks.`,
-    );
+  // Tout ce qui précède la création peut échouer sans rien laisser derrière ;
+  // on le dit en clair plutôt que de laisser Next masquer le message.
+  let g: Awaited<ReturnType<typeof chargerGroupe>>;
+  let newNumber: string;
+  let created: QboInvoice;
+  let r: ReturnType<typeof reconstruire>;
+  try {
+    g = await chargerGroupe(user, serviceIds, input.sourceDocNumber);
+    // Le numéro vient de l'ERP, AVANT la création : si ça échoue, rien n'est créé.
+    newNumber = await g.nouvelle.getNextDocNumber();
+    r = reconstruire({ ...g.entrees, txnDate: input.txnDate, docNumber: newNumber });
+    if (!r.ok) {
+      return {
+        status: "error",
+        message: `Impossible de reconstruire la facture : ${r.manques.join(" ; ")}. Règle les correspondances dans Paramètres → QuickBooks.`,
+      };
+    }
+    created = await g.nouvelle.createInvoice(r.payload);
+  } catch (e) {
+    console.error("billGroupViaQuickBooks : échec avant création", e);
+    return { status: "error", message: `Rien n'a été créé — ${messageDe(e)}` };
   }
-
-  const created = await g.nouvelle.createInvoice(r.payload);
 
   await audit({
     tenantId: user.tenantId,

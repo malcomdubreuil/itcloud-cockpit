@@ -121,6 +121,10 @@ export function ServiceActions({
     start(async () => {
       try {
         const res = await billViaQuickBooks(serviceId, { txnDate });
+        if (res.status === "error") {
+          toast.error(res.message, { duration: 20000 });
+          return;
+        }
         setDialog(false);
         if (res.status === "billed") {
           toast.success(

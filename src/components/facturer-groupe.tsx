@@ -120,6 +120,10 @@ export function FacturerGroupe({
           txnDate,
           sourceDocNumber: modele ?? undefined,
         });
+        if (r.status === "error") {
+          toast.error(r.message, { duration: 20000 });
+          return;
+        }
         if (r.status === "billed") {
           setResultat({ doc: r.newDocNumber, url: r.invoiceUrl, n: r.servicesBilled });
           const lignes =
