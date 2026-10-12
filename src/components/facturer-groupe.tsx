@@ -91,14 +91,14 @@ export function FacturerGroupe({
         setSource(
           await previewReconstruction(
             aDupliquer.map((s) => s.id),
-            sourceChoisie ?? undefined,
+            modele ?? undefined,
           ),
         );
       } catch (e) {
         setSource({
           ok: false,
           manques: [e instanceof Error ? e.message : "Erreur QuickBooks"],
-          docNumberSource: sourceChoisie,
+          docNumberSource: modele,
         });
       }
     });
@@ -118,7 +118,7 @@ export function FacturerGroupe({
       try {
         const r = await billGroupViaQuickBooks(aDupliquer.map((s) => s.id), {
           txnDate,
-          sourceDocNumber: sourceChoisie ?? undefined,
+          sourceDocNumber: modele ?? undefined,
         });
         if (r.status === "billed") {
           setResultat({ doc: r.newDocNumber, url: r.invoiceUrl, n: r.servicesBilled });
@@ -184,15 +184,18 @@ export function FacturerGroupe({
   }
   const plusieursSources = sourcesCochees.size > 1;
 
-  // On ne duplique QUE les services venant de la facture modèle : marquer
-  // facturés des services absents de cette facture serait faux.
-  const aDupliquer = sourceChoisie
-    ? cochesListe.filter((s) => s.facture === sourceChoisie)
-    : [];
-  // Sélection complète du groupe d'origine = comportement d'avant (aucun
-  // filtrage des lignes). Sinon on ne garde que les lignes des services cochés.
-  const complet = !!apercu && aDupliquer.length === apercu.services.length;
-  const exclus = cochesListe.length - aDupliquer.length;
+  // TOUS les services cochés partent sur UNE facture. Depuis la
+  // reconstruction, la facture modèle ne fournit plus que le client, les
+  // conditions et le message : elle n'a plus à « contenir » les services —
+  // Keven a demandé le 2026-10-12 de pouvoir facturer d'un coup 4 services
+  // venus de 2 factures. Le modèle : celui choisi s'il est encore dans la
+  // sélection, sinon la facture la plus représentée ; aucune = le client est
+  // retrouvé par son nom.
+  const aDupliquer = cochesListe;
+  const modele =
+    sourceChoisie && sourcesCochees.has(sourceChoisie)
+      ? sourceChoisie
+      : ([...sourcesCochees.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null);
 
   return (
     <>
@@ -293,11 +296,7 @@ export function FacturerGroupe({
                           {sansDomaine ? "" : s.produit}
                         </span>
                         <span
-                          className={`w-28 truncate text-xs tabular-nums ${
-                            sourceChoisie && s.facture && s.facture !== sourceChoisie
-                              ? "text-amber-600 dark:text-amber-400"
-                              : "text-muted-foreground"
-                          }`}
+                          className="w-28 truncate text-xs tabular-nums text-muted-foreground"
                           title={
                             s.facture
                               ? `Vient de la facture ${s.facture}`
@@ -323,11 +322,11 @@ export function FacturerGroupe({
                   <strong className="tabular-nums">{cad.format(total)}</strong>
                 </p>
 
-                {/* ── Chemin 1 : dupliquer une facture d'origine ── */}
-                {sourcesCochees.size > 0 && (
+                {/* ── Chemin 1 : créer la facture dans la nouvelle compagnie ── */}
+                {cochesListe.length > 0 && (
                   <div className="mt-4 rounded-md border bg-muted/40 p-3">
                     <p className="text-sm font-medium">
-                      Dupliquer dans QuickBooks
+                      Créer dans QuickBooks (nouvelle compagnie)
                     </p>
 
                     {/* Plusieurs factures d'origine : Keven choisit le modèle. */}
@@ -335,15 +334,16 @@ export function FacturerGroupe({
                       <div className="mt-2">
                         <p className="text-xs text-muted-foreground">
                           Les services cochés viennent de{" "}
-                          <strong>{sourcesCochees.size} factures différentes</strong>.
-                          Laquelle sert de modèle ?
+                          <strong>{sourcesCochees.size} factures différentes</strong> —
+                          ils iront quand même sur une seule facture. Laquelle sert de
+                          modèle (client, conditions, message) ?
                         </p>
                         <div className="mt-1.5 flex flex-wrap gap-2">
                           {[...sourcesCochees.entries()].map(([num, n]) => (
                             <label
                               key={num}
                               className={`flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
-                                sourceChoisie === num
+                                modele === num
                                   ? "border-primary bg-background font-medium"
                                   : "border-input text-muted-foreground hover:text-foreground"
                               }`}
@@ -351,7 +351,7 @@ export function FacturerGroupe({
                               <input
                                 type="radio"
                                 name="source-facture"
-                                checked={sourceChoisie === num}
+                                checked={modele === num}
                                 disabled={pending}
                                 onChange={() => {
                                   setSourceChoisie(num);
@@ -370,33 +370,27 @@ export function FacturerGroupe({
                     )}
 
                     <p className="mt-2 text-xs text-muted-foreground">
-                      L&apos;ERP reprend la facture{" "}
-                      <strong>{sourceChoisie ?? "choisie"}</strong>, avance ses
-                      dates d&apos;un cycle, génère le nouveau numéro et le pose
-                      sur les services concernés. La facture reste un{" "}
-                      <strong>brouillon non envoyé</strong>.
+                      L&apos;ERP reconstruit la facture à partir des{" "}
+                      <strong>
+                        {aDupliquer.length} service{aDupliquer.length > 1 ? "s" : ""} coché
+                        {aDupliquer.length > 1 ? "s" : ""}
+                      </strong>{" "}
+                      — une ligne par licence, l&apos;engagement par bloc, la période
+                      depuis l&apos;échéance —{" "}
+                      {modele ? (
+                        <>
+                          et reprend de la facture <strong>{modele}</strong> le client,
+                          les conditions et le message.
+                        </>
+                      ) : (
+                        <>
+                          sans facture modèle : le client est retrouvé par son nom, sans
+                          message ni conditions repris.
+                        </>
+                      )}{" "}
+                      Elle est créée en <strong>brouillon non envoyé</strong> et son
+                      numéro est posé sur les services.
                     </p>
-
-                    {!complet && aDupliquer.length > 0 && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Facturation partielle : seules les lignes des{" "}
-                        <strong>{aDupliquer.length} service
-                        {aDupliquer.length > 1 ? "s" : ""} coché
-                        {aDupliquer.length > 1 ? "s" : ""}</strong> seront
-                        reprises — vérifie le brouillon avant de l&apos;envoyer.
-                      </p>
-                    )}
-
-                    {exclus > 0 && (
-                      <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                        {exclus} service{exclus > 1 ? "s" : ""} coché
-                        {exclus > 1 ? "s" : ""} ne vien{exclus > 1 ? "nent" : "t"} pas
-                        de {sourceChoisie ?? "cette facture"} :{" "}
-                        {exclus > 1 ? "ils ne seront pas facturés" : "il ne sera pas facturé"}{" "}
-                        par cette duplication. Refais l&apos;opération pour l&apos;autre
-                        facture, ou entre un numéro à la main.
-                      </p>
-                    )}
 
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <label className="text-xs text-muted-foreground">
@@ -411,9 +405,7 @@ export function FacturerGroupe({
                       </label>
                       <Button
                         onClick={dupliquer}
-                        disabled={
-                          pending || !sourceChoisie || aDupliquer.length === 0 || (source !== null && !source.ok)
-                        }
+                        disabled={pending || aDupliquer.length === 0 || (source !== null && !source.ok)}
                       >
                         {pending && <Loader2 className="h-4 w-4 animate-spin" />}
                         Créer la facture dans la nouvelle compagnie ({aDupliquer.length})
@@ -421,7 +413,7 @@ export function FacturerGroupe({
                       <Button
                         variant="outline"
                         onClick={voirSource}
-                        disabled={pending || !sourceChoisie || aDupliquer.length === 0}
+                        disabled={pending || aDupliquer.length === 0}
                       >
                         Voir la facture reconstruite
                       </Button>
@@ -466,15 +458,6 @@ export function FacturerGroupe({
                       </div>
                     )}
                   </div>
-                )}
-
-                {sourcesCochees.size === 0 && (
-                  <p className="mt-4 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-                    Aucun des services cochés n&apos;a de{" "}
-                    <strong>facture QuickBooks d&apos;origine</strong> — il n&apos;y
-                    a donc rien à dupliquer. Fais la facture dans QuickBooks, puis
-                    entre son numéro ci-dessous.
-                  </p>
                 )}
 
                 {/* ── Chemin 2 : numéro saisi à la main ── */}
