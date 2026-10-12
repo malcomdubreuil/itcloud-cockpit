@@ -37,6 +37,8 @@ export type TaskCardData = {
   periodDays: number;
   nextDueDate: Date | null;
   lastQbInvoiceNo: string | null;
+  /** Compagnie QuickBooks qui a émis ce numéro (« God-Info Inc. »). */
+  qbCompagnie?: string | null;
   notes: string | null;
   active: boolean;
   /** Fiche client de l'ERP — historique, plus alimentee a la creation. */
@@ -109,6 +111,9 @@ export function TaskCard({
                 label="N° facture QuickBooks"
                 placeholder="n° facture"
               />
+              {t.lastQbInvoiceNo?.trim() && t.qbCompagnie && (
+                <span title="Compagnie QuickBooks qui a émis cette facture">· {t.qbCompagnie}</span>
+              )}
             </span>
             <span className="inline-flex min-w-0 flex-1 basis-52 items-center gap-1.5 text-xs text-muted-foreground">
               {hasNote ? (

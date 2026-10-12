@@ -13,6 +13,7 @@ import { InternalToggle } from "@/components/internal-toggle";
 import { FacturerGroupe } from "@/components/facturer-groupe";
 import { AjouterService } from "@/components/ajouter-service";
 import { grouperPourFacturation } from "@/lib/groupe-facturation";
+import { nommeurDeCompagnie } from "@/infrastructure/quickbooks/store";
 import { InlineTextInput } from "@/components/inline-text-input";
 import { updateClientMainDomain } from "@/app/(dashboard)/clients/actions";
 import { Badge } from "@/components/ui/badge";
@@ -80,7 +81,7 @@ export default async function ClientPage({ params }: Props) {
         select: {
           id: true, quantity: true, quantityManual: true, renewalDateManual: true, unitCost: true, unitPrice: true,
           status: true, billingMode: true, renewalDate: true,
-          lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true, serverName: true,
+          lastQbInvoiceNo: true, lastQbInvoiceRealm: true, lastItcloudInvoiceNo: true, notes: true, serverName: true,
           domain: { select: { id: true, name: true, endClientName: true, principal: true } },
           monthlyBilling: true,
           product: { select: { name: true, billingCycle: true, msrp: true } },
@@ -89,6 +90,11 @@ export default async function ClientPage({ params }: Props) {
     },
   });
   if (!client || client.tenantId !== session.user.tenantId) notFound();
+  const nomCompagnie = await nommeurDeCompagnie(session.user.tenantId);
+  const suffixeCompagnie = (realm: string | null | undefined) => {
+    const nom = nomCompagnie(realm);
+    return nom ? ` · ${nom}` : "";
+  };
 
   // Produits disponibles pour ajouter un service sous ce client : ceux de la
   // division active, actifs. Le prix se remplira depuis leur PDSF.
@@ -130,6 +136,7 @@ export default async function ClientPage({ params }: Props) {
     billingMode: s.billingMode,
     renewalDate: s.renewalDate,
     lastQbInvoiceNo: s.lastQbInvoiceNo,
+    qbCompagnie: nomCompagnie(s.lastQbInvoiceRealm),
     lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
     notes: s.notes,
     // Sans ces deux lignes, le champ Domaine s'affiche vide et « Client du
@@ -314,7 +321,7 @@ export default async function ClientPage({ params }: Props) {
                 {g.titre}
                 <span className="text-xs font-normal text-muted-foreground">
                   {g.services.length} service{g.services.length > 1 ? "s" : ""}
-                  {g.facture ? ` · facture ${g.facture}` : ""}
+                  {g.facture ? ` · facture ${g.facture}${suffixeCompagnie(g.factureRealm)}` : ""}
                 </span>
                 {!client.internal && g.services.some((x) => x.billingMode === "INDIRECT") && (
                   <FacturerGroupe serviceId={g.services[0].id} label="Facturer ce groupe" compact />

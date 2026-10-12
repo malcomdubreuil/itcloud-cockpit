@@ -98,6 +98,10 @@ export type ServiceCardData = {
   billingMode: string;
   renewalDate: Date | null;
   lastQbInvoiceNo: string | null;
+  /** Compagnie QuickBooks qui a émis ce numéro (« God-Info Inc. »). Depuis
+   *  l'incorporation, deux séries de numéros coexistent : sans le nom, un
+   *  « 2026-0012 » ne dit pas où aller le chercher. */
+  qbCompagnie?: string | null;
   lastItcloudInvoiceNo: string | null;
   notes: string | null;
   monthlyBilling: boolean;
@@ -214,6 +218,9 @@ export function ServiceCard({
                 label="N° facture QuickBooks"
                 placeholder="n° facture"
               />
+              {s.lastQbInvoiceNo?.trim() && s.qbCompagnie && (
+                <span title="Compagnie QuickBooks qui a émis cette facture">· {s.qbCompagnie}</span>
+              )}
             </span>
             {itcloud && (
               <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">

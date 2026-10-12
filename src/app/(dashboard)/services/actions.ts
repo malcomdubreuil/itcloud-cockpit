@@ -7,6 +7,7 @@ import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, divisionLabel, serviceDivisionFilter } from "@/lib/division";
 import { domaineDeService, domainePrincipal, normaliserDomaine } from "@/lib/domaine";
 import { prixSuggere } from "@/lib/prix";
+import { getConnection } from "@/infrastructure/quickbooks/store";
 import { cleDeGroupe, type MotifGroupe } from "@/lib/groupe-facturation";
 import { audit } from "@/infrastructure/db/audit";
 
@@ -21,6 +22,13 @@ const CYCLE_MONTHS: Record<string, number> = {
 };
 
 // Numéros de facture (aide à la refacturation §UI Services)
+// Un numéro de facture QuickBooks tapé à la main aujourd'hui vient de la
+// compagnie où l'on facture : la nouvelle. Sans ce realm, le numéro serait
+// cherché dans l'ancienne au prochain renouvellement, et introuvable.
+async function realmDeFacturation(tenantId: string): Promise<string | null> {
+  return (await getConnection(tenantId, "nouvelle"))?.realmId ?? null;
+}
+
 async function updateInvoiceNo(
   serviceId: string,
   field: "lastQbInvoiceNo" | "lastItcloudInvoiceNo",
@@ -39,7 +47,12 @@ async function updateInvoiceNo(
 
   await prisma.clientService.update({
     where: { id: serviceId },
-    data: { [field]: value || null },
+    data: {
+      [field]: value || null,
+      ...(field === "lastQbInvoiceNo"
+        ? { lastQbInvoiceRealm: value ? await realmDeFacturation(session.user.tenantId) : null }
+        : {}),
+    },
   });
 
   await audit({
@@ -928,7 +941,12 @@ export async function previewClientFacturation(clientId: string): Promise<{
 // facturables. Keven voit toujours la liste avant que ça écrive.
 export async function markServicesBilled(
   serviceIds: string[],
-  input: { qbInvoiceNo: string },
+  input: {
+    qbInvoiceNo: string;
+    /** Compagnie QuickBooks (realm) qui a émis le numéro. Absent = saisie
+     *  manuelle, donc la compagnie où l'on facture aujourd'hui. */
+    qbInvoiceRealm?: string;
+  },
 ): Promise<{ count: number }> {
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");
@@ -939,6 +957,7 @@ export async function markServicesBilled(
   if (qb.length > 100) throw new Error("Numéro trop long");
   const ids = [...new Set(serviceIds)].filter(Boolean);
   if (ids.length === 0) throw new Error("Aucun service sélectionné");
+  const realm = input.qbInvoiceRealm ?? (await realmDeFacturation(session.user.tenantId));
 
   const division = await currentDivision();
   const services = await prisma.clientService.findMany({
@@ -963,7 +982,10 @@ export async function markServicesBilled(
     await prisma.$transaction([
       prisma.clientService.update({
         where: { id: s.id },
-        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF", quantityManual: false },
+        data: {
+          renewalDate: newRenewal, lastQbInvoiceNo: qb, lastQbInvoiceRealm: realm,
+          status: "ACTIF", quantityManual: false,
+        },
       }),
       prisma.serviceChange.create({
         data: {

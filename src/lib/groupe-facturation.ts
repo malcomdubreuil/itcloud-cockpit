@@ -22,6 +22,8 @@ export type ServiceGroupable = {
   notes: string | null;
   domain?: { name: string; principal?: boolean } | null;
   lastQbInvoiceNo: string | null;
+  /** Compagnie QuickBooks (realm) qui a émis le numéro ; absent = ancienne. */
+  lastQbInvoiceRealm?: string | null;
   renewalDate: Date | null;
   product: { name: string };
 };
@@ -36,6 +38,8 @@ export type GroupeFacturation<T extends ServiceGroupable> = {
   motif: MotifGroupe;
   /** Numéro de facture commun, s'il y en a un. */
   facture: string | null;
+  /** Realm QuickBooks de ce numéro, pour afficher la compagnie à côté. */
+  factureRealm: string | null;
   /** Domaine principal du groupe — c'est lui qui l'identifie à l'écran. */
   titre: string;
   services: T[];
@@ -86,6 +90,7 @@ export function grouperPourFacturation<T extends ServiceGroupable>(
         cle,
         motif,
         facture: motif === "facture" ? (s.lastQbInvoiceNo ?? "").trim() : null,
+        factureRealm: motif === "facture" ? (s.lastQbInvoiceRealm ?? null) : null,
         titre: "",
         services: [],
       };

@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { InlineTextInput } from "@/components/inline-text-input";
 import { DomainePrincipalToggle } from "@/components/domaine-principal-toggle";
 import { ServiceCard } from "@/components/service-card";
+import { nommeurDeCompagnie } from "@/infrastructure/quickbooks/store";
 import {
   renameDomain,
   updateDomainNotes,
@@ -54,7 +55,7 @@ export default async function DomainePage({
           id: true, clientId: true, quantity: true, quantityManual: true,
           renewalDateManual: true, unitCost: true, unitPrice: true,
           status: true, billingMode: true, renewalDate: true,
-          lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true,
+          lastQbInvoiceNo: true, lastQbInvoiceRealm: true, lastItcloudInvoiceNo: true, notes: true,
           monthlyBilling: true, serverName: true,
           client: {
             select: {
@@ -68,6 +69,7 @@ export default async function DomainePage({
     },
   });
   if (!domaine || domaine.tenantId !== session.user.tenantId) notFound();
+  const nomCompagnie = await nommeurDeCompagnie(session.user.tenantId);
 
   const actifs = domaine.services.filter((s) => s.status === "ACTIF");
   const payeurs = [
@@ -75,9 +77,18 @@ export default async function DomainePage({
   ];
   const revendeur = payeurs.find((c) => c.isReseller);
   // Une facture commune à tout le site : c'est le repère de refacturation.
+  // Chaque numéro est suivi de la compagnie qui l'a émis : depuis
+  // l'incorporation, « 2026-0012 » existe potentiellement dans les deux.
   const factures = [
-    ...new Set(actifs.map((s) => s.lastQbInvoiceNo?.trim()).filter(Boolean)),
-  ];
+    ...new Map(
+      actifs
+        .filter((s) => s.lastQbInvoiceNo?.trim())
+        .map((s) => [s.lastQbInvoiceNo!.trim(), s.lastQbInvoiceRealm] as const),
+    ).entries(),
+  ].map(([no, realm]) => {
+    const nom = nomCompagnie(realm);
+    return nom ? `${no} · ${nom}` : no;
+  });
 
   return (
     <div className="space-y-6">
@@ -194,6 +205,7 @@ export default async function DomainePage({
                 billingMode: s.billingMode,
                 renewalDate: s.renewalDate,
                 lastQbInvoiceNo: s.lastQbInvoiceNo,
+                qbCompagnie: nomCompagnie(s.lastQbInvoiceRealm),
                 lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
                 notes: s.notes,
                 monthlyBilling: s.monthlyBilling,

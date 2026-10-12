@@ -8,6 +8,7 @@ import { currentDivision, serviceDivisionFilter } from "@/lib/division";
 import { domaineDeService, domainePrincipal } from "@/lib/domaine";
 import { cleDeGroupe } from "@/lib/groupe-facturation";
 import { LigneAFacturer } from "@/components/ligne-a-facturer";
+import { nommeurDeCompagnie } from "@/infrastructure/quickbooks/store";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -40,6 +41,7 @@ export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const tenantId = session.user.tenantId;
+  const nomCompagnie = await nommeurDeCompagnie(tenantId);
   // Division active (ITCloud / Hebergement) : chaque vue est cloisonnee.
   const division = await currentDivision();
   const inDivision = serviceDivisionFilter(division);
@@ -78,7 +80,7 @@ export default async function DashboardPage() {
         orderBy: { renewalDate: "asc" },
         select: {
           id: true, clientId: true, quantity: true, unitPrice: true, renewalDate: true,
-          lastQbInvoiceNo: true, monthlyBilling: true, notes: true,
+          lastQbInvoiceNo: true, lastQbInvoiceRealm: true, monthlyBilling: true, notes: true,
           domain: { select: { name: true, endClientName: true, principal: true } },
           client: {
             select: {
@@ -216,6 +218,7 @@ export default async function DashboardPage() {
                       premier.client.companyName
                     }
                     facture={premier.lastQbInvoiceNo?.trim() || null}
+                    compagnie={nomCompagnie(premier.lastQbInvoiceRealm)}
                     services={liste.map((s) => {
                       const months = CYCLE_MONTHS[s.product.billingCycle] ?? 1;
                       const montant = Number(s.unitPrice) * s.quantity;

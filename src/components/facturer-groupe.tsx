@@ -11,7 +11,7 @@ import {
 } from "@/app/(dashboard)/services/actions";
 import {
   billGroupViaQuickBooks,
-  previewLastQbInvoice,
+  previewReconstruction,
 } from "@/app/(dashboard)/services/quickbooks-actions";
 import { LIBELLE_MOTIF, type MotifGroupe } from "@/lib/groupe-facturation";
 
@@ -29,7 +29,7 @@ const cad = new Intl.NumberFormat("fr-CA", { style: "currency", currency: "CAD" 
 const todayIso = () => new Date().toLocaleDateString("en-CA");
 
 type Apercu = Awaited<ReturnType<typeof previewGroupeFacturation>>;
-type Source = Awaited<ReturnType<typeof previewLastQbInvoice>>;
+type Source = Awaited<ReturnType<typeof previewReconstruction>>;
 
 export function FacturerGroupe({
   serviceId,
@@ -86,16 +86,20 @@ export function FacturerGroupe({
   const voirSource = () =>
     start(async () => {
       try {
-        // On previsualise la facture CHOISIE : on part d'un service qui en
-        // vient (sinon n'importe lequel du groupe).
-        const ref =
-          apercu?.services.find((s) => s.facture === sourceChoisie)?.id ??
-          apercu?.services[0]?.id ??
-          serviceId;
-        if (!ref) return;
-        setSource(await previewLastQbInvoice(ref));
+        // La facture telle qu'elle sera créée — lignes, écarts de prix, et ce
+        // qui manque — AVANT d'écrire quoi que ce soit chez QuickBooks.
+        setSource(
+          await previewReconstruction(
+            aDupliquer.map((s) => s.id),
+            sourceChoisie ?? undefined,
+          ),
+        );
       } catch (e) {
-        setSource({ ok: false, reason: e instanceof Error ? e.message : "Erreur QuickBooks" });
+        setSource({
+          ok: false,
+          manques: [e instanceof Error ? e.message : "Erreur QuickBooks"],
+          docNumberSource: sourceChoisie,
+        });
       }
     });
 
@@ -115,7 +119,6 @@ export function FacturerGroupe({
         const r = await billGroupViaQuickBooks(aDupliquer.map((s) => s.id), {
           txnDate,
           sourceDocNumber: sourceChoisie ?? undefined,
-          filterLines: !complet,
         });
         if (r.status === "billed") {
           setResultat({ doc: r.newDocNumber, url: r.invoiceUrl, n: r.servicesBilled });
@@ -124,7 +127,7 @@ export function FacturerGroupe({
               ? ` — ${r.linesKept} ligne${r.linesKept > 1 ? "s" : ""} sur ${r.linesTotal} reprises`
               : "";
           toast.success(
-            `Facture #${r.newDocNumber} créée dans QuickBooks (non envoyée)${lignes} — ${r.servicesBilled} service${r.servicesBilled > 1 ? "s" : ""} mis à jour. Vérifie-la puis envoie-la.`,
+            `Facture #${r.newDocNumber} créée dans la nouvelle compagnie (non envoyée)${lignes} — ${r.servicesBilled} service${r.servicesBilled > 1 ? "s" : ""} mis à jour. Vérifie-la puis envoie-la.`,
             {
               duration: 20000,
               action: {
@@ -408,25 +411,59 @@ export function FacturerGroupe({
                       </label>
                       <Button
                         onClick={dupliquer}
-                        disabled={pending || !sourceChoisie || aDupliquer.length === 0}
+                        disabled={
+                          pending || !sourceChoisie || aDupliquer.length === 0 || (source !== null && !source.ok)
+                        }
                       >
                         {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-                        Dupliquer et facturer {aDupliquer.length}
+                        Créer la facture dans la nouvelle compagnie ({aDupliquer.length})
                       </Button>
                       <Button
                         variant="outline"
                         onClick={voirSource}
-                        disabled={pending || !sourceChoisie}
+                        disabled={pending || !sourceChoisie || aDupliquer.length === 0}
                       >
-                        Voir la facture source
+                        Voir la facture reconstruite
                       </Button>
                     </div>
-                    {source && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {source.ok
-                          ? `${source.docNumber} · ${source.customerName} · ${source.lineCount} lignes · ${cad.format(source.total)} · ${source.txnDate ?? "?"}`
-                          : source.reason}
-                      </p>
+                    {source && !source.ok && (
+                      <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+                        <p className="font-medium">Impossible de reconstruire — il manque :</p>
+                        <ul className="list-disc pl-4">
+                          {source.manques.map((m, i) => (
+                            <li key={i}>{m}</li>
+                          ))}
+                        </ul>
+                        <p className="mt-1">Règle les correspondances dans Paramètres → QuickBooks, puis réessaie.</p>
+                      </div>
+                    )}
+                    {source && source.ok && (
+                      <div className="mt-2 rounded-md border bg-muted/30 p-2 text-xs">
+                        <p className="mb-1 text-muted-foreground">
+                          Client : <strong>{source.client}</strong>
+                          {source.docNumberSource ? ` · modèle ${source.docNumberSource}` : " · sans facture modèle"}
+                          {" · "}
+                          {source.lignes.filter((l) => l.type === "article").length} ligne(s) ·{" "}
+                          {cad.format(source.total)} avant taxes
+                        </p>
+                        <ol className="space-y-0.5 font-mono">
+                          {source.lignes.map((l, i) => (
+                            <li key={i} className={l.type === "article" ? "" : "pl-4 text-muted-foreground"}>
+                              {l.type === "article"
+                                ? `${l.qte} × ${cad.format(l.prixUnitaire ?? 0)}  ${l.texte}  = ${cad.format(l.montant ?? 0)}`
+                                : l.texte}
+                              {l.ecartPrix && (
+                                <span className="ml-2 text-amber-600 dark:text-amber-400">
+                                  (article : {cad.format(l.ecartPrix.article)})
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ol>
+                        {source.avertissements.length > 0 && (
+                          <p className="mt-1 text-amber-600 dark:text-amber-400">{source.avertissements.join(" · ")}</p>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}

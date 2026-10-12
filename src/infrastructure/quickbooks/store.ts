@@ -119,6 +119,24 @@ export async function nomDeCompagnie(
   return null;
 }
 
+/** Pour une page entière : la fonction « realm → nom de compagnie » en UNE
+ *  lecture des connexions, alors que les cartes de service la rappellent
+ *  autant de fois qu'il y a de lignes. Un numéro sans realm date d'avant la
+ *  transition : il vient de l'ancienne compagnie, et c'est ce qu'on affiche
+ *  (même lecture que compagniePourRealm). */
+export async function nommeurDeCompagnie(
+  tenantId: string,
+): Promise<(realmId: string | null | undefined) => string | null> {
+  const c = await getConnections(tenantId);
+  const nom = (k: Compagnie) => c[k]?.companyName ?? LIBELLE_COMPAGNIE[k];
+  return (realmId) => {
+    if (!realmId) return c.ancienne ? nom("ancienne") : null;
+    if (c.nouvelle?.realmId === realmId) return nom("nouvelle");
+    if (c.ancienne?.realmId === realmId) return nom("ancienne");
+    return null;
+  };
+}
+
 /** La compagnie à interroger pour un numéro de facture, d'après le realmId
  *  mémorisé avec lui. Un numéro SANS compagnie date d'avant la transition :
  *  il a été émis par l'ancienne. Un numéro portant le realm de la nouvelle

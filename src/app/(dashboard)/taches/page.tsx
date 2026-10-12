@@ -6,6 +6,7 @@ import { prisma } from "@/infrastructure/db/prisma";
 import { SyncClientsQbo } from "@/components/sync-clients-qbo";
 import { AjouterTache } from "@/components/ajouter-tache";
 import { TaskCard } from "@/components/task-card";
+import { nommeurDeCompagnie } from "@/infrastructure/quickbooks/store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -58,7 +59,7 @@ export default async function TachesPage({
       orderBy: [{ nextDueDate: "asc" }, { title: "asc" }],
       select: {
         id: true, title: true, price: true, periodDays: true, nextDueDate: true,
-        lastQbInvoiceNo: true, notes: true, active: true,
+        lastQbInvoiceNo: true, lastQbInvoiceRealm: true, notes: true, active: true,
         client: { select: { id: true, companyName: true } },
         qboCustomer: { select: { id: true, displayName: true } },
       },
@@ -73,6 +74,7 @@ export default async function TachesPage({
   ]);
 
   const clientsQbo = clientsQboRaw.map((c) => ({ id: c.id, nom: c.displayName }));
+  const nomCompagnie = await nommeurDeCompagnie(tenantId);
 
   const rows = taches.map((t) => ({
     id: t.id,
@@ -81,6 +83,7 @@ export default async function TachesPage({
     periodDays: t.periodDays,
     nextDueDate: t.nextDueDate,
     lastQbInvoiceNo: t.lastQbInvoiceNo,
+    qbCompagnie: nomCompagnie(t.lastQbInvoiceRealm),
     notes: t.notes,
     active: t.active,
     client: t.client,

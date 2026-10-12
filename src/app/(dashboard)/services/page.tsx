@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Wrench } from "lucide-react";
 import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { currentDivision, serviceDivisionFilter } from "@/lib/division";
+import { nommeurDeCompagnie } from "@/infrastructure/quickbooks/store";
 import { ServiceCard } from "@/components/service-card";
 import { CarteOrdonnee, OrdreFige } from "@/components/ordre-fige";
 import { Button } from "@/components/ui/button";
@@ -82,7 +83,7 @@ export default async function ServicesPage({
       select: {
         id: true, clientId: true, quantity: true, quantityManual: true, renewalDateManual: true, unitCost: true, unitPrice: true,
         status: true, renewalDate: true,
-        lastQbInvoiceNo: true, lastItcloudInvoiceNo: true, notes: true,
+        lastQbInvoiceNo: true, lastQbInvoiceRealm: true, lastItcloudInvoiceNo: true, notes: true,
         billingMode: true, monthlyBilling: true,
         client: { select: { id: true, companyName: true, urgencyDays: true, isReseller: true } },
         product: { select: { name: true, billingCycle: true, msrp: true } },
@@ -93,6 +94,7 @@ export default async function ServicesPage({
   ]);
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const nomCompagnie = await nommeurDeCompagnie(tenantId);
 
   const buildUrl = (overrides: Record<string, string>) => {
     const params = new URLSearchParams();
@@ -181,6 +183,7 @@ export default async function ServicesPage({
                 billingMode: s.billingMode,
                 renewalDate: s.renewalDate,
                 lastQbInvoiceNo: s.lastQbInvoiceNo,
+                qbCompagnie: nomCompagnie(s.lastQbInvoiceRealm),
                 lastItcloudInvoiceNo: s.lastItcloudInvoiceNo,
                 notes: s.notes,
                 monthlyBilling: s.monthlyBilling,

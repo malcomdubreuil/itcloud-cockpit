@@ -34,14 +34,18 @@ export function LigneAFacturer({
   clientName,
   titre,
   facture,
+  compagnie = null,
   services,
 }: {
   clientId: string;
   clientName: string;
   titre: string;
   facture: string | null;
+  /** Compagnie QuickBooks qui a émis `facture` (« God-Info Inc. »). */
+  compagnie?: string | null;
   services: LigneService[];
 }) {
+  const libelleFacture = facture ? ` · facture ${facture}${compagnie ? ` · ${compagnie}` : ""}` : "";
   const [ouvert, setOuvert] = useState(false);
   const premier = services[0];
   const seul = services.length === 1;
@@ -61,7 +65,7 @@ export function LigneAFacturer({
           <span className="block truncate text-xs text-muted-foreground">
             {premier.produit}
             {premier.quantite > 1 && ` × ${premier.quantite}`}
-            {!premier.qbInvoiceNo && " · aucune facture QB notée"}
+            {facture ? libelleFacture : " · aucune facture QB notée"}
           </span>
         </Link>
         <Montant total={premier.montant} mensuel={premier.montantMensuel} />
@@ -103,7 +107,7 @@ export function LigneAFacturer({
         >
           <span className="block truncate text-sm font-medium">{titre}</span>
           <span className="block truncate text-xs text-muted-foreground">
-            {services.length} services{facture ? ` · facture ${facture}` : ""} ·{" "}
+            {services.length} services{libelleFacture} ·{" "}
             {clientName}
           </span>
         </Link>
