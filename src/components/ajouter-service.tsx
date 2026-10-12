@@ -73,12 +73,15 @@ export function AjouterService({
 
   const produit = produits.find((p) => p.id === productId) ?? null;
 
-  // Côté ITCloud, Keven lit les licences AU MOIS (« 31,80 $/mois »), comme
-  // sur la fiche article QuickBooks — pas « 381,60 $/an ». Le prix saisi et
-  // enregistré reste au cycle du produit.
+  // Keven lit les prix AU MOIS (« 31,80 $/mois »), comme sur la fiche article
+  // QuickBooks — pas « 381,60 $/an » : toutes les licences ITCloud, et côté
+  // hébergement tout sauf la réservation de nom de domaine et Elementor Pro,
+  // qui se vendent à l'année (2026-10-12). Le prix saisi et enregistré reste
+  // au cycle du produit.
+  const aLannee = (p: ProduitDispo) => hebergement && /nom de domaine|elementor/i.test(p.name);
   const libellePrix = (p: ProduitDispo) => {
     const prix = prixSuggere({ msrp: p.msrp, suggestedPrice: p.suggestedPrice, billingCycle: p.cycle });
-    if (!hebergement && p.cycle === "ANNUEL") return `${cad.format(prix / 12)}/mois (${cad.format(prix)}/an)`;
+    if (p.cycle === "ANNUEL" && !aLannee(p)) return `${cad.format(prix / 12)}/mois (${cad.format(prix)}/an)`;
     return `${cad.format(prix)}${SUFFIXE[p.cycle] ?? ""}`;
   };
 
