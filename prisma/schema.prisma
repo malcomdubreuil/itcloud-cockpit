@@ -310,6 +310,11 @@ model Product {
   // Volontairement une chaine et non un enum : une 3e division est prevue.
   division       String       @default("ITCLOUD")
   billingCycle   BillingCycle
+  // Présentation sur la facture : true = tarif MENSUEL × quantité 12 (c'est
+  // ainsi que Keven facture l'hébergement depuis toujours : « 12 × 14,99 $ »),
+  // false = prix du cycle × 1 (un nom de domaine, un certificat). Le prix du
+  // produit reste stocké AU CYCLE ; seule la présentation change.
+  factureAuMois  Boolean      @default(false)
   active         Boolean      @default(true)
   deletedAt      DateTime?
 

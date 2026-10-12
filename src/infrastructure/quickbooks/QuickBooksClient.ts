@@ -62,6 +62,14 @@ export type QboItem = {
 };
 
 export type QboTaxCode = { Id: string; Name: string; Active?: boolean; Taxable?: boolean };
+export type QboAccount = {
+  Id: string;
+  Name: string;
+  FullyQualifiedName?: string;
+  AcctNum?: string;
+  AccountType?: string;
+  Active?: boolean;
+};
 export type QboTerm = { Id: string; Name: string; Active?: boolean; DueDays?: number };
 
 export class QuickBooksClient {
@@ -199,6 +207,21 @@ export class QuickBooksClient {
 
   getTaxCodes(): Promise<QboTaxCode[]> {
     return this.queryAll<QboTaxCode>("TaxCode");
+  }
+
+  /** Crée un article (Service ou Category). Sert une seule fois : poser dans
+   *  la nouvelle compagnie les articles d'hébergement qui n'y existaient pas,
+   *  avec les noms exacts des produits de l'ERP — pour que le rapprochement
+   *  par le nom se fasse tout seul ensuite. */
+  async createItem(payload: Record<string, unknown>): Promise<QboItem> {
+    const data = await this.request<{ Item: QboItem }>("POST", "item?minorversion=73", payload);
+    return data.Item;
+  }
+
+  /** Le plan comptable — pour rattacher un article au bon compte de revenus
+   *  (« web - refacturables 6100 ») par son nom ou son numéro. */
+  getAccounts(): Promise<QboAccount[]> {
+    return this.queryAll<QboAccount>("Account");
   }
 
   getTerms(): Promise<QboTerm[]> {
