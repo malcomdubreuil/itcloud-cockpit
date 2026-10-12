@@ -233,9 +233,12 @@ export class QuickBooksClient {
     return data.Invoice;
   }
 
-  // Génère le prochain numéro de facture au format AAAA-NNNN en lisant le plus
-  // grand numéro existant dans QuickBooks et en l'incrémentant. Sert quand la
-  // compagnie a la numérotation personnalisée (QuickBooks n'assigne rien).
+  // Génère le prochain numéro de facture en lisant le plus grand numéro
+  // existant dans QuickBooks et en l'incrémentant. Deux formats : « 2026-0984 »
+  // (ancienne compagnie) et « GI-2026-001 » (God-Info Inc., depuis octobre
+  // 2026) — on reprend le préfixe et la largeur du dernier numéro. Sert quand
+  // la compagnie a la numérotation personnalisée ; sinon QuickBooks assigne le
+  // sien et c'est lui que l'ERP enregistre.
   async getNextDocNumber(): Promise<string> {
     const data = await this.query<{
       QueryResponse: { Invoice?: { DocNumber?: string }[] };
@@ -245,24 +248,29 @@ export class QuickBooksClient {
     let bestYear = -1;
     let bestNum = -1;
     let width = 4;
+    let prefix = "";
     for (const inv of invoices) {
-      const m = /^(\d{4})-(\d+)$/.exec((inv.DocNumber ?? "").trim());
+      const m = /^([A-Za-z]+-)?(\d{4})-(\d+)$/.exec((inv.DocNumber ?? "").trim());
       if (!m) continue;
-      const y = parseInt(m[1], 10);
-      const n = parseInt(m[2], 10);
+      const y = parseInt(m[2], 10);
+      const n = parseInt(m[3], 10);
       if (y > bestYear || (y === bestYear && n > bestNum)) {
         bestYear = y;
         bestNum = n;
-        width = m[2].length;
+        width = m[3].length;
+        prefix = m[1] ?? "";
       }
     }
 
+    const annee = new Date().getFullYear();
     if (bestYear < 0) {
       // Aucun numéro au format connu : démarre sur l'année courante.
-      return `${new Date().getFullYear()}-0001`;
+      return this.compagnie === "nouvelle" ? `GI-${annee}-001` : `${annee}-0001`;
     }
+    // Nouvelle année : la série repart à 1, même préfixe et même largeur.
+    if (annee > bestYear) return `${prefix}${annee}-${"1".padStart(width, "0")}`;
     const next = (bestNum + 1).toString().padStart(width, "0");
-    return `${bestYear}-${next}`;
+    return `${prefix}${bestYear}-${next}`;
   }
 
   // Crée une facture (utilisé pour dupliquer : on repart de l'ancienne sans
