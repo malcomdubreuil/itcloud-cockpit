@@ -334,6 +334,15 @@ async function chargerGroupe(
     .map((l) => l.Description as string);
   const { ligneFacturation, lignesTexte } = trierLignesTexte(descriptions);
   const memo = (s.CustomerMemo as { value?: string } | undefined)?.value;
+  // Les courriels des lignes de la source : « Microsoft Business Standard
+  // (support@god-info.com) » dit à qui est la licence.
+  const courriels = ((src?.Line ?? []) as { DetailType?: string; Description?: string }[])
+    .filter((l) => l.DetailType === "SalesItemLineDetail" && typeof l.Description === "string")
+    .flatMap((l) => {
+      const texte = l.Description as string;
+      const trouves = texte.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) ?? [];
+      return trouves.map((courriel) => ({ texte, courriel }));
+    });
   // Le rabais de la source : une ligne « DiscountLineDetail » (en % ou en
   // montant), ou à défaut une ligne d'article négative (« Rabais revendeur »
   // saisi comme un article). Dans les deux cas on le reconduit.
@@ -401,6 +410,7 @@ async function chargerGroupe(
         avaitTaxe: true,
         shipAddr,
         rabais,
+        courriels,
       },
       unite: servicesAFacturer.every((x) => uniteDuService(x) === "month") ? "month" : "year",
     },

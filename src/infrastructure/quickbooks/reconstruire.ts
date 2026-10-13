@@ -89,6 +89,11 @@ export type FactureSource = {
    *  sous-total s'il l'était, sinon le même montant. Reconduit (Keven,
    *  2026-10-12). */
   rabais?: { libelle: string; pourcent?: number; montant?: number };
+  /** Les lignes de la source qui portaient un courriel — « Microsoft Business
+   *  Standard (support@god-info.com) » : c'est lui qui dit à qui est la
+   *  licence. Chaque courriel est reporté au bout de la ligne du même produit,
+   *  dans l'ordre ; rien n'est inventé quand la source n'en avait pas. */
+  courriels?: { texte: string; courriel: string }[];
 };
 
 export type LigneApercu = {
@@ -166,6 +171,41 @@ function cleDeBloc(s: ServiceAFacturer): string {
   return `${s.productId}|${date ? isoDate(date) : ""}|${s.unitPrice}`;
 }
 
+// Mots qui désignent un produit dans une description tapée à la main. Les
+// mots génériques (microsoft, 365, plan, p1y…) ne départagent rien ; « std »
+// et « standard » sont le même mot.
+const MOTS_VIDES = new Set(["microsoft", "m365", "365", "office", "plan", "p1y", "p1m", "a", "m", "non", "profit", "pricing", "old", "licence", "license", "de", "du", "la", "le", "et"]);
+const ALIAS: Record<string, string> = { std: "standard", prem: "premium", exch: "exchange", bus: "business" };
+function motsCles(s: string): Set<string> {
+  return new Set(
+    s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/\S+@\S+/g, " ")
+      .split(/[^a-z0-9]+/)
+      .map((m) => ALIAS[m] ?? m)
+      .filter((m) => m.length > 1 && !MOTS_VIDES.has(m)),
+  );
+}
+
+/** Répartit les courriels de la source entre les produits : chaque courriel
+ *  va au produit dont le nom partage le plus de mots avec sa ligne. */
+export function repartirCourriels(
+  courriels: { texte: string; courriel: string }[],
+  produits: { productId: string; productName: string }[],
+): Map<string, string[]> {
+  const cles = produits.map((p) => ({ id: p.productId, mots: motsCles(p.productName) }));
+  const par = new Map<string, string[]>();
+  for (const c of courriels) {
+    const mots = motsCles(c.texte);
+    let meilleur: { id: string; score: number } | null = null;
+    for (const p of cles) {
+      const score = [...p.mots].filter((m) => mots.has(m)).length;
+      if (score > 0 && (!meilleur || score > meilleur.score)) meilleur = { id: p.id, score };
+    }
+    if (meilleur) par.set(meilleur.id, [...(par.get(meilleur.id) ?? []), c.courriel]);
+  }
+  return par;
+}
+
 export function reconstruire(args: {
   services: ServiceAFacturer[];
   correspondances: Correspondances;
@@ -201,6 +241,12 @@ export function reconstruire(args: {
   const apercu: LigneApercu[] = [];
   const avertissements: string[] = [];
   let total = 0;
+
+  // Les courriels de la source, produit par produit, servis dans l'ordre.
+  const courrielsParProduit = repartirCourriels(
+    source.courriels ?? [],
+    [...new Map(services.map((s) => [s.productId, { productId: s.productId, productName: s.productName }])).values()],
+  );
 
   for (const bloc of blocs.values()) {
     const premier = bloc[0];
@@ -252,12 +298,14 @@ export function reconstruire(args: {
     for (const s of bloc) {
       const licences = Math.max(1, Math.trunc(s.quantity));
       for (let i = 0; i < licences; i++) {
+        // La description de la ligne = le nom du produit, en toutes lettres
+        // (Keven, 2026-10-12) — suivi du courriel de la licence quand la
+        // source en avait un sur ce produit.
+        const courriel = courrielsParProduit.get(premier.productId)?.shift();
+        const description = courriel ? `${premier.productName} (${courriel})` : premier.productName;
         lines.push({
           DetailType: "SalesItemLineDetail",
-          // La description de la ligne = le nom du produit, en toutes
-          // lettres sur la facture (Keven, 2026-10-12) — l'article seul ne
-          // l'écrit pas.
-          Description: premier.productName,
+          Description: description,
           Amount: montant,
           SalesItemLineDetail: {
             ItemRef: { value: article.id, name: article.nom },
@@ -266,7 +314,7 @@ export function reconstruire(args: {
             ...(c.taxCode ? { TaxCodeRef: { value: c.taxCode.id } } : {}),
           },
         });
-        apercu.push({ type: "article", texte: article.nom, qte, prixUnitaire: prixLigne, montant, ecartPrix: ecart });
+        apercu.push({ type: "article", texte: courriel ? `${article.nom} (${courriel})` : article.nom, qte, prixUnitaire: prixLigne, montant, ecartPrix: ecart });
         total += montant;
         if (s.domaine) {
           lines.push({ DetailType: "DescriptionOnly", Description: s.domaine });
@@ -316,6 +364,10 @@ export function reconstruire(args: {
     lines.push({ DetailType: "DescriptionOnly", Description: t });
     apercu.push({ type: "texte", texte: t });
   }
+
+  // Des courriels de la source sans ligne pour les porter : on le dit.
+  const restants = [...courrielsParProduit.values()].flat();
+  if (restants.length) avertissements.push(`courriel(s) de la source sans licence correspondante : ${restants.join(", ")}`);
 
   // 3 bis. Le rabais (revendeur), en dernier : en pourcentage du nouveau
   //        sous-total quand la source le calculait ainsi, sinon le même

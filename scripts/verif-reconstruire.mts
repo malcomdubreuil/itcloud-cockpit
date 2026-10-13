@@ -273,5 +273,35 @@ verifie("7. engagement après le 31 déc.", texteEngagement(new Date("2026-12-31
   verifie("12. rabais fixe 25 $ : total 227", m.ok && m.total === 227, m.ok && m.total);
 }
 
+// ── 13. Les courriels de la source suivent leur produit, dans l'ordre.
+{
+  const c = corr();
+  c.articleParProduit.set("p-prem", { id: "40", nom: "Microsoft 365:M365 Business Premium P1Y-A", prixUnitaire: 31.8 });
+  const r = reconstruire({
+    services: [
+      svc({ id: "a", quantity: 2 }),
+      svc({ id: "b", productId: "p-prem", productName: "M365 Business Premium P1Y-A", unitPrice: 381.6, factureAuMois: true }),
+    ],
+    correspondances: c,
+    source: {
+      ...source,
+      courriels: [
+        { texte: "Microsoft Business Standard (alice@client.ca)", courriel: "alice@client.ca" },
+        { texte: "Microsoft Business Premium (chef@client.ca)", courriel: "chef@client.ca" },
+        { texte: "Microsoft Business Standard (bob@client.ca)", courriel: "bob@client.ca" },
+      ],
+    },
+    txnDate: "2026-10-15", docNumber: "2026-0014", unite: "year",
+  });
+  verifie("13. réussite", r.ok, r);
+  if (r.ok) {
+    const desc = (r.payload.Line as { DetailType: string; Description?: string }[]).filter((l) => l.DetailType === "SalesItemLineDetail").map((l) => l.Description);
+    verifie("13. Std : alice puis bob ; Premium : chef", JSON.stringify(desc) === JSON.stringify(["M365 Business Std P1Y-A (alice@client.ca)", "M365 Business Std P1Y-A (bob@client.ca)", "M365 Business Premium P1Y-A (chef@client.ca)"]), desc);
+    verifie("13. aucun courriel orphelin", r.avertissements.length === 0, r.avertissements);
+  }
+  const sans = reconstruire({ services: [svc({ id: "a" })], correspondances: corr(), source, txnDate: "2026-10-15", docNumber: "2026-0015", unite: "year" });
+  verifie("13. sans courriel dans la source : description nue", sans.ok && (sans.payload.Line as { Description?: string }[])[0].Description === "M365 Business Std P1Y-A", sans.ok && (sans.payload.Line as { Description?: string }[])[0]);
+}
+
 console.log(echecs ? `\n${echecs} échec(s)` : "\ntous les cas passent");
 process.exit(echecs ? 1 : 0);
