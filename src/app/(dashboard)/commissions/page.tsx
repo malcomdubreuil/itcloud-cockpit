@@ -9,7 +9,7 @@ import { CommissionsRegles, type Regle } from "@/components/commissions-regles";
 import { dureeDepuis } from "@/lib/commissions";
 import { genererEcheances } from "./actions";
 
-export const metadata: Metadata = { title: "Malcom · ITCloud Cockpit" };
+export const metadata: Metadata = { title: "Malcom" };
 export const dynamic = "force-dynamic";
 
 const cad = new Intl.NumberFormat("fr-CA", { style: "currency", currency: "CAD" });
