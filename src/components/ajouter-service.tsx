@@ -81,7 +81,7 @@ export function AjouterService({
   const aLannee = (p: ProduitDispo) => hebergement && /nom de domaine|elementor/i.test(p.name);
   const libellePrix = (p: ProduitDispo) => {
     const prix = prixSuggere({ msrp: p.msrp, suggestedPrice: p.suggestedPrice, billingCycle: p.cycle });
-    if (p.cycle === "ANNUEL" && !aLannee(p)) return `${cad.format(prix / 12)}/mois (${cad.format(prix)}/an)`;
+    if (p.cycle === "ANNUEL" && !aLannee(p)) return `${cad.format(prix / 12)}/mois`;
     return `${cad.format(prix)}${SUFFIXE[p.cycle] ?? ""}`;
   };
 
