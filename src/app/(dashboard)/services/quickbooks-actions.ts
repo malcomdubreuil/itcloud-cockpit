@@ -334,6 +334,17 @@ async function chargerGroupe(
     .map((l) => l.Description as string);
   const { ligneFacturation, lignesTexte } = trierLignesTexte(descriptions);
   const memo = (s.CustomerMemo as { value?: string } | undefined)?.value;
+  // « Expédier à » : on garde l'adresse, pas son Id ni ses coordonnées GPS,
+  // qui appartiennent à l'ancienne compagnie.
+  const shipAddr = (() => {
+    const a = s.ShipAddr as Record<string, unknown> | undefined;
+    if (!a) return undefined;
+    const garde: Record<string, unknown> = {};
+    for (const k of ["Line1", "Line2", "Line3", "Line4", "Line5", "City", "Country", "CountrySubDivisionCode", "PostalCode"]) {
+      if (typeof a[k] === "string" && (a[k] as string).trim()) garde[k] = a[k];
+    }
+    return Object.keys(garde).length ? garde : undefined;
+  })();
 
   const servicesAFacturer: ServiceAFacturer[] = services.map((x) => ({
     id: x.id,
@@ -370,6 +381,7 @@ async function chargerGroupe(
         ligneFacturation,
         lignesTexte,
         avaitTaxe: true,
+        shipAddr,
       },
       unite: servicesAFacturer.every((x) => uniteDuService(x) === "month") ? "month" : "year",
     },

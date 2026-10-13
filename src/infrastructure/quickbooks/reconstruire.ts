@@ -82,6 +82,9 @@ export type FactureSource = {
   lignesTexte?: string[];
   /** La source portait-elle un code de taxe global ? Si oui, il en faut un. */
   avaitTaxe: boolean;
+  /** « Expédier à » de la source, sans son Id (propre à l'autre compagnie) :
+   *  reconduit tel quel quand il était rempli (Keven, 2026-10-12). */
+  shipAddr?: Record<string, unknown>;
 };
 
 export type LigneApercu = {
@@ -318,6 +321,7 @@ export function reconstruire(args: {
     DocNumber: docNumber,
   };
   if (c.terme) payload.SalesTermRef = { value: c.terme.id };
+  if (source.shipAddr && Object.keys(source.shipAddr).length) payload.ShipAddr = source.shipAddr;
   if (source.txnDate && source.dueDate) {
     // Même délai de paiement que la source.
     const ecartJours = Math.round(
