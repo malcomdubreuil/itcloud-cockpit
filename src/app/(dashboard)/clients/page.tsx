@@ -108,6 +108,9 @@ export default async function ClientsPage({
                         { domain: { name: { contains: m } } },
                         { domain: { endClientName: { contains: m } } },
                         { notes: { contains: m } },
+                        // …et par numéro de facture, pour retrouver le client.
+                        { lastQbInvoiceNo: { contains: m } },
+                        { lastItcloudInvoiceNo: { contains: m } },
                       ],
                     },
                   },

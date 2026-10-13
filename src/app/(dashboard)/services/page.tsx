@@ -68,6 +68,10 @@ export default async function ServicesPage({
         { domain: { name: { contains: m } } },
         { domain: { endClientName: { contains: m } } },
         { notes: { contains: m } },
+        // Un numéro de facture tapé dans la recherche sort les services qui
+        // la portent (Keven, 2026-10-12) — QuickBooks ou ITCloud.
+        { lastQbInvoiceNo: { contains: m } },
+        { lastItcloudInvoiceNo: { contains: m } },
       ],
     })),
   };
