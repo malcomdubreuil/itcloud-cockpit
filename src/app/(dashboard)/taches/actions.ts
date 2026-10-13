@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { assertCan } from "@/application/policies/can";
 import { prisma } from "@/infrastructure/db/prisma";
 import { audit } from "@/infrastructure/db/audit";
+import { engendrerPourFacturation } from "@/app/(dashboard)/commissions/actions";
 import {
   QuickBooksClient,
   type QboInvoice,
@@ -310,6 +311,8 @@ export async function markTaskBilled(
     where: { id: task.id },
     data: { lastQbInvoiceNo: qb, nextDueDate, lastBilledAt: new Date() },
   });
+  // La part de Malcom « à chaque facturation » de cette tâche, s'il y en a une.
+  await engendrerPourFacturation(user.tenantId, task.id, qb);
 
   await audit({
     tenantId: user.tenantId,

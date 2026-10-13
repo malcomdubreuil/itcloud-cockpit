@@ -22,19 +22,20 @@ model Tenant {
   partnerTier String? // Certifié / Or / Platine / Titane / Élite — config v1
   settings    Json    @default("{}")
 
-  users            User[]
-  clients          Client[]
-  suppliers        Supplier[]
-  products         Product[]
-  apiCredentials   ApiCredential[]
-  fixedCosts       FixedCost[]
-  recurringTasks   RecurringTask[]
-  mailingContacts  MailingContact[]
-  mailingCampaigns MailingCampaign[]
-  stickyNotes      StickyNote[]
-  qboCustomers     QboCustomer[]
-  domains          Domain[]
+  users              User[]
+  clients            Client[]
+  suppliers          Supplier[]
+  products           Product[]
+  apiCredentials     ApiCredential[]
+  fixedCosts         FixedCost[]
+  recurringTasks     RecurringTask[]
+  mailingContacts    MailingContact[]
+  mailingCampaigns   MailingCampaign[]
+  stickyNotes        StickyNote[]
+  qboCustomers       QboCustomer[]
+  domains            Domain[]
   qboCorrespondances QboCorrespondance[]
+  commissions        Commission[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -175,7 +176,7 @@ model Client {
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   services         ClientService[]
-  mainDomain    Domain?        @relation(fields: [mainDomainId], references: [id])
+  mainDomain       Domain?            @relation(fields: [mainDomainId], references: [id])
   recurringTasks   RecurringTask[]
   mailingContacts  MailingContact[]
   invoices         Invoice[]
@@ -406,7 +407,7 @@ model ClientService {
   // sert à autre chose (« Certificat SSL », « Elementor Pro »…) et mélanger les
   // deux empêchait de chercher un site, de le facturer seul, ou de savoir à qui
   // il appartient vraiment. Voir le modèle Domain.
-  domainId             String?
+  domainId String?
 
   lastQbInvoiceNo      String? // dernière facture QuickBooks au client
   // Compagnie QuickBooks (realmId Intuit) qui a émis ce numéro. Deux séries
@@ -691,12 +692,12 @@ model RecurringTask {
 
   // Prochaine échéance : c'est elle qui donne la couleur d'urgence et qui
   // avance de periodDays à chaque facturation.
-  nextDueDate     DateTime?
-  lastQbInvoiceNo String? // dernière facture QuickBooks (source à dupliquer)
+  nextDueDate        DateTime?
+  lastQbInvoiceNo    String? // dernière facture QuickBooks (source à dupliquer)
   // Compagnie QuickBooks qui a émis ce numéro — voir ClientService.
   lastQbInvoiceRealm String?
-  lastBilledAt    DateTime?
-  notes           String?   @db.Text
+  lastBilledAt       DateTime?
+  notes              String?   @db.Text
 
   active    Boolean   @default(true)
   deletedAt DateTime?
@@ -709,6 +710,7 @@ model RecurringTask {
   tenant      Tenant       @relation(fields: [tenantId], references: [id])
   qboCustomer QboCustomer? @relation(fields: [qboCustomerId], references: [id])
   client      Client?      @relation(fields: [clientId], references: [id])
+  commissions Commission[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -883,11 +885,10 @@ model QboCustomer {
    * Sans realmId dans la cle, une synchro de la nouvelle compagnie aurait
    * ecrase les clients de l'ancienne — et les taches qui pointent dessus
    * auraient change de client sans que personne ne le voie.
-   *
    * Vide = ligne d'avant la transition ; le script transition-quickbooks.mts
    * y pose le realm de l'ancienne compagnie.
    */
-  realmId     String @default("")
+  realmId     String  @default("")
   qboId       String
   displayName String
   companyName String?
@@ -925,10 +926,10 @@ model QboCustomer {
 // endClientName sert exactement à ça : le service reste facturé au revendeur
 // (Pclogic), mais on sait enfin de qui est le site, et la recherche le trouve.
 model Domain {
-  id       String @id @default(uuid())
-  tenantId String
+  id            String    @id @default(uuid())
+  tenantId      String
   /// Toujours en minuscules, sans www. — c'est la clé de rapprochement.
-  name     String
+  name          String
   /// Client final derrière un revendeur. NULL = le client de l'ERP suffit.
   endClientName String?
   /// Ce site représente son groupe de facturation, et lui donne son titre.
@@ -978,9 +979,9 @@ model QboCorrespondance {
   targetId    String?
   targetName  String?
 
-  auto     Boolean @default(true)
+  auto    Boolean @default(true)
   /// Pourquoi ce choix : « nom identique », « nom normalisé », « manuel »…
-  methode  String?
+  methode String?
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -989,4 +990,68 @@ model QboCorrespondance {
 
   @@unique([tenantId, kind, sourceRealm, sourceId])
   @@index([tenantId, kind, targetId])
+}
+
+// Part d'un employé (Malcom) sur les revenus récurrents — voir lib/commissions.
+// Une RÈGLE par client (« 15 $/mois depuis le 2026-08-03 », ou « 10 $ à chaque
+// facturation de telle tâche ») engendre des LIGNES DUES, que des PAIEMENTS
+// soldent par lots. « Depuis combien de mois il n'a pas été payé » se lit
+// dans les lignes, il ne se calcule pas.
+model Commission {
+  id           String   @id @default(uuid())
+  tenantId     String
+  beneficiaire String   @default("Malcom")
+  /// Le client (ou ce que ça rapporte) : « Rayon de Soleil ».
+  libelle      String
+  /// Tâche récurrente liée — obligatoire quand periodeMois = 0.
+  taskId       String?
+  montant      Decimal  @db.Decimal(12, 2)
+  /// 1 = mensuel, 3 = trimestriel, 12 = annuel… 0 = à chaque facturation de la tâche.
+  periodeMois  Int      @default(1)
+  dateDebut    DateTime
+  active       Boolean  @default(true)
+  notes        String?  @db.Text
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id])
+  task   RecurringTask?  @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  dues   CommissionDue[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, active])
+  @@index([taskId])
+}
+
+model CommissionDue {
+  id           String   @id @default(uuid())
+  tenantId     String
+  commissionId String
+  dateDue      DateTime
+  montant      Decimal  @db.Decimal(12, 2)
+  /// « calendrier » (engendrée par la période) ou « facturation » (par la tâche).
+  origine      String   @default("calendrier")
+  factureNo    String?
+  paiementId   String?
+
+  commission Commission          @relation(fields: [commissionId], references: [id], onDelete: Cascade)
+  paiement   CommissionPaiement? @relation(fields: [paiementId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([commissionId, dateDue])
+  @@index([tenantId, paiementId])
+}
+
+model CommissionPaiement {
+  id           String          @id @default(uuid())
+  tenantId     String
+  beneficiaire String
+  date         DateTime
+  total        Decimal         @db.Decimal(12, 2)
+  note         String?
+  dues         CommissionDue[]
+  createdAt    DateTime        @default(now())
+
+  @@index([tenantId, date])
 }

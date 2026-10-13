@@ -20,8 +20,7 @@ import {
   StickyNote,
   Shield,
   Users,
-  Wrench,
-} from "lucide-react";
+  Wrench, HandCoins } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Sidebar (doc §10) — l'ordre suit le document d'architecture.
@@ -36,6 +35,7 @@ const NAV_ITEMS = [
   { href: "/couts", label: "Coûts", icon: Coins },
   { href: "/services", label: "Services", icon: Wrench },
   { href: "/facturation", label: "Facturation", icon: Receipt },
+  { href: "/commissions", label: "Malcom", icon: HandCoins },
   { href: "/rapports", label: "Rapports", icon: FileText },
   { href: "/calendrier", label: "Calendrier", icon: Calendar },
   { href: "/alertes", label: "Alertes", icon: Bell },
@@ -54,7 +54,8 @@ export function SidebarNav({ division }: { division: string }) {
     // Division Tâches : onglet dédié à ses propres tables. On n'y montre QUE
     // les tâches — le reste (produits, services, synchro) appartient aux deux
     // autres divisions et n'aurait rien à afficher ici.
-    if (division === "TACHES") return i.href === "/taches";
+    // La part de Malcom se nourrit des tâches : elle les accompagne.
+    if (division === "TACHES") return i.href === "/taches" || i.href === "/commissions";
     if (i.href === "/taches") return false;
     // Diffusion : section dediee a ses propres tables (contacts, campagnes).
     if (division === "DIFFUSION") return i.href === "/diffusion";

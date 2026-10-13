@@ -9,6 +9,8 @@ import { domaineDeService, domainePrincipal } from "@/lib/domaine";
 import { cleDeGroupe } from "@/lib/groupe-facturation";
 import { LigneAFacturer } from "@/components/ligne-a-facturer";
 import { nommeurDeCompagnie } from "@/infrastructure/quickbooks/store";
+import { resumeCommissions } from "@/app/(dashboard)/commissions/actions";
+import { dureeDepuis } from "@/lib/commissions";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -42,6 +44,8 @@ export default async function DashboardPage() {
   if (!session?.user) redirect("/login");
   const tenantId = session.user.tenantId;
   const nomCompagnie = await nommeurDeCompagnie(tenantId);
+  // Ce qui est dû à Malcom, pour ne pas l'oublier trois mois de suite.
+  const commissions = await resumeCommissions(tenantId);
   // Division active (ITCloud / Hebergement) : chaque vue est cloisonnee.
   const division = await currentDivision();
   const inDivision = serviceDivisionFilter(division);
@@ -158,6 +162,12 @@ export default async function DashboardPage() {
       : []),
     { label: "Profit mensuel", value: cad.format(monthlyProfit) },
     { label: "Profit annuel", value: cad.format(monthlyProfit * 12) },
+    ...(commissions.total > 0
+      ? [{
+          label: `Dû à Malcom${commissions.plusAncienne ? ` — depuis ${dureeDepuis(commissions.plusAncienne)}` : ""}`,
+          value: cad.format(commissions.total),
+        }]
+      : []),
     { label: "Services actifs", value: String(activeServices.length) },
     { label: "Services suspendus", value: String(suspendedCount) },
     { label: "À facturer (bientôt)", value: String(yellowTotal) },
