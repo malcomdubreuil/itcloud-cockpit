@@ -251,5 +251,27 @@ verifie("7. engagement après le 31 déc.", texteEngagement(new Date("2026-12-31
   }
 }
 
+// ── 12. Rabais revendeur : en % du nouveau sous-total, ou le même montant.
+{
+  const r = reconstruire({
+    services: [svc({ id: "a", quantity: 2 })],
+    correspondances: corr(), source: { ...source, rabais: { libelle: "Rabais revendeur", pourcent: 10 } },
+    txnDate: "2026-10-15", docNumber: "2026-0012", unite: "year",
+  });
+  verifie("12. réussite", r.ok, r);
+  if (r.ok) {
+    const remise = (r.payload.Line as { DetailType: string; Amount?: number; DiscountLineDetail?: { DiscountPercent?: number } }[]).find((l) => l.DetailType === "DiscountLineDetail");
+    verifie("12. ligne de rabais à 10 % = 50,40", remise?.DiscountLineDetail?.DiscountPercent === 10 && remise?.Amount === 50.4, remise);
+    verifie("12. le rabais est la dernière ligne", (r.payload.Line as unknown[]).at(-1) === remise);
+    verifie("12. total net 453,60", r.total === 453.6, r.total);
+  }
+  const m = reconstruire({
+    services: [svc({ id: "a" })],
+    correspondances: corr(), source: { ...source, rabais: { libelle: "Rabais", montant: 25 } },
+    txnDate: "2026-10-15", docNumber: "2026-0013", unite: "year",
+  });
+  verifie("12. rabais fixe 25 $ : total 227", m.ok && m.total === 227, m.ok && m.total);
+}
+
 console.log(echecs ? `\n${echecs} échec(s)` : "\ntous les cas passent");
 process.exit(echecs ? 1 : 0);
