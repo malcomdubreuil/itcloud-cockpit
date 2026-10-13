@@ -85,10 +85,14 @@ export type FactureSource = {
   /** « Expédier à » de la source, sans son Id (propre à l'autre compagnie) :
    *  reconduit tel quel quand il était rempli (Keven, 2026-10-12). */
   shipAddr?: Record<string, unknown>;
+  /** Le rabais de la source (revendeur, en général) : en pourcentage du
+   *  sous-total s'il l'était, sinon le même montant. Reconduit (Keven,
+   *  2026-10-12). */
+  rabais?: { libelle: string; pourcent?: number; montant?: number };
 };
 
 export type LigneApercu = {
-  type: "article" | "engagement" | "periode" | "texte";
+  type: "article" | "engagement" | "periode" | "texte" | "rabais";
   texte: string;
   qte?: number;
   prixUnitaire?: number;
@@ -311,6 +315,30 @@ export function reconstruire(args: {
   for (const t of source.lignesTexte ?? []) {
     lines.push({ DetailType: "DescriptionOnly", Description: t });
     apercu.push({ type: "texte", texte: t });
+  }
+
+  // 3 bis. Le rabais (revendeur), en dernier : en pourcentage du nouveau
+  //        sous-total quand la source le calculait ainsi, sinon le même
+  //        montant. QuickBooks le déduit avant taxes.
+  if (source.rabais && (source.rabais.pourcent || source.rabais.montant)) {
+    const r = source.rabais;
+    const montantRabais = arrondi(r.pourcent ? (total * r.pourcent) / 100 : (r.montant ?? 0));
+    if (montantRabais > 0) {
+      lines.push({
+        DetailType: "DiscountLineDetail",
+        Amount: montantRabais,
+        Description: r.libelle,
+        DiscountLineDetail: r.pourcent
+          ? { PercentBased: true, DiscountPercent: r.pourcent, ...(c.taxCode ? { TaxCodeRef: { value: c.taxCode.id } } : {}) }
+          : { PercentBased: false, ...(c.taxCode ? { TaxCodeRef: { value: c.taxCode.id } } : {}) },
+      });
+      apercu.push({
+        type: "rabais",
+        texte: `${r.libelle}${r.pourcent ? ` ${r.pourcent} %` : ""} = −${montantRabais.toFixed(2)} $`,
+        montant: -montantRabais,
+      });
+      total -= montantRabais;
+    }
   }
 
   // 4. L'en-tête.

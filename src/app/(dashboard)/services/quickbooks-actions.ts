@@ -334,6 +334,24 @@ async function chargerGroupe(
     .map((l) => l.Description as string);
   const { ligneFacturation, lignesTexte } = trierLignesTexte(descriptions);
   const memo = (s.CustomerMemo as { value?: string } | undefined)?.value;
+  // Le rabais de la source : une ligne « DiscountLineDetail » (en % ou en
+  // montant), ou à défaut une ligne d'article négative (« Rabais revendeur »
+  // saisi comme un article). Dans les deux cas on le reconduit.
+  const rabais = (() => {
+    type L = { DetailType?: string; Amount?: number; Description?: string; DiscountLineDetail?: { PercentBased?: boolean; DiscountPercent?: number }; SalesItemLineDetail?: { ItemRef?: { name?: string } } };
+    const lignes = (src?.Line ?? []) as L[];
+    const remise = lignes.find((l) => l.DetailType === "DiscountLineDetail");
+    if (remise) {
+      const pct = remise.DiscountLineDetail?.PercentBased ? remise.DiscountLineDetail.DiscountPercent : undefined;
+      return { libelle: remise.Description?.trim() || "Rabais", pourcent: pct, montant: pct ? undefined : Math.abs(remise.Amount ?? 0) };
+    }
+    const negative = lignes.find((l) => l.DetailType === "SalesItemLineDetail" && typeof l.Amount === "number" && l.Amount < 0);
+    if (negative) {
+      const nom = negative.SalesItemLineDetail?.ItemRef?.name?.split(":").pop() ?? "";
+      return { libelle: negative.Description?.trim() || nom || "Rabais", montant: Math.abs(negative.Amount ?? 0) };
+    }
+    return undefined;
+  })();
   // « Expédier à » : on garde l'adresse, pas son Id ni ses coordonnées GPS,
   // qui appartiennent à l'ancienne compagnie.
   const shipAddr = (() => {
@@ -382,6 +400,7 @@ async function chargerGroupe(
         lignesTexte,
         avaitTaxe: true,
         shipAddr,
+        rabais,
       },
       unite: servicesAFacturer.every((x) => uniteDuService(x) === "month") ? "month" : "year",
     },
