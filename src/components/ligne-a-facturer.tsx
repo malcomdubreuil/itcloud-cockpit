@@ -22,7 +22,9 @@ export type LigneService = {
   produit: string;
   quantite: number;
   montant: number;
-  montantMensuel: number;
+  /** Null pour un produit vendu à l'année seulement (nom de domaine, SSL…) :
+   *  on ne lui invente pas de mensualité. */
+  montantMensuel: number | null;
   echeance: string;
   jours: number;
   urgent: boolean;
@@ -113,7 +115,11 @@ export function LigneAFacturer({
         </Link>
         <Montant
           total={total}
-          mensuel={services.reduce((t, s) => t + s.montantMensuel, 0)}
+          mensuel={
+            services.some((s) => s.montantMensuel !== null)
+              ? services.reduce((t, s) => t + (s.montantMensuel ?? 0), 0)
+              : null
+          }
         />
         <FacturerGroupe serviceId={premier.id} label={`Facturer les ${services.length}`} />
       </div>
@@ -176,13 +182,15 @@ function Dates({
   );
 }
 
-function Montant({ total, mensuel }: { total: number; mensuel: number }) {
+function Montant({ total, mensuel }: { total: number; mensuel: number | null }) {
   return (
     <span className="shrink-0 text-right text-sm tabular-nums">
       {cad.format(total)}
-      <span className="block text-xs text-muted-foreground">
-        {cad.format(mensuel)}/mois
-      </span>
+      {mensuel !== null && (
+        <span className="block text-xs text-muted-foreground">
+          {cad.format(mensuel)}/mois
+        </span>
+      )}
     </span>
   );
 }

@@ -148,6 +148,9 @@ export function ServiceCard({
   // qui se vendent à l'année (Keven, 2026-10-18). Le prix enregistré reste
   // au cycle du produit : seule la présentation change.
   const prixAuMois = months > 1 && (itcloud || !venduALannee(s.product.name));
+  // …et pour ces produits-là, AUCUN chiffre au mois nulle part : PDSF, coût,
+  // prix, revenu, tout se lit à l'année.
+  const annuelSeulement = !itcloud && venduALannee(s.product.name);
   const margin = s.unitPrice > 0 ? ((s.unitPrice - s.unitCost) / s.unitPrice) * 100 : null;
   const profitMonthly = ((s.unitPrice - s.unitCost) * s.quantity) / months;
   // Facturation directe = ITCloud facture le client : aucune urgence pour nous
@@ -326,9 +329,11 @@ export function ServiceCard({
               // ne correspond a rien de reel pour Keven.
               <>
                 <p className="tabular-nums">{cad.format(s.product.msrp)}{suffix}</p>
-                <p className="text-xs tabular-nums text-muted-foreground">
-                  {cad.format(s.product.msrp / months)}/mois
-                </p>
+                {!annuelSeulement && (
+                  <p className="text-xs tabular-nums text-muted-foreground">
+                    {cad.format(s.product.msrp / months)}/mois
+                  </p>
+                )}
               </>
             )}
           </div>
@@ -353,7 +358,7 @@ export function ServiceCard({
               action={prixAuMois ? updateServicePriceMonthly : updateServicePrice}
               label={prixAuMois ? "Prix de vente mensuel" : `Prix de vente ${suffix}`}
             />
-            {months > 1 && (
+            {months > 1 && !annuelSeulement && (
               <p className="text-xs tabular-nums text-muted-foreground">
                 = {cad.format(prixAuMois ? s.unitPrice : s.unitPrice / months)}
                 {prixAuMois ? suffix : "/mois"}
@@ -388,12 +393,20 @@ export function ServiceCard({
               // de bord, une fois les couts fixes soustraits.
               <>
                 <p className="text-xs text-muted-foreground">Revenu</p>
-                <p className="tabular-nums font-medium">
-                  {cad.format((s.unitPrice * s.quantity) / months)}/mois
-                </p>
-                <p className="text-xs tabular-nums text-muted-foreground">
-                  {cad.format(s.unitPrice * s.quantity)}{suffix}
-                </p>
+                {annuelSeulement ? (
+                  <p className="tabular-nums font-medium">
+                    {cad.format(s.unitPrice * s.quantity)}{suffix}
+                  </p>
+                ) : (
+                  <>
+                    <p className="tabular-nums font-medium">
+                      {cad.format((s.unitPrice * s.quantity) / months)}/mois
+                    </p>
+                    <p className="text-xs tabular-nums text-muted-foreground">
+                      {cad.format(s.unitPrice * s.quantity)}{suffix}
+                    </p>
+                  </>
+                )}
               </>
             )}
           </div>

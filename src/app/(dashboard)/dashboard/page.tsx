@@ -11,6 +11,7 @@ import { LigneAFacturer } from "@/components/ligne-a-facturer";
 import { nommeurDeCompagnie } from "@/infrastructure/quickbooks/store";
 import { resumeCommissions } from "@/app/(dashboard)/commissions/actions";
 import { dureeDepuis } from "@/lib/commissions";
+import { venduALannee } from "@/lib/prix";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -243,7 +244,8 @@ export default async function DashboardPage() {
                         produit: s.product.name,
                         quantite: s.quantity,
                         montant,
-                        montantMensuel: montant / months,
+                        montantMensuel:
+                          division !== "ITCLOUD" && venduALannee(s.product.name) ? null : montant / months,
                         echeance: s.renewalDate!.toLocaleDateString("fr-CA"),
                         jours,
                         urgent: jours <= s.client.urgencyDays,
