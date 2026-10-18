@@ -142,6 +142,11 @@ export function ServiceCard({
   const jamaisFacture = !s.lastQbInvoiceNo?.trim() && s.billingMode === "INDIRECT";
   const months = CYCLE_MONTHS[s.product.billingCycle] ?? 1;
   const suffix = CYCLE_SUFFIX[s.product.billingCycle] ?? "";
+  // Le prix qu'on lit et qu'on modifie est AU MOIS — licences ITCloud et
+  // hébergement — sauf la réservation de nom de domaine et Elementor Pro,
+  // qui se vendent à l'année (Keven, 2026-10-18). Le prix enregistré reste
+  // au cycle du produit : seule la présentation change.
+  const prixAuMois = months > 1 && (itcloud || !/nom de domaine|elementor/i.test(s.product.name));
   const margin = s.unitPrice > 0 ? ((s.unitPrice - s.unitCost) / s.unitPrice) * 100 : null;
   const profitMonthly = ((s.unitPrice - s.unitCost) * s.quantity) / months;
   // Facturation directe = ITCloud facture le client : aucune urgence pour nous
@@ -306,7 +311,7 @@ export function ServiceCard({
           <>
           <div className="text-right">
             <p className="text-xs text-muted-foreground">PDSF</p>
-            {itcloud ? (
+            {prixAuMois ? (
               <>
                 <p className="tabular-nums">{cad.format(s.product.msrp / months)}/mois</p>
                 {months > 1 && (
@@ -339,18 +344,18 @@ export function ServiceCard({
           )}
           <div className="text-right">
             <p className="text-xs text-muted-foreground">
-              Prix de vente u.{itcloud ? " /mois" : suffix}
+              Prix de vente u.{prixAuMois ? " /mois" : suffix}
             </p>
             <MoneyInput
               id={s.id}
-              value={itcloud ? s.unitPrice / months : s.unitPrice}
-              action={itcloud ? updateServicePriceMonthly : updateServicePrice}
-              label={itcloud ? "Prix de vente mensuel" : `Prix de vente ${suffix}`}
+              value={prixAuMois ? s.unitPrice / months : s.unitPrice}
+              action={prixAuMois ? updateServicePriceMonthly : updateServicePrice}
+              label={prixAuMois ? "Prix de vente mensuel" : `Prix de vente ${suffix}`}
             />
             {months > 1 && (
               <p className="text-xs tabular-nums text-muted-foreground">
-                = {cad.format(itcloud ? s.unitPrice : s.unitPrice / months)}
-                {itcloud ? suffix : "/mois"}
+                = {cad.format(prixAuMois ? s.unitPrice : s.unitPrice / months)}
+                {prixAuMois ? suffix : "/mois"}
               </p>
             )}
           </div>
