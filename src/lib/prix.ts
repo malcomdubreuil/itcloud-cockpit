@@ -46,5 +46,5 @@ export function prixSuggereMensuel(p: ProduitTarifable): number {
  *  réservation de nom de domaine, Elementor Pro, le DDNS et le certificat SSL
  *  (Keven, 2026-10-18). Tout le reste se présente au mois. */
 export function venduALannee(nomProduit: string): boolean {
-  return /nom de domaine|elementor|ddns|certificat ssl|ssl/i.test(nomProduit);
+  return /nom de domaine|elementor|\bddns\b|certificat ssl|\bssl\b/i.test(nomProduit);
 }
