@@ -82,37 +82,9 @@ export function NewClientButton() {
                 <Input id="nc-email" name="email" type="email" placeholder="ex. info@entreprise.ca" />
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="nc-payment">Mode de paiement</Label>
-                  <select
-                    id="nc-payment"
-                    name="paymentMethod"
-                    defaultValue=""
-                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-                  >
-                    <option value="">—</option>
-                    <option value="PREAUTORISE">Préautorisé</option>
-                    <option value="CHEQUE">Chèque</option>
-                    <option value="VIREMENT">Virement</option>
-                    <option value="CARTE">Carte de crédit</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="nc-billing">Type de facturation</Label>
-                  <select
-                    id="nc-billing"
-                    name="billingType"
-                    defaultValue=""
-                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-                  >
-                    <option value="">—</option>
-                    <option value="MENSUEL">Mensuel</option>
-                    <option value="ANNUEL">Annuel</option>
-                    <option value="MIXTE">Mixte</option>
-                  </select>
-                </div>
-              </div>
+              {/* Mode de paiement et type de facturation : retirés du formulaire
+                  (Keven, 2026-10-18) — jamais remplis, et rien n'en dépend. Les
+                  colonnes restent en base pour les clients synchronisés. */}
 
               <div className="mt-5 flex justify-end gap-2">
                 <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
