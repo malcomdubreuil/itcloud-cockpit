@@ -35,19 +35,6 @@ const cad = new Intl.NumberFormat("fr-CA", {
   currency: "CAD",
 });
 
-const PAYMENT_LABEL: Record<string, string> = {
-  PREAUTORISE: "Préautorisé",
-  CHEQUE: "Chèque",
-  VIREMENT: "Virement",
-  CARTE: "Carte de crédit",
-};
-
-const BILLING_LABEL: Record<string, string> = {
-  MENSUEL: "Mensuel",
-  ANNUEL: "Annuel",
-  MIXTE: "Mixte",
-};
-
 const STATUS_LABEL: Record<string, string> = {
   ACTIF: "Actif",
   SUSPENDU: "Suspendu",
@@ -76,7 +63,7 @@ export default async function ClientPage({ params }: Props) {
     select: {
       id: true, tenantId: true, companyName: true, contactName: true,
       clientCode: true, email: true, phone: true, status: true,
-      paymentMethod: true, billingType: true, urgencyDays: true, isReseller: true, internal: true,
+      urgencyDays: true, isReseller: true, internal: true,
       mainDomain: { select: { id: true, name: true } },
       services: {
         // Fiche cloisonnee : cote Hebergement on ne voit que les domaines et
@@ -284,10 +271,6 @@ export default async function ClientPage({ params }: Props) {
           </span>
           {client.clientCode && (
             <Badge variant="outline" title="Code client ITCloud">{client.clientCode}</Badge>
-          )}
-          {client.paymentMethod && <span>{PAYMENT_LABEL[client.paymentMethod]}</span>}
-          {client.billingType && (
-            <span>Facturation {BILLING_LABEL[client.billingType].toLowerCase()}</span>
           )}
         </div>
       </div>
