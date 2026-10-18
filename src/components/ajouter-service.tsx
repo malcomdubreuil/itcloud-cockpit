@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { addServiceToClient } from "@/app/(dashboard)/services/actions";
-import { prixSuggere } from "@/lib/prix";
+import { prixSuggere, venduALannee } from "@/lib/prix";
 import { correspondMots } from "@/lib/recherche";
 
 // Ajouter un service sous un client. Keven choisit le produit dans la liste :
@@ -78,7 +78,7 @@ export function AjouterService({
   // hébergement tout sauf la réservation de nom de domaine et Elementor Pro,
   // qui se vendent à l'année (2026-10-12). Le prix saisi et enregistré reste
   // au cycle du produit.
-  const aLannee = (p: ProduitDispo) => hebergement && /nom de domaine|elementor/i.test(p.name);
+  const aLannee = (p: ProduitDispo) => hebergement && venduALannee(p.name);
   const libellePrix = (p: ProduitDispo) => {
     const prix = prixSuggere({ msrp: p.msrp, suggestedPrice: p.suggestedPrice, billingCycle: p.cycle });
     if (p.cycle === "ANNUEL" && !aLannee(p)) return `${cad.format(prix / 12)}/mois`;

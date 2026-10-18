@@ -10,6 +10,7 @@ import { CompagnieFactureToggle } from "@/components/compagnie-facture-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { venduALannee } from "@/lib/prix";
 import {
   updateServicePrice,
   updateServicePriceMonthly,
@@ -146,7 +147,7 @@ export function ServiceCard({
   // hébergement — sauf la réservation de nom de domaine et Elementor Pro,
   // qui se vendent à l'année (Keven, 2026-10-18). Le prix enregistré reste
   // au cycle du produit : seule la présentation change.
-  const prixAuMois = months > 1 && (itcloud || !/nom de domaine|elementor/i.test(s.product.name));
+  const prixAuMois = months > 1 && (itcloud || !venduALannee(s.product.name));
   const margin = s.unitPrice > 0 ? ((s.unitPrice - s.unitCost) / s.unitPrice) * 100 : null;
   const profitMonthly = ((s.unitPrice - s.unitCost) * s.quantity) / months;
   // Facturation directe = ITCloud facture le client : aucune urgence pour nous

@@ -40,3 +40,10 @@ export function prixSuggere(p: ProduitTarifable): number {
 export function prixSuggereMensuel(p: ProduitTarifable): number {
   return prixSuggere(p) / moisDuCycle(p.billingCycle);
 }
+
+/** Les produits d'hébergement qui se vendent À L'ANNÉE, et dont le prix se
+ *  lit et se modifie à l'année : la réservation de nom de domaine, Elementor
+ *  Pro et le DDNS (Keven, 2026-10-18). Tout le reste se présente au mois. */
+export function venduALannee(nomProduit: string): boolean {
+  return /nom de domaine|elementor|ddns/i.test(nomProduit);
+}
