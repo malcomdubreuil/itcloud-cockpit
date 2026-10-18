@@ -15,7 +15,13 @@ import { AjouterService } from "@/components/ajouter-service";
 import { grouperPourFacturation } from "@/lib/groupe-facturation";
 import { nommeurDeCompagnie } from "@/infrastructure/quickbooks/store";
 import { InlineTextInput } from "@/components/inline-text-input";
-import { updateClientMainDomain } from "@/app/(dashboard)/clients/actions";
+import {
+  updateClientCompanyName,
+  updateClientContactName,
+  updateClientEmail,
+  updateClientMainDomain,
+  updateClientPhone,
+} from "@/app/(dashboard)/clients/actions";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -227,26 +233,57 @@ export default async function ClientPage({ params }: Props) {
             )}
           </div>
         )}
-        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-          {client.contactName && <span>{client.contactName}</span>}
+        {/* La fiche se corrige sur place : chaque champ est un champ texte,
+            Entrée ou clic ailleurs enregistre. */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="text-xs font-medium">Entreprise</span>
+            <InlineTextInput
+              id={client.id}
+              value={client.companyName}
+              action={updateClientCompanyName}
+              label="Nom de l'entreprise"
+              placeholder="Nom de l'entreprise"
+              inputClassName="w-56"
+              copyButton={false}
+            />
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="text-xs font-medium">Contact</span>
+            <InlineTextInput
+              id={client.id}
+              value={client.contactName ?? ""}
+              action={updateClientContactName}
+              label="Nom du contact"
+              placeholder="Nom du contact"
+              inputClassName="w-44"
+              copyButton={false}
+            />
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Phone className="h-3.5 w-3.5" />
+            <InlineTextInput
+              id={client.id}
+              value={client.phone ?? ""}
+              action={updateClientPhone}
+              label="Téléphone"
+              placeholder="Téléphone / cellulaire"
+              inputClassName="w-40"
+            />
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Mail className="h-3.5 w-3.5" />
+            <InlineTextInput
+              id={client.id}
+              value={client.email ?? ""}
+              action={updateClientEmail}
+              label="Courriel"
+              placeholder="Courriel"
+              inputClassName="w-56"
+            />
+          </span>
           {client.clientCode && (
-            <Badge variant="outline">{client.clientCode}</Badge>
-          )}
-          {client.email && (
-            <a
-              href={`mailto:${client.email}`}
-              className="inline-flex items-center gap-1 hover:text-foreground"
-            >
-              <Mail className="h-3.5 w-3.5" /> {client.email}
-            </a>
-          )}
-          {client.phone && (
-            <a
-              href={`tel:${client.phone}`}
-              className="inline-flex items-center gap-1 hover:text-foreground"
-            >
-              <Phone className="h-3.5 w-3.5" /> {client.phone}
-            </a>
+            <Badge variant="outline" title="Code client ITCloud">{client.clientCode}</Badge>
           )}
           {client.paymentMethod && <span>{PAYMENT_LABEL[client.paymentMethod]}</span>}
           {client.billingType && (

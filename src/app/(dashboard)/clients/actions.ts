@@ -80,6 +80,58 @@ export async function updateClientMainDomain(clientId: string, value: string) {
 // ITCloud (clientCode = null) → la synchronisation ITCloud l'ignore entièrement
 // (jamais envoyé vers ITCloud, jamais flagué « absent »). L'ERP ne pousse
 // jamais rien vers ITCloud.
+// La fiche client se corrige sur place — nom de l'entreprise, contact,
+// téléphone, courriel — des deux côtés, ITCloud comme Hébergement (Keven,
+// 2026-10-18). Un champ vidé devient NULL, sauf la raison sociale.
+type ChampClient = "companyName" | "contactName" | "phone" | "email";
+const LONGUEUR_CHAMP: Record<ChampClient, number> = { companyName: 191, contactName: 191, phone: 50, email: 191 };
+
+async function updateClientField(clientId: string, field: ChampClient, value: string): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "clients:write");
+  const tenantId = session.user.tenantId;
+
+  const v = value.trim().slice(0, LONGUEUR_CHAMP[field]);
+  if (field === "companyName" && !v) throw new Error("Le nom de l'entreprise est requis.");
+  if (field === "email" && v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) throw new Error("Courriel invalide.");
+
+  const client = await prisma.client.findUniqueOrThrow({
+    where: { id: clientId },
+    select: { id: true, tenantId: true, [field]: true } as never,
+  }) as { id: string; tenantId: string } & Record<ChampClient, string | null>;
+  if (client.tenantId !== tenantId) throw new Error("Introuvable");
+  const avant = client[field] ?? null;
+  const apres = v || null;
+  if (avant === apres) return;
+
+  await prisma.client.update({ where: { id: clientId }, data: { [field]: apres } });
+  await audit({
+    tenantId,
+    userId: session.user.id,
+    action: `client.update_${field}`,
+    entityType: "Client",
+    entityId: clientId,
+    before: { [field]: avant },
+    after: { [field]: apres },
+  });
+  revalidatePath("/clients");
+  revalidatePath(`/clients/${clientId}`);
+}
+
+export async function updateClientCompanyName(clientId: string, value: string) {
+  return updateClientField(clientId, "companyName", value);
+}
+export async function updateClientContactName(clientId: string, value: string) {
+  return updateClientField(clientId, "contactName", value);
+}
+export async function updateClientPhone(clientId: string, value: string) {
+  return updateClientField(clientId, "phone", value);
+}
+export async function updateClientEmail(clientId: string, value: string) {
+  return updateClientField(clientId, "email", value);
+}
+
 export async function createClient(formData: FormData): Promise<void> {
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");
