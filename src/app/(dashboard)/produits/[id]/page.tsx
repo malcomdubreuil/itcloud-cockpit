@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/infrastructure/db/prisma";
 import { ApplyPriceAll } from "@/components/apply-price-all";
 import { domaineDeService } from "@/lib/domaine";
+import { venduALannee } from "@/lib/prix";
 import { PrixParServeur } from "@/components/prix-par-serveur";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -148,26 +149,30 @@ export default async function ProduitPage({ params }: Props) {
 
   const clientCount = new Set(active.map((s) => s.client.id)).size;
   const sign = profitMonthly >= 0 ? "+" : "";
+  // Nom de domaine, SSL, DDNS, Elementor Pro : aucune donnée mensuelle, nulle
+  // part — revenu, coût et profit se lisent à l'année (Keven, 2026-10-18).
+  const annuelSeulement = product.division !== "ITCLOUD" && venduALannee(product.name);
+  const auMois = (n: number) => (annuelSeulement ? undefined : `${cad.format(n)}/mois`);
 
-  const kpis = [
+  const kpis: { label: string; value: string; sub?: string }[] = [
     { label: "Clients actifs", value: String(clientCount) },
     { label: "Licences actives", value: String(licences) },
     {
       label: "Revenu",
       value: `${cad.format(revenueMonthly * 12)}/an`,
-      sub: `${cad.format(revenueMonthly)}/mois`,
+      sub: auMois(revenueMonthly),
     },
     ...(fixedMonthly > 0
       ? [{
           label: "Coûts fixes",
           value: `${cad.format(fixedMonthly * 12)}/an`,
-          sub: `${cad.format(fixedMonthly)}/mois`,
+          sub: auMois(fixedMonthly),
         }]
       : []),
     {
       label: "Profit",
       value: `${sign}${cad.format(profitMonthly * 12)}/an`,
-      sub: `${sign}${cad.format(profitMonthly)}/mois`,
+      sub: annuelSeulement ? undefined : `${sign}${cad.format(profitMonthly)}/mois`,
     },
   ];
 
@@ -189,8 +194,16 @@ export default async function ProduitPage({ params }: Props) {
           {product.group && <Badge variant="secondary">{product.group}</Badge>}
           <Badge variant="outline">{CYCLE_LABEL[product.billingCycle]}</Badge>
           <span>
-            PDSF {cad.format(Number(product.msrp) / months)}/mois · Coût{" "}
-            {cad.format(Number(product.partnerCost) / months)}/mois
+            {annuelSeulement ? (
+              <>
+                PDSF {cad.format(Number(product.msrp))}/an · Coût {cad.format(Number(product.partnerCost))}/an
+              </>
+            ) : (
+              <>
+                PDSF {cad.format(Number(product.msrp) / months)}/mois · Coût{" "}
+                {cad.format(Number(product.partnerCost) / months)}/mois
+              </>
+            )}
           </span>
         </div>
       </div>

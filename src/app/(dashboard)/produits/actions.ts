@@ -38,10 +38,21 @@ export async function updateProductMsrpMonthly(
   productId: string,
   monthlyMsrp: number,
 ) {
+  const cycle = await prisma.product.findUniqueOrThrow({
+    where: { id: productId },
+    select: { billingCycle: true },
+  });
+  return updateProductMsrp(productId, monthlyMsrp * (CYCLE_MONTHS[cycle.billingCycle] ?? 1));
+}
+
+/** Le PDSF AU CYCLE du produit (à l'année pour un annuel) : ce que les
+ *  produits vendus à l'année seulement — nom de domaine, SSL, DDNS, Elementor
+ *  Pro — éditent directement (Keven, 2026-10-18). */
+export async function updateProductMsrp(productId: string, msrp: number) {
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");
   assertCan(session.user, "products:write");
-  if (!Number.isFinite(monthlyMsrp) || monthlyMsrp < 0) throw new Error("PDSF invalide");
+  if (!Number.isFinite(msrp) || msrp < 0) throw new Error("PDSF invalide");
 
   const product = await prisma.product.findUniqueOrThrow({
     where: { id: productId },
@@ -49,7 +60,7 @@ export async function updateProductMsrpMonthly(
   });
   if (product.tenantId !== session.user.tenantId) throw new Error("Introuvable");
 
-  const value = (monthlyMsrp * (CYCLE_MONTHS[product.billingCycle] ?? 1)).toFixed(4);
+  const value = msrp.toFixed(4);
   const before = product.msrp.toString();
   if (before === value) return;
 
@@ -129,10 +140,19 @@ export async function updateProductSuggestedMonthly(
   productId: string,
   monthlySuggested: number,
 ) {
+  const cycle = await prisma.product.findUniqueOrThrow({
+    where: { id: productId },
+    select: { billingCycle: true },
+  });
+  return updateProductSuggested(productId, monthlySuggested * (CYCLE_MONTHS[cycle.billingCycle] ?? 1));
+}
+
+/** Le prix suggéré AU CYCLE du produit — voir updateProductMsrp. */
+export async function updateProductSuggested(productId: string, suggested: number) {
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");
   assertCan(session.user, "products:write");
-  if (!Number.isFinite(monthlySuggested) || monthlySuggested < 0) {
+  if (!Number.isFinite(suggested) || suggested < 0) {
     throw new Error("Prix invalide");
   }
 
@@ -142,7 +162,7 @@ export async function updateProductSuggestedMonthly(
   });
   if (product.tenantId !== session.user.tenantId) throw new Error("Introuvable");
 
-  const value = (monthlySuggested * CYCLE_MONTHS[product.billingCycle]).toFixed(4);
+  const value = suggested.toFixed(4);
   await prisma.product.update({
     where: { id: productId },
     data: { suggestedPrice: value },

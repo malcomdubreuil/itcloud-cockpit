@@ -13,7 +13,11 @@ import {
   updateProductSuggestedMonthly,
   updateProductMsrpMonthly,
   updateProductCostMonthly,
+  updateProductSuggested,
+  updateProductMsrp,
+  updateProductCost,
 } from "./actions";
+import { venduALannee } from "@/lib/prix";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -196,6 +200,10 @@ export default async function ProduitsPage({
             const suffix = CYCLE_SUFFIX[p.billingCycle] ?? "";
             const msrp = Number(p.msrp);
             const costMonthly = Number(p.partnerCost) / months;
+            // Nom de domaine, SSL, DDNS, Elementor Pro : des chiffres à
+            // l'année seulement, saisis à l'année (Keven, 2026-10-18).
+            const annuelSeulement = division !== "ITCLOUD" && venduALannee(p.name);
+            const unite = annuelSeulement ? suffix : "/mois";
             const suggestedMonthly =
               p.suggestedPrice !== null
                 ? Number(p.suggestedPrice) / months
@@ -223,12 +231,12 @@ export default async function ProduitsPage({
                         PDSF
                         <MoneyInput
                           id={p.id}
-                          value={msrp / months}
-                          action={updateProductMsrpMonthly}
-                          label="PDSF mensuel"
+                          value={annuelSeulement ? msrp : msrp / months}
+                          action={annuelSeulement ? updateProductMsrp : updateProductMsrpMonthly}
+                          label={annuelSeulement ? "PDSF annuel" : "PDSF mensuel"}
                         />
-                        /mois
-                        {months > 1 && (
+                        {unite}
+                        {months > 1 && !annuelSeulement && (
                           <span className="ml-1">({cad.format(msrp)}{suffix})</span>
                         )}
                       </span>
@@ -237,12 +245,12 @@ export default async function ProduitsPage({
                         Coût
                         <MoneyInput
                           id={p.id}
-                          value={costMonthly}
-                          action={updateProductCostMonthly}
-                          label="Coût mensuel"
+                          value={annuelSeulement ? Number(p.partnerCost) : costMonthly}
+                          action={annuelSeulement ? updateProductCost : updateProductCostMonthly}
+                          label={annuelSeulement ? "Coût annuel" : "Coût mensuel"}
                         />
-                        /mois
-                        {months > 1 && (
+                        {unite}
+                        {months > 1 && !annuelSeulement && (
                           <span className="ml-1">({cad.format(Number(p.partnerCost))}{suffix})</span>
                         )}
                       </span>
@@ -251,12 +259,12 @@ export default async function ProduitsPage({
                         Prix suggéré
                         <MoneyInput
                           id={p.id}
-                          value={suggestedMonthly}
-                          action={updateProductSuggestedMonthly}
-                          label="Prix suggéré mensuel"
+                          value={annuelSeulement ? suggestedMonthly * months : suggestedMonthly}
+                          action={annuelSeulement ? updateProductSuggested : updateProductSuggestedMonthly}
+                          label={annuelSeulement ? "Prix suggéré annuel" : "Prix suggéré mensuel"}
                         />
-                        /mois
-                        {months > 1 && (
+                        {unite}
+                        {months > 1 && !annuelSeulement && (
                           <span className="ml-1 font-normal text-muted-foreground">
                             ({cad.format(suggestedMonthly * months)}{suffix})
                           </span>
