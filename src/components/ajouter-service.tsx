@@ -79,9 +79,12 @@ export function AjouterService({
   // qui se vendent à l'année (2026-10-12). Le prix saisi et enregistré reste
   // au cycle du produit.
   const aLannee = (p: ProduitDispo) => hebergement && venduALannee(p.name);
+  // Un produit annuel « au mois » : son prix se LIT et se SAISIT au mois
+  // (13,00 $/mois), et l'ERP enregistre 12 × (156 $/an). Keven, 2026-10-18.
+  const auMois = (p: ProduitDispo) => p.cycle === "ANNUEL" && !aLannee(p);
   const libellePrix = (p: ProduitDispo) => {
     const prix = prixSuggere({ msrp: p.msrp, suggestedPrice: p.suggestedPrice, billingCycle: p.cycle });
-    if (p.cycle === "ANNUEL" && !aLannee(p)) return `${cad.format(prix / 12)}/mois`;
+    if (auMois(p)) return `${cad.format(prix / 12)}/mois`;
     return `${cad.format(prix)}${SUFFIXE[p.cycle] ?? ""}`;
   };
 
@@ -93,11 +96,11 @@ export function AjouterService({
     const p = produits.find((x) => x.id === id);
     setPrix(
       p
-        ? prixSuggere({
+        ? (prixSuggere({
             msrp: p.msrp,
             suggestedPrice: p.suggestedPrice,
             billingCycle: p.cycle,
-          }).toFixed(2)
+          }) / (auMois(p) ? 12 : 1)).toFixed(2)
         : "",
     );
   };
@@ -109,6 +112,8 @@ export function AjouterService({
     if (!internal) {
       parsed = parseFloat(prix.replace(",", "."));
       if (!Number.isFinite(parsed) || parsed < 0) return toast.error("Prix invalide");
+      // Saisi au mois → enregistré au cycle (annuel).
+      if (produit && auMois(produit)) parsed = Math.round(parsed * 12 * 100) / 100;
     }
     start(async () => {
       try {
@@ -193,7 +198,7 @@ export function AjouterService({
               onChange={(e) => setPrix(e.target.value)}
               aria-label="Prix de vente"
             />
-            {produit ? SUFFIXE[produit.cycle] ?? "" : ""}
+            {produit ? (auMois(produit) ? "/mois" : SUFFIXE[produit.cycle] ?? "") : ""}
           </label>
         )}
 
