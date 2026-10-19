@@ -46,6 +46,9 @@ export function candidatsParNom(nom: string, liste: Candidat[]): Candidat[] {
 export const ALIAS: Record<string, string> = {
   // Conditions de paiement : l'ancienne est en français, la nouvelle en anglais.
   "payable des reception": "due on receipt",
+  // Rabais : l'ancienne compagnie les codait (« RR »), la nouvelle les nomme
+  // (Keven, 2026-10-18). À compléter si d'autres codes apparaissent.
+  rr: "rabais revendeur web",
 };
 
 export function candidatsAvecAlias(nom: string, liste: Candidat[]): Candidat[] {

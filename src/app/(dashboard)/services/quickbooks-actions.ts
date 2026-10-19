@@ -24,7 +24,7 @@ import {
   type ServiceAFacturer,
   type Unite,
 } from "@/infrastructure/quickbooks/reconstruire";
-import { candidatsParNom, feuille, normaliser } from "@/lib/rapprochement-qbo";
+import { candidatsAvecAlias, candidatsParNom, feuille } from "@/lib/rapprochement-qbo";
 
 // Automatisation QuickBooks de la refacturation.
 // Depuis l'incorporation (octobre 2026), l'ERP ne duplique plus la dernière
@@ -393,7 +393,12 @@ async function chargerGroupe(
     const manques: string[] = [];
     const valeur: { article: Ref; taux: number; texteProduit: string }[] = [];
     for (const e of entrees) {
-      const cible = items.find((i) => normaliser(feuille(i.FullyQualifiedName ?? i.Name)) === normaliser(e.nom));
+      // Par le nom, sinon par alias : « RR » dans l'ancienne compagnie est
+      // « Rabais revendeur web » dans la nouvelle.
+      const cible = candidatsAvecAlias(
+        e.nom,
+        items.map((i) => ({ id: i.Id, nom: feuille(i.FullyQualifiedName ?? i.Name) })),
+      ).map((c) => items.find((i) => i.Id === c.id)!)[0];
       if (!cible) {
         const m = `article « ${e.nom} » introuvable dans la nouvelle compagnie (un rabais de la source)`;
         if (!manques.includes(m)) manques.push(m);
