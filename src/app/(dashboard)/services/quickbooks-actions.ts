@@ -184,6 +184,9 @@ type GroupeCharge = {
   compagnieSource: Compagnie | null;
   nouvelle: QuickBooksClient;
   realmNouvelle: string;
+  /** Manques constatés en chargeant (article de rabais absent…), à joindre
+   *  à ceux de la reconstruction. */
+  manquesSupplementaires: string[];
   entrees: {
     services: ServiceAFacturer[];
     correspondances: Correspondances;
