@@ -335,7 +335,10 @@ verifie("7. engagement après le 31 déc.", texteEngagement(new Date("2026-12-31
       svc({ id: "d", productId: "p-dom", productName: "Réservation nom de domaine", unitPrice: 20.99, commitmentEndDate: null, renewalDate: new Date("2026-11-15T00:00:00Z"), domaine: "camirandphoto.com", sansEngagement: true }),
     ],
     correspondances: corr(),
-    source: { ...source, rabaisLignes: { article: { id: "66", nom: "Hébergement Web:Rabais revendeur web" }, taux: -5, textesProduits: ["Hébergement Site Web"] } },
+    source: { ...source, rabaisLignes: [
+      { article: { id: "66", nom: "Hébergement Web:Rabais revendeur web" }, taux: -5, texteProduit: "Hébergement Site Web" },
+      { article: { id: "67", nom: "Hébergement Web:Rabais fidélité" }, taux: -1, texteProduit: "Réservation nom de domaine" },
+    ] },
     txnDate: "2026-10-18", docNumber: "2026-0018", unite: "year",
   });
   verifie("15. réussite", r.ok, r);
@@ -343,8 +346,9 @@ verifie("7. engagement après le 31 déc.", texteEngagement(new Date("2026-12-31
     const lignes = r.payload.Line as { DetailType: string; Description?: string; Amount?: number; SalesItemLineDetail?: { Qty: number; UnitPrice: number } }[];
     verifie("15. ordre : hébergement, rabais, domaine", lignes.slice(0, 3).map((l) => l.Description).join(" | ") === "Hébergement Site Web | Rabais revendeur web | camirandphoto.com", lignes.slice(0, 3).map((l) => l.Description));
     verifie("15. rabais 12 × −5 = −60", lignes[1].SalesItemLineDetail?.Qty === 12 && lignes[1].SalesItemLineDetail?.UnitPrice === -5 && lignes[1].Amount === -60, lignes[1]);
-    verifie("15. pas de rabais sous le nom de domaine", !lignes.slice(3).some((l) => l.Description === "Rabais revendeur web"), lignes.slice(3).map((l) => l.Description));
-    verifie("15. total 191,88 − 60 + 20,99", r.total === 152.87, r.total);
+    verifie("15. pas de rabais web sous le nom de domaine", !lignes.slice(3).some((l) => l.Description === "Rabais revendeur web"), lignes.slice(3).map((l) => l.Description));
+    verifie("15. l'autre sorte de rabais suit le nom de domaine : 1 × −1", lignes[4]?.Description === "Rabais fidélité" && lignes[4]?.Amount === -1, lignes.slice(3).map((l) => l.Description));
+    verifie("15. total 191,88 − 60 + 20,99 − 1", r.total === 151.87, r.total);
   }
 }
 

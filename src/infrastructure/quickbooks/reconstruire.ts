@@ -89,12 +89,13 @@ export type FactureSource = {
    *  sous-total s'il l'était, sinon le même montant. Reconduit (Keven,
    *  2026-10-12). */
   rabais?: { libelle: string; pourcent?: number; montant?: number };
-  /** Le rabais revendeur tel que Keven le fait : une LIGNE d'article
-   *  (« Rabais revendeur web », taux négatif, même quantité) sous chaque
-   *  service qui en avait un dans la source — pas une remise globale. Les
-   *  `textesProduits` sont les lignes de la source qui en portaient un, pour
-   *  savoir sous quels produits le remettre (2026-10-18). */
-  rabaisLignes?: { article: Ref; taux: number; textesProduits: string[] };
+  /** Les rabais tels que Keven les fait : une LIGNE d'article (« Rabais
+   *  revendeur web », « Rabais … », taux négatif, même quantité) sous chaque
+   *  service qui en avait un dans la source — pas une remise globale. Il y a
+   *  plusieurs sortes de rabais : chaque entrée garde son article, son taux
+   *  et le texte de la ligne qu'elle suivait, pour le remettre sous le même
+   *  produit (2026-10-18). */
+  rabaisLignes?: { article: Ref; taux: number; texteProduit: string }[];
   /** Les lignes de la source qui portaient un courriel — « Microsoft Business
    *  Standard (support@god-info.com) » : c'est lui qui dit à qui est la
    *  licence. Chaque courriel est reporté au bout de la ligne du même produit,
@@ -342,13 +343,17 @@ export function reconstruire(args: {
         });
         apercu.push({ type: "article", texte: courriel ? `${article.nom} (${courriel})` : article.nom, qte, prixUnitaire: prixLigne, montant, ecartPrix: ecart });
         total += montant;
-        // Le rabais revendeur, juste sous la ligne, même quantité, taux négatif.
-        const rl = source.rabaisLignes;
-        if (rl && rl.taux < 0 && produitParmi(premier.productName, rl.textesProduits)) {
+        // Les rabais, juste sous la ligne, même quantité, taux négatif : ceux
+        // qui suivaient ce produit dans la source — chaque sorte une fois.
+        const vus = new Set<string>();
+        for (const rl of source.rabaisLignes ?? []) {
+          if (rl.taux >= 0 || vus.has(rl.article.id) || !produitParmi(premier.productName, [rl.texteProduit])) continue;
+          vus.add(rl.article.id);
           const montantRabais = arrondi(rl.taux * qte);
+          const nomRabais = rl.article.nom.split(":").pop() ?? rl.article.nom;
           lines.push({
             DetailType: "SalesItemLineDetail",
-            Description: rl.article.nom.split(":").pop() ?? rl.article.nom,
+            Description: nomRabais,
             Amount: montantRabais,
             SalesItemLineDetail: {
               ItemRef: { value: rl.article.id, name: rl.article.nom },
@@ -357,7 +362,7 @@ export function reconstruire(args: {
               ...(c.taxCode ? { TaxCodeRef: { value: c.taxCode.id } } : {}),
             },
           });
-          apercu.push({ type: "rabais", texte: `${qte} × ${rl.taux.toFixed(2)} $ ${rl.article.nom.split(":").pop()} = ${montantRabais.toFixed(2)} $`, qte, prixUnitaire: rl.taux, montant: montantRabais });
+          apercu.push({ type: "rabais", texte: `${qte} × ${rl.taux.toFixed(2)} $ ${nomRabais} = ${montantRabais.toFixed(2)} $`, qte, prixUnitaire: rl.taux, montant: montantRabais });
           total += montantRabais;
         }
         if (s.domaine) {

@@ -363,31 +363,45 @@ async function chargerGroupe(
   // négative (« Rabais revendeur web », 12 × −5) suit chaque service qui en
   // bénéficie. On note sous quels produits il était, et on cherche l'article
   // du même nom dans la nouvelle compagnie pour le remettre sous les mêmes.
+  // Il y a plusieurs sortes de rabais (« Rabais revendeur web », « Rabais
+  // … ») : chaque ligne négative garde son nom, son taux et la ligne de
+  // produit qu'elle suivait.
   const rabaisLignes = (() => {
     type L = { DetailType?: string; Amount?: number; Description?: string; SalesItemLineDetail?: { ItemRef?: { name?: string }; UnitPrice?: number; Qty?: number } };
     const lignes = (src?.Line ?? []) as L[];
     let precedent: string | null = null;
-    let nomRabais = "";
-    let taux = 0;
-    const textesProduits: string[] = [];
+    const entrees: { nom: string; taux: number; texteProduit: string }[] = [];
     for (const l of lignes) {
       if (l.DetailType !== "SalesItemLineDetail") continue;
       const nom = (l.SalesItemLineDetail?.ItemRef?.name ?? "").split(":").pop() ?? "";
       const negatif = typeof l.Amount === "number" && l.Amount < 0;
       if (negatif || /rabais/i.test(nom)) {
-        if (precedent) textesProduits.push(precedent);
-        nomRabais = nomRabais || nom || (l.Description ?? "").trim();
         const u = l.SalesItemLineDetail?.UnitPrice;
-        if (typeof u === "number" && u < 0) taux = taux || u;
-        else if (negatif && l.SalesItemLineDetail?.Qty) taux = taux || (l.Amount as number) / l.SalesItemLineDetail.Qty;
+        const taux =
+          typeof u === "number" && u < 0
+            ? u
+            : negatif && l.SalesItemLineDetail?.Qty
+              ? (l.Amount as number) / l.SalesItemLineDetail.Qty
+              : 0;
+        const libelle = nom || (l.Description ?? "").trim();
+        if (precedent && libelle && taux < 0) entrees.push({ nom: libelle, taux, texteProduit: precedent });
         continue;
       }
       precedent = (l.Description ?? "").trim() || nom;
     }
-    if (!textesProduits.length || !nomRabais || taux >= 0) return { valeur: undefined, manque: null as string | null };
-    const cible = items.find((i) => normaliser(feuille(i.FullyQualifiedName ?? i.Name)) === normaliser(nomRabais));
-    if (!cible) return { valeur: undefined, manque: `article « ${nomRabais} » introuvable dans la nouvelle compagnie (le rabais revendeur de la source)` };
-    return { valeur: { article: { id: cible.Id, nom: cible.FullyQualifiedName ?? cible.Name }, taux, textesProduits }, manque: null as string | null };
+    if (!entrees.length) return { valeur: undefined, manques: [] as string[] };
+    const manques: string[] = [];
+    const valeur: { article: Ref; taux: number; texteProduit: string }[] = [];
+    for (const e of entrees) {
+      const cible = items.find((i) => normaliser(feuille(i.FullyQualifiedName ?? i.Name)) === normaliser(e.nom));
+      if (!cible) {
+        const m = `article « ${e.nom} » introuvable dans la nouvelle compagnie (un rabais de la source)`;
+        if (!manques.includes(m)) manques.push(m);
+        continue;
+      }
+      valeur.push({ article: { id: cible.Id, nom: cible.FullyQualifiedName ?? cible.Name }, taux: e.taux, texteProduit: e.texteProduit });
+    }
+    return { valeur, manques };
   })();
   // « Expédier à » : on garde l'adresse, pas son Id ni ses coordonnées GPS,
   // qui appartiennent à l'ancienne compagnie.
@@ -426,7 +440,7 @@ async function chargerGroupe(
     compagnieSource,
     nouvelle,
     realmNouvelle,
-    manquesSupplementaires: rabaisLignes.manque ? [rabaisLignes.manque] : [],
+    manquesSupplementaires: rabaisLignes.manques,
     entrees: {
       services: servicesAFacturer,
       correspondances: { articleParProduit, client, taxCode, terme },
