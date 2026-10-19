@@ -327,5 +327,26 @@ verifie("7. engagement après le 31 déc.", texteEngagement(new Date("2026-12-31
   verifie("14. seul sur une facture mensuelle : 1 × 4, un mois", m.ok && (m.payload.Line as { SalesItemLineDetail?: { Qty: number } }[])[0].SalesItemLineDetail?.Qty === 1 && m.moisParService.s === 1, m.ok && m.moisParService);
 }
 
+// ── 15. Rabais revendeur à la ligne : sous chaque hébergement, même quantité, taux négatif.
+{
+  const r = reconstruire({
+    services: [
+      svc({ id: "h1", productId: "p-heb", productName: "Hébergement Site Web", unitPrice: 191.88, factureAuMois: true, commitmentEndDate: null, renewalDate: new Date("2026-11-15T00:00:00Z"), domaine: "camirandphoto.com", sansEngagement: true }),
+      svc({ id: "d", productId: "p-dom", productName: "Réservation nom de domaine", unitPrice: 20.99, commitmentEndDate: null, renewalDate: new Date("2026-11-15T00:00:00Z"), domaine: "camirandphoto.com", sansEngagement: true }),
+    ],
+    correspondances: corr(),
+    source: { ...source, rabaisLignes: { article: { id: "66", nom: "Hébergement Web:Rabais revendeur web" }, taux: -5, textesProduits: ["Hébergement Site Web"] } },
+    txnDate: "2026-10-18", docNumber: "2026-0018", unite: "year",
+  });
+  verifie("15. réussite", r.ok, r);
+  if (r.ok) {
+    const lignes = r.payload.Line as { DetailType: string; Description?: string; Amount?: number; SalesItemLineDetail?: { Qty: number; UnitPrice: number } }[];
+    verifie("15. ordre : hébergement, rabais, domaine", lignes.slice(0, 3).map((l) => l.Description).join(" | ") === "Hébergement Site Web | Rabais revendeur web | camirandphoto.com", lignes.slice(0, 3).map((l) => l.Description));
+    verifie("15. rabais 12 × −5 = −60", lignes[1].SalesItemLineDetail?.Qty === 12 && lignes[1].SalesItemLineDetail?.UnitPrice === -5 && lignes[1].Amount === -60, lignes[1]);
+    verifie("15. pas de rabais sous le nom de domaine", !lignes.slice(3).some((l) => l.Description === "Rabais revendeur web"), lignes.slice(3).map((l) => l.Description));
+    verifie("15. total 191,88 − 60 + 20,99", r.total === 152.87, r.total);
+  }
+}
+
 console.log(echecs ? `\n${echecs} échec(s)` : "\ntous les cas passent");
 process.exit(echecs ? 1 : 0);

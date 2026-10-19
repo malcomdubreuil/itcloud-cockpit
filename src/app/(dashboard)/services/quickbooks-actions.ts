@@ -24,7 +24,7 @@ import {
   type ServiceAFacturer,
   type Unite,
 } from "@/infrastructure/quickbooks/reconstruire";
-import { candidatsParNom } from "@/lib/rapprochement-qbo";
+import { candidatsParNom, feuille, normaliser } from "@/lib/rapprochement-qbo";
 
 // Automatisation QuickBooks de la refacturation.
 // Depuis l'incorporation (octobre 2026), l'ERP ne duplique plus la dernière
@@ -354,12 +354,37 @@ async function chargerGroupe(
       const pct = remise.DiscountLineDetail?.PercentBased ? remise.DiscountLineDetail.DiscountPercent : undefined;
       return { libelle: remise.Description?.trim() || "Rabais", pourcent: pct, montant: pct ? undefined : Math.abs(remise.Amount ?? 0) };
     }
-    const negative = lignes.find((l) => l.DetailType === "SalesItemLineDetail" && typeof l.Amount === "number" && l.Amount < 0);
-    if (negative) {
-      const nom = negative.SalesItemLineDetail?.ItemRef?.name?.split(":").pop() ?? "";
-      return { libelle: negative.Description?.trim() || nom || "Rabais", montant: Math.abs(negative.Amount ?? 0) };
-    }
     return undefined;
+  })();
+  // Le rabais revendeur « à la ligne » : dans la source, une ligne d'article
+  // négative (« Rabais revendeur web », 12 × −5) suit chaque service qui en
+  // bénéficie. On note sous quels produits il était, et on cherche l'article
+  // du même nom dans la nouvelle compagnie pour le remettre sous les mêmes.
+  const rabaisLignes = (() => {
+    type L = { DetailType?: string; Amount?: number; Description?: string; SalesItemLineDetail?: { ItemRef?: { name?: string }; UnitPrice?: number; Qty?: number } };
+    const lignes = (src?.Line ?? []) as L[];
+    let precedent: string | null = null;
+    let nomRabais = "";
+    let taux = 0;
+    const textesProduits: string[] = [];
+    for (const l of lignes) {
+      if (l.DetailType !== "SalesItemLineDetail") continue;
+      const nom = (l.SalesItemLineDetail?.ItemRef?.name ?? "").split(":").pop() ?? "";
+      const negatif = typeof l.Amount === "number" && l.Amount < 0;
+      if (negatif || /rabais/i.test(nom)) {
+        if (precedent) textesProduits.push(precedent);
+        nomRabais = nomRabais || nom || (l.Description ?? "").trim();
+        const u = l.SalesItemLineDetail?.UnitPrice;
+        if (typeof u === "number" && u < 0) taux = taux || u;
+        else if (negatif && l.SalesItemLineDetail?.Qty) taux = taux || (l.Amount as number) / l.SalesItemLineDetail.Qty;
+        continue;
+      }
+      precedent = (l.Description ?? "").trim() || nom;
+    }
+    if (!textesProduits.length || !nomRabais || taux >= 0) return { valeur: undefined, manque: null as string | null };
+    const cible = items.find((i) => normaliser(feuille(i.FullyQualifiedName ?? i.Name)) === normaliser(nomRabais));
+    if (!cible) return { valeur: undefined, manque: `article « ${nomRabais} » introuvable dans la nouvelle compagnie (le rabais revendeur de la source)` };
+    return { valeur: { article: { id: cible.Id, nom: cible.FullyQualifiedName ?? cible.Name }, taux, textesProduits }, manque: null as string | null };
   })();
   // « Expédier à » : on garde l'adresse, pas son Id ni ses coordonnées GPS,
   // qui appartiennent à l'ancienne compagnie.
@@ -398,6 +423,7 @@ async function chargerGroupe(
     compagnieSource,
     nouvelle,
     realmNouvelle,
+    manquesSupplementaires: rabaisLignes.manque ? [rabaisLignes.manque] : [],
     entrees: {
       services: servicesAFacturer,
       correspondances: { articleParProduit, client, taxCode, terme },
@@ -410,6 +436,7 @@ async function chargerGroupe(
         avaitTaxe: true,
         shipAddr,
         rabais,
+        rabaisLignes: rabaisLignes.valeur,
         courriels,
       },
       unite: servicesAFacturer.every((x) => uniteDuService(x) === "month") ? "month" : "year",
@@ -443,7 +470,8 @@ export async function previewReconstruction(
     return { ok: false, manques: [messageDe(e)], docNumberSource: sourceDocNumber ?? null };
   }
   const r = reconstruire({ ...g.entrees, txnDate: new Date().toISOString().slice(0, 10), docNumber: "(à attribuer)" });
-  if (!r.ok) return { ok: false, manques: r.manques, docNumberSource: g.docNumberSource };
+  if (!r.ok) return { ok: false, manques: [...r.manques, ...g.manquesSupplementaires], docNumberSource: g.docNumberSource };
+  if (g.manquesSupplementaires.length) return { ok: false, manques: g.manquesSupplementaires, docNumberSource: g.docNumberSource };
   return {
     ok: true,
     lignes: r.apercu,
@@ -482,10 +510,11 @@ export async function billGroupViaQuickBooks(
     // Le numéro vient de l'ERP, AVANT la création : si ça échoue, rien n'est créé.
     newNumber = await g.nouvelle.getNextDocNumber();
     r = reconstruire({ ...g.entrees, txnDate: input.txnDate, docNumber: newNumber });
-    if (!r.ok) {
+    const manques = [...(r.ok ? [] : r.manques), ...g.manquesSupplementaires];
+    if (!r.ok || manques.length) {
       return {
         status: "error",
-        message: `Impossible de reconstruire la facture : ${r.manques.join(" ; ")}. Règle les correspondances dans Paramètres → QuickBooks.`,
+        message: `Impossible de reconstruire la facture : ${manques.join(" ; ")}. Règle les correspondances dans Paramètres → QuickBooks.`,
       };
     }
     created = await g.nouvelle.createInvoice(r.payload);

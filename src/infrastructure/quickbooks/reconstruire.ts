@@ -89,6 +89,12 @@ export type FactureSource = {
    *  sous-total s'il l'était, sinon le même montant. Reconduit (Keven,
    *  2026-10-12). */
   rabais?: { libelle: string; pourcent?: number; montant?: number };
+  /** Le rabais revendeur tel que Keven le fait : une LIGNE d'article
+   *  (« Rabais revendeur web », taux négatif, même quantité) sous chaque
+   *  service qui en avait un dans la source — pas une remise globale. Les
+   *  `textesProduits` sont les lignes de la source qui en portaient un, pour
+   *  savoir sous quels produits le remettre (2026-10-18). */
+  rabaisLignes?: { article: Ref; taux: number; textesProduits: string[] };
   /** Les lignes de la source qui portaient un courriel — « Microsoft Business
    *  Standard (support@god-info.com) » : c'est lui qui dit à qui est la
    *  licence. Chaque courriel est reporté au bout de la ligne du même produit,
@@ -208,6 +214,12 @@ export function repartirCourriels(
     if (meilleur) par.set(meilleur.id, [...(par.get(meilleur.id) ?? []), c.courriel]);
   }
   return par;
+}
+
+/** Vrai si le nom du produit partage au moins un mot avec l'un des textes. */
+export function produitParmi(productName: string, textes: string[]): boolean {
+  const mots = motsCles(productName);
+  return textes.some((t) => [...motsCles(t)].some((m) => mots.has(m)));
 }
 
 export function reconstruire(args: {
@@ -330,6 +342,24 @@ export function reconstruire(args: {
         });
         apercu.push({ type: "article", texte: courriel ? `${article.nom} (${courriel})` : article.nom, qte, prixUnitaire: prixLigne, montant, ecartPrix: ecart });
         total += montant;
+        // Le rabais revendeur, juste sous la ligne, même quantité, taux négatif.
+        const rl = source.rabaisLignes;
+        if (rl && rl.taux < 0 && produitParmi(premier.productName, rl.textesProduits)) {
+          const montantRabais = arrondi(rl.taux * qte);
+          lines.push({
+            DetailType: "SalesItemLineDetail",
+            Description: rl.article.nom.split(":").pop() ?? rl.article.nom,
+            Amount: montantRabais,
+            SalesItemLineDetail: {
+              ItemRef: { value: rl.article.id, name: rl.article.nom },
+              Qty: qte,
+              UnitPrice: rl.taux,
+              ...(c.taxCode ? { TaxCodeRef: { value: c.taxCode.id } } : {}),
+            },
+          });
+          apercu.push({ type: "rabais", texte: `${qte} × ${rl.taux.toFixed(2)} $ ${rl.article.nom.split(":").pop()} = ${montantRabais.toFixed(2)} $`, qte, prixUnitaire: rl.taux, montant: montantRabais });
+          total += montantRabais;
+        }
         if (s.domaine) {
           lines.push({ DetailType: "DescriptionOnly", Description: s.domaine });
           apercu.push({ type: "texte", texte: s.domaine });
