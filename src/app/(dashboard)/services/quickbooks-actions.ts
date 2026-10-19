@@ -516,7 +516,7 @@ export async function billGroupViaQuickBooks(
   const newDoc = created.DocNumber?.trim() || newNumber;
   const { count } = await markServicesBilled(
     g.services.map((x) => x.id),
-    { qbInvoiceNo: newDoc, qbInvoiceRealm: g.realmNouvelle },
+    { qbInvoiceNo: newDoc, qbInvoiceRealm: g.realmNouvelle, moisParService: r.moisParService },
   );
 
   return {

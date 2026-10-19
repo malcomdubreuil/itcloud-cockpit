@@ -303,5 +303,29 @@ verifie("7. engagement après le 31 déc.", texteEngagement(new Date("2026-12-31
   verifie("13. sans courriel dans la source : description nue", sans.ok && (sans.payload.Line as { Description?: string }[])[0].Description === "M365 Business Std P1Y-A", sans.ok && (sans.payload.Line as { Description?: string }[])[0]);
 }
 
+// ── 14. Un produit MENSUEL sur une facture ANNUELLE : 12 × le mois, un an.
+{
+  const c = corr();
+  c.articleParProduit.set("p-spam", { id: "70", nom: "Hébergement Web:SpamExperts", prixUnitaire: 5 });
+  const r = reconstruire({
+    services: [
+      svc({ id: "h", productId: "p-heb", productName: "Hébergement Site Web", unitPrice: 119.88, factureAuMois: true, commitmentEndDate: null, renewalDate: new Date("2026-11-15T00:00:00Z"), sansEngagement: true }),
+      svc({ id: "s", productId: "p-spam", productName: "SpamExperts", billingCycle: "MENSUEL", unitPrice: 4, commitmentEndDate: null, renewalDate: new Date("2026-11-15T00:00:00Z"), sansEngagement: true }),
+    ],
+    correspondances: c, source, txnDate: "2026-10-18", docNumber: "2026-0016", unite: "year",
+  });
+  verifie("14. réussite", r.ok, r);
+  if (r.ok) {
+    const spam = (r.payload.Line as { Description?: string; Amount?: number; SalesItemLineDetail?: { Qty: number; UnitPrice: number } }[]).find((l) => l.Description === "SpamExperts");
+    verifie("14. SpamExperts : 12 × 4,00 = 48", spam?.SalesItemLineDetail?.Qty === 12 && spam?.SalesItemLineDetail?.UnitPrice === 4 && spam?.Amount === 48, spam);
+    verifie("14. les deux services avancent de 12 mois", r.moisParService.h === 12 && r.moisParService.s === 12, r.moisParService);
+  }
+  const m = reconstruire({
+    services: [svc({ id: "s", productId: "p-spam", productName: "SpamExperts", billingCycle: "MENSUEL", unitPrice: 4, commitmentEndDate: null, renewalDate: new Date("2026-11-15T00:00:00Z") })],
+    correspondances: c, source: { ...source, ligneFacturation: "Facturation du 15-10-2026 au 14-11-2026" }, txnDate: "2026-10-18", docNumber: "2026-0017", unite: "month",
+  });
+  verifie("14. seul sur une facture mensuelle : 1 × 4, un mois", m.ok && (m.payload.Line as { SalesItemLineDetail?: { Qty: number } }[])[0].SalesItemLineDetail?.Qty === 1 && m.moisParService.s === 1, m.ok && m.moisParService);
+}
+
 console.log(echecs ? `\n${echecs} échec(s)` : "\ntous les cas passent");
 process.exit(echecs ? 1 : 0);

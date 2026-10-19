@@ -996,6 +996,9 @@ export async function markServicesBilled(
     /** Compagnie QuickBooks (realm) qui a émis le numéro. Absent = saisie
      *  manuelle, devinée au format du numéro (« GI-… » = nouvelle). */
     qbInvoiceRealm?: string;
+    /** Combien de mois chaque service vient d'être facturé, quand la facture
+     *  le sait (un mensuel sur une facture annuelle : 12). Sinon le cycle. */
+    moisParService?: Record<string, number>;
   },
 ): Promise<{ count: number }> {
   const session = await auth();
@@ -1028,7 +1031,7 @@ export async function markServicesBilled(
   if (services.length === 0) throw new Error("Aucun service facturable dans la sélection.");
 
   for (const s of services) {
-    const months = s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1;
+    const months = input.moisParService?.[s.id] ?? (s.monthlyBilling ? 1 : CYCLE_MONTHS[s.product.billingCycle] ?? 1);
     const newRenewal = advanceMonths(s.renewalDate, months, s.client.urgencyDays);
     await prisma.$transaction([
       prisma.clientService.update({

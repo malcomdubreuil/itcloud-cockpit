@@ -113,6 +113,10 @@ export type Reconstruction =
       apercu: LigneApercu[];
       avertissements: string[];
       total: number;
+      /** Combien de mois chaque service vient d'être facturé — c'est de ça
+       *  que son échéance doit avancer (un mensuel sur une facture annuelle :
+       *  12). */
+      moisParService: Record<string, number>;
     }
   | { ok: false; manques: string[] };
 
@@ -240,6 +244,7 @@ export function reconstruire(args: {
   const lines: Record<string, unknown>[] = [];
   const apercu: LigneApercu[] = [];
   const avertissements: string[] = [];
+  const moisParService: Record<string, number> = {};
   let total = 0;
 
   // Les courriels de la source, produit par produit, servis dans l'ordre.
@@ -251,7 +256,12 @@ export function reconstruire(args: {
   for (const bloc of blocs.values()) {
     const premier = bloc[0];
     const article = c.articleParProduit.get(premier.productId)!;
-    const uniteBloc = uniteDuService(premier);
+    // Un produit MENSUEL sur une facture ANNUELLE (SpamExperts avec
+    // l'hébergement de camirandphoto.com, GI-2026-027) se facture pour l'année
+    // : 12 × son prix mensuel, engagement d'un an, échéance + 12 mois. Sur une
+    // facture mensuelle, 1 × et + 1 mois.
+    const mensuelSurAnnuelle = premier.billingCycle === "MENSUEL" && unite === "year";
+    const uniteBloc: Unite = mensuelSurAnnuelle ? "year" : uniteDuService(premier);
 
     // Quantité et prix de LA ligne. Le prix vient du client (paliers),
     // l'article ne sert que de référence.
@@ -266,8 +276,12 @@ export function reconstruire(args: {
     else if (annuel && premier.factureAuMois) {
       qte = 12;
       prixLigne = arrondi(premier.unitPrice / 12);
+    } else if (mensuelSurAnnuelle) {
+      qte = 12;
     }
     const montant = arrondi(prixLigne * qte);
+    const moisFactures = uniteBloc === "year" ? 12 : 1;
+    for (const s of bloc) moisParService[s.id] = moisFactures;
 
     // Dans la nouvelle compagnie, la fiche article d'une licence porte le
     // tarif MENSUEL (31,80 $ pour un Business Premium) alors que l'ERP garde
@@ -414,7 +428,7 @@ export function reconstruire(args: {
   if (c.taxCode) payload.TxnTaxDetail = { TxnTaxCodeRef: { value: c.taxCode.id } };
   if (source.memo !== undefined) payload.CustomerMemo = { value: bumpDates(source.memo, unite) };
 
-  return { ok: true, payload, apercu, avertissements, total: arrondi(total) };
+  return { ok: true, payload, apercu, avertissements, total: arrondi(total), moisParService };
 }
 
 /** Repère, dans les lignes de texte d'une facture source, celle de la période
