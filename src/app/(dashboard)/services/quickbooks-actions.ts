@@ -25,6 +25,7 @@ import {
   type Unite,
 } from "@/infrastructure/quickbooks/reconstruire";
 import { candidatsAvecAlias, candidatsParNom, feuille } from "@/lib/rapprochement-qbo";
+import { sansEngagement } from "@/lib/engagement";
 
 // Automatisation QuickBooks de la refacturation.
 // Depuis l'incorporation (octobre 2026), l'ERP ne duplique plus la dernière
@@ -432,8 +433,9 @@ async function chargerGroupe(
     // fiche article de la nouvelle compagnie est au mois) ; côté hébergement,
     // seuls les produits marqués le sont, les autres sont tarifés à l'année.
     factureAuMois: x.product.factureAuMois || x.product.division === "ITCLOUD",
-    // Pas de ligne « Engagement » sous l'hébergement : le domaine y suffit.
-    sansEngagement: x.product.division === "HEBERGEMENT",
+    // Pas de ligne « Engagement » sous l'hébergement, ni sous les antivirus
+    // et sauvegardes en ligne — voir lib/engagement.
+    sansEngagement: sansEngagement(x.product.name, x.product.division),
     commitmentEndDate: x.commitmentEndDate,
     renewalDate: x.renewalDate,
     domaine: x.domain?.name ?? null,
