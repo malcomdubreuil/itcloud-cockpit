@@ -589,7 +589,7 @@ export async function markServiceBilled(
     where: { id: serviceId },
     select: {
       id: true, tenantId: true, clientId: true, renewalDate: true,
-      lastQbInvoiceNo: true, monthlyBilling: true, billingMode: true,
+      lastQbInvoiceNo: true, monthlyBilling: true, billingMode: true, notes: true,
       product: { select: { billingCycle: true } },
       client: { select: { urgencyDays: true } },
     },
@@ -605,7 +605,7 @@ export async function markServiceBilled(
   await prisma.$transaction([
     prisma.clientService.update({
       where: { id: s.id },
-      data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF", quantityManual: false },
+      data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF", quantityManual: false, notes: noteApresFacture(s.notes) },
     }),
     prisma.serviceChange.create({
       data: {
@@ -650,6 +650,12 @@ function toleranceJours(months: number, alerteJours = 30): number {
 }
 
 const JOUR = 86_400_000;
+
+// La note posée sur un service ajouté à la main, pour qu'il saute aux yeux
+// jusqu'à sa première facture ; la facturation l'efface (Keven, 2026-10-20).
+const NOTE_PROCHAINE_FACTURE = "Ajouter dans la prochaine facture";
+/** La note à écrire après facturation : effacée si c'était celle-là, intacte sinon. */
+const noteApresFacture = (notes: string | null) => (notes?.trim() === NOTE_PROCHAINE_FACTURE ? null : undefined);
 
 /** Échéance après facturation — avec le garde-fou qui manquait.
  *
@@ -763,7 +769,7 @@ export async function addServiceToClient(
   // Un service qui vient d'être ajouté n'est pas encore sur une facture. La
   // note le rappelle, et la carte la met en évidence — c'est déjà la convention
   // de l'ERP : « note remplie = à traiter à la prochaine facture ».
-  const notes = input.notes?.trim() || "Ajouter dans la prochaine facture";
+  const notes = input.notes?.trim() || NOTE_PROCHAINE_FACTURE;
   const serverName = input.serverName?.trim() || null;
 
   // Le domaine va dans sa table, pas dans la note.
@@ -1023,7 +1029,7 @@ export async function markServicesBilled(
       ...serviceDivisionFilter(division),
     },
     select: {
-      id: true, renewalDate: true, lastQbInvoiceNo: true, monthlyBilling: true,
+      id: true, renewalDate: true, lastQbInvoiceNo: true, monthlyBilling: true, notes: true,
       product: { select: { billingCycle: true } },
       client: { select: { urgencyDays: true } },
     },
@@ -1037,7 +1043,7 @@ export async function markServicesBilled(
       prisma.clientService.update({
         where: { id: s.id },
         data: {
-          renewalDate: newRenewal, lastQbInvoiceNo: qb, lastQbInvoiceRealm: realm,
+          renewalDate: newRenewal, lastQbInvoiceNo: qb, lastQbInvoiceRealm: realm, notes: noteApresFacture(s.notes),
           status: "ACTIF", quantityManual: false,
         },
       }),
@@ -1122,7 +1128,7 @@ export async function markDomainBilled(
     await prisma.$transaction([
       prisma.clientService.update({
         where: { id: s.id },
-        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF", quantityManual: false },
+        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF", quantityManual: false, notes: noteApresFacture(s.notes) },
       }),
       prisma.serviceChange.create({
         data: {
@@ -1185,6 +1191,7 @@ export async function markClientBilled(
       renewalDate: true,
       lastQbInvoiceNo: true,
       monthlyBilling: true,
+      notes: true,
       product: { select: { billingCycle: true } },
       client: { select: { urgencyDays: true } },
     },
@@ -1201,7 +1208,7 @@ export async function markClientBilled(
     await prisma.$transaction([
       prisma.clientService.update({
         where: { id: s.id },
-        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF", quantityManual: false },
+        data: { renewalDate: newRenewal, lastQbInvoiceNo: qb, status: "ACTIF", quantityManual: false, notes: noteApresFacture(s.notes) },
       }),
       prisma.serviceChange.create({
         data: {
