@@ -681,8 +681,14 @@ function advanceMonths(base: Date | null, months: number, alerteJours = 30): Dat
   const aujourdhui = new Date();
   const d = base ? new Date(base) : new Date();
 
-  const joursAvant = (d.getTime() - aujourdhui.getTime()) / JOUR;
-  const du = joursAvant <= toleranceJours(months, alerteJours);
+  // Le service est dû tant que son échéance tombe AVANT un cycle complet à
+  // partir d'aujourd'hui : la période en cours n'a pas encore été renouvelée.
+  // Au-delà d'un cycle, il vient d'être facturé — re-facturer ne bouge rien.
+  // (On jugeait avant sur une tolérance de 35 jours : un DDNS facturé 37 jours
+  // d'avance gardait son ancienne échéance — Paradis de Marie, 2026-10-20.)
+  const unCycle = new Date(aujourdhui);
+  unCycle.setMonth(unCycle.getMonth() + months);
+  const du = d < unCycle;
 
   if (du) {
     d.setMonth(d.getMonth() + months);
