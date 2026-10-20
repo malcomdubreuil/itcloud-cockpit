@@ -156,16 +156,25 @@ export function uniteDuService(s: Pick<ServiceAFacturer, "billingCycle" | "month
   return s.monthlyBilling || s.billingCycle === "MENSUEL" ? "month" : "year";
 }
 
-/** « Engagement AAAA-MM-JJ→AAAA-MM-JJ » : la nouvelle période commence le
- *  lendemain de l'ancienne fin et dure un cycle. Même format que les factures
- *  existantes, pour que rien ne change à l'œil du client. */
-export function texteEngagement(finPrecedente: Date, unite: Unite): string {
-  // Tout en UTC, parce que l'affichage (toISOString) l'est aussi : mélanger
-  // les deux décale d'un jour dès que le serveur n'est pas en UTC — et il
-  // est en heure de l'Est, où minuit UTC s'appelle 19 h la veille.
-  const debut = new Date(finPrecedente);
-  debut.setUTCDate(debut.getUTCDate() + 1);
-  return texteEngagementDepuis(debut, unite);
+/** « Engagement AAAA-MM-JJ→AAAA-MM-JJ » : la période qui SE TERMINE à la
+ *  date d'engagement d'ITCloud. ITCloud donne la fin de l'engagement en
+ *  cours — celui qu'on facture — et c'est cette date-là que Keven veut lire :
+ *  2026→2027, pas 2027→2028 (on partait du lendemain, et ça décalait tout
+ *  d'un an ; corrigé le 2026-10-20). Même format que les factures existantes.
+ *  Tout en UTC, parce que l'affichage (toISOString) l'est aussi. */
+export function texteEngagement(fin: Date, unite: Unite): string {
+  const lendemain = new Date(fin);
+  lendemain.setUTCDate(lendemain.getUTCDate() + 1);
+  const debut = moinsUnCycle(lendemain, unite);
+  return `Engagement ${isoDate(debut)}→${isoDate(fin)}`;
+}
+
+/** Le même jour un cycle plus tôt, borné au dernier jour du mois d'arrivée. */
+function moinsUnCycle(d: Date, unite: Unite): Date {
+  const annee = d.getUTCFullYear() - (unite === "year" ? 1 : 0);
+  const mois = d.getUTCMonth() - (unite === "month" ? 1 : 0);
+  const dernierJour = new Date(Date.UTC(annee, mois + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(annee, mois, Math.min(d.getUTCDate(), dernierJour)));
 }
 
 /** Le même texte, à partir du PREMIER jour de la nouvelle période. */

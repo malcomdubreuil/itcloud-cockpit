@@ -65,7 +65,7 @@ const source = {
     verifie("1. chacune à quantité 1", articles.every((l) => l.SalesItemLineDetail?.Qty === 1));
     verifie("1. la description est le nom du produit", articles.every((l) => l.Description === "M365 Business Std P1Y-A"), articles[0]);
     verifie("1. une seule ligne d'engagement", engagements.length === 1, engagements);
-    verifie("1. engagement = lendemain de la fin, un an", engagements[0]?.Description === "Engagement 2026-11-01→2027-10-31", engagements[0]);
+    verifie("1. engagement = l'année qui se termine à la date d'ITCloud", engagements[0]?.Description === "Engagement 2025-11-01→2026-10-31", engagements[0]);
     verifie("1. l'engagement suit les trois lignes", lignes.findIndex((l) => /^Engagement/.test(l.Description ?? "")) === 3);
     verifie("1. total 3 × 252", r.total === 756, r.total);
     verifie("1. aucun écart de prix", r.avertissements.length === 0, r.avertissements);
@@ -85,7 +85,7 @@ const source = {
   if (r.ok) {
     const eng = (r.payload.Line as { Description?: string }[]).filter((l) => /^Engagement/.test(l.Description ?? ""));
     verifie("2. deux lignes d'engagement", eng.length === 2, eng);
-    verifie("2. la seconde part du 1er mars", eng[1]?.Description === "Engagement 2027-03-01→2028-02-29", eng[1]);
+    verifie("2. la seconde se termine le 28 février", eng[1]?.Description === "Engagement 2026-03-01→2027-02-28", eng[1]);
   }
 }
 
@@ -131,7 +131,7 @@ const source = {
   if (r.ok) {
     const lignes = r.payload.Line as { Description?: string }[];
     verifie("4. période +1 mois", lignes.some((l) => l.Description === "Facturation du 01-11-2026 au 30-11-2026"), lignes);
-    verifie("4. engagement d'un mois", lignes.some((l) => l.Description === "Engagement 2026-11-01→2026-11-30"), lignes);
+    verifie("4. engagement d'un mois, jusqu'à la date d'ITCloud", lignes.some((l) => l.Description === "Engagement 2026-10-01→2026-10-31"), lignes);
   }
 }
 
@@ -163,7 +163,8 @@ const source = {
 }
 
 // ── 7. Le texte d'engagement sur une fin d'année.
-verifie("7. engagement après le 31 déc.", texteEngagement(new Date("2026-12-31T00:00:00Z"), "year") === "Engagement 2027-01-01→2027-12-31");
+verifie("7. engagement qui se termine le 31 déc.", texteEngagement(new Date("2026-12-31T00:00:00Z"), "year") === "Engagement 2026-01-01→2026-12-31");
+verifie("7. fin le 29 février", texteEngagement(new Date("2028-02-29T00:00:00Z"), "year") === "Engagement 2027-03-01→2028-02-29");
 
 // ── 8. Cas réel (Brandon Girard, 2026-1118) : source au prorata, pas de date
 //      d'engagement ITCloud, échéance commune → période et engagement partent
