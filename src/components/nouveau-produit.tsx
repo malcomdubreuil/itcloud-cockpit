@@ -7,11 +7,9 @@ import { Button } from "@/components/ui/button";
 import { creerProduitMaison } from "@/app/(dashboard)/produits/actions";
 import { cn } from "@/lib/utils";
 
-// Créer un produit MAISON (hébergement, domaines, SSL…).
-//
-// Absent de la division ITCloud volontairement : là-bas le catalogue vient de
-// la synchronisation, et un produit ajouté à la main se ferait doubler ou
-// écraser au prochain rapport.
+// Créer un produit MAISON (hébergement, domaines, SSL… et, depuis le
+// 2026-11-02, côté ITCloud aussi : un service que le rapport ITCloud ne porte
+// pas). Le produit est marqué « maison », la synchronisation ne le touche pas.
 
 const champ =
   "h-8 rounded-md border border-input bg-transparent px-2 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none";

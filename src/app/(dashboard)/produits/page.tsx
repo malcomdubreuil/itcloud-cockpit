@@ -137,7 +137,7 @@ export default async function ProduitsPage({
         {/* Pas de creation a la main cote ITCloud : le catalogue y vient de la
             synchronisation, et un produit ajoute ici se ferait doubler ou
             ecraser au prochain rapport. */}
-        {division !== "ITCLOUD" && <NouveauProduit division={division} />}
+        <NouveauProduit division={division} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

@@ -362,11 +362,9 @@ export async function creerProduitMaison(formData: FormData): Promise<void> {
   if (!["MENSUEL", "TRIMESTRIEL", "ANNUEL"].includes(cycle)) {
     throw new Error("Cycle de facturation invalide.");
   }
-  if (division === "ITCLOUD") {
-    throw new Error(
-      "Le catalogue ITCloud vient de la synchronisation : un produit créé à la main y serait écrasé.",
-    );
-  }
+  // Côté ITCloud aussi, depuis le 2026-11-02 : un produit maison y est marqué
+  // itcloudManaged = false, la synchronisation l'ignore donc complètement —
+  // ni doublon ni écrasement au prochain rapport.
   if ([pdsf, cout, prix].some((n) => Number.isNaN(n))) {
     throw new Error("Montant invalide.");
   }
