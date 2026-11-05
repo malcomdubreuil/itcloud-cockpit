@@ -40,7 +40,7 @@ export default async function CommissionsPage() {
       orderBy: [{ active: "desc" }, { libelle: "asc" }],
       select: {
         id: true, beneficiaire: true, libelle: true, montant: true, periodeMois: true, dateDebut: true, active: true,
-        task: { select: { title: true } },
+        task: { select: { title: true, periodDays: true } },
         _count: { select: { dues: { where: { paiementId: null } } } },
       },
     }),
@@ -68,6 +68,17 @@ export default async function CommissionsPage() {
   }));
   const total = lignes.reduce((t, l) => t + l.montant, 0);
   const plusAncienne = dues[0]?.dateDue ?? null;
+  // Ce que les règles ACTIVES rapportent, ramené au mois : montant / période.
+  // Une règle « à chaque facturation » suit la période de sa tâche (30 jours
+  // = un mois). Keven, 2026-11-04.
+  const parMois = regles
+    .filter((r) => r.active)
+    .reduce((t, r) => {
+      const montant = Number(r.montant);
+      if (r.periodeMois > 0) return t + montant / r.periodeMois;
+      const jours = r.task?.periodDays ?? 30;
+      return t + (montant * 30) / jours;
+    }, 0);
   const beneficiaires = [...new Set(regles.map((r) => r.beneficiaire))];
   const titre = beneficiaires.length === 1 ? beneficiaires[0] : "Commissions";
 
@@ -96,7 +107,19 @@ export default async function CommissionsPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Par mois</CardDescription>
+            <CardTitle className="text-3xl tabular-nums">{cad.format(parMois)}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Par année</CardDescription>
+            <CardTitle className="text-3xl tabular-nums">{cad.format(parMois * 12)}</CardTitle>
+          </CardHeader>
+        </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Dû</CardDescription>
