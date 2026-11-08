@@ -21,6 +21,7 @@ export const authConfig = {
         pathname === "/login" ||
         pathname.startsWith("/api/auth") ||
         pathname.startsWith("/api/cron") || // protégé par CRON_SECRET, pas par session
+        pathname.startsWith("/api/n8n") || // protégé par x-api-key (N8N_API_KEY), pas par session
         // Liste de diffusion : le désabonnement DOIT fonctionner sans compte
         // (obligation LCAP) et le formulaire du site web poste sans session.
         // Le jeton du lien fait office d identification.

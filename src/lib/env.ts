@@ -38,6 +38,10 @@ const envSchema = z.object({
   // Secret des endpoints /api/cron/* (Bearer)
   CRON_SECRET: z.string().min(32, "CRON_SECRET : 32 caractères minimum"),
 
+  // Clé de l'API privée pour n8n (/api/n8n/*, en-tête x-api-key). Optionnelle :
+  // absente, ces routes répondent 401 à tout le monde.
+  N8N_API_KEY: z.string().min(32, "N8N_API_KEY : 32 caractères minimum").optional(),
+
   // Intégration ITCloud (auth par signature RSA) — optionnel tant que la
   // synchronisation (phase 1) n'est pas configurée sur l'environnement.
   ITCLOUD_INTEGRATION_ID: z.string().uuid().optional(),
