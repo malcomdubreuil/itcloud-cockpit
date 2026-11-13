@@ -24,7 +24,7 @@ import {
   type ServiceAFacturer,
   type Unite,
 } from "@/infrastructure/quickbooks/reconstruire";
-import { candidatsAvecAlias, candidatsParNom, feuille } from "@/lib/rapprochement-qbo";
+import { candidatsAvecAlias, candidatsParNom, feuille, normaliser } from "@/lib/rapprochement-qbo";
 import { sansEngagement } from "@/lib/engagement";
 
 // Automatisation QuickBooks de la refacturation.
@@ -371,7 +371,7 @@ async function chargerGroupe(
     type L = { DetailType?: string; Amount?: number; Description?: string; SalesItemLineDetail?: { ItemRef?: { name?: string }; UnitPrice?: number; Qty?: number } };
     const lignes = (src?.Line ?? []) as L[];
     let precedent: string | null = null;
-    const entrees: { nom: string; taux: number; texteProduit: string }[] = [];
+    const entrees: { nom: string; description: string; taux: number; montant: number; texteProduit: string }[] = [];
     for (const l of lignes) {
       if (l.DetailType !== "SalesItemLineDetail") continue;
       const nom = (l.SalesItemLineDetail?.ItemRef?.name ?? "").split(":").pop() ?? "";
@@ -384,30 +384,49 @@ async function chargerGroupe(
             : negatif && l.SalesItemLineDetail?.Qty
               ? (l.Amount as number) / l.SalesItemLineDetail.Qty
               : 0;
-        const libelle = nom || (l.Description ?? "").trim();
-        if (precedent && libelle && taux < 0) entrees.push({ nom: libelle, taux, texteProduit: precedent });
+        const description = (l.Description ?? "").trim();
+        if (precedent && (nom || description) && taux < 0) {
+          entrees.push({ nom, description, taux, montant: Math.abs(l.Amount ?? 0), texteProduit: precedent });
+        }
         continue;
       }
       precedent = (l.Description ?? "").trim() || nom;
     }
-    if (!entrees.length) return { valeur: undefined, manques: [] as string[] };
+    if (!entrees.length) return { valeur: undefined, manques: [] as string[], global: undefined };
     const manques: string[] = [];
     const valeur: { article: Ref; taux: number; texteProduit: string }[] = [];
+    // Ce qui ne trouve pas d'article devient une remise globale du même
+    // montant plutôt qu'un refus.
+    let montantGlobal = 0;
+    let libelleGlobal = "";
+    const catalogue = items.map((i) => ({ id: i.Id, nom: feuille(i.FullyQualifiedName ?? i.Name) }));
+    const chercher = (nom: string) =>
+      nom ? candidatsAvecAlias(nom, catalogue).map((c) => items.find((i) => i.Id === c.id)!)[0] : undefined;
     for (const e of entrees) {
-      // Par le nom, sinon par alias : « RR » dans l'ancienne compagnie est
-      // « Rabais revendeur web » dans la nouvelle.
-      const cible = candidatsAvecAlias(
-        e.nom,
-        items.map((i) => ({ id: i.Id, nom: feuille(i.FullyQualifiedName ?? i.Name) })),
-      ).map((c) => items.find((i) => i.Id === c.id)!)[0];
+      // L'ancienne compagnie facturait tout par l'article générique « Ventes »
+      // avec une description tapée à la main (« Rabais fidélité… ») : ce n'est
+      // pas « Ventes » qu'on cherche dans la nouvelle, c'est la description.
+      // Par le nom, sinon par alias (« RR » = « Rabais revendeur web »),
+      // sinon par la description.
+      const generique = !e.nom || normaliser(e.nom) === "ventes";
+      const cible = (generique ? undefined : chercher(e.nom)) ?? chercher(e.description);
       if (!cible) {
-        const m = `article « ${e.nom} » introuvable dans la nouvelle compagnie (un rabais de la source)`;
-        if (!manques.includes(m)) manques.push(m);
+        if (generique) {
+          // Lefameuxshow.com, 2025-1286 : une ligne « Ventes » négative sans
+          // article équivalent. On la reconduit en remise globale du même
+          // montant — mieux qu'un refus pour un rabais d'un seul service.
+          montantGlobal += e.montant;
+          libelleGlobal = libelleGlobal || e.description || "Rabais";
+        } else {
+          const m = `article « ${e.nom} » introuvable dans la nouvelle compagnie (un rabais de la source)`;
+          if (!manques.includes(m)) manques.push(m);
+        }
         continue;
       }
       valeur.push({ article: { id: cible.Id, nom: cible.FullyQualifiedName ?? cible.Name }, taux: e.taux, texteProduit: e.texteProduit });
     }
-    return { valeur, manques };
+    const global = montantGlobal > 0 ? { libelle: libelleGlobal, montant: Math.round(montantGlobal * 100) / 100 } : undefined;
+    return { valeur: valeur.length ? valeur : undefined, manques, global };
   })();
   // « Expédier à » : on garde l'adresse, pas son Id ni ses coordonnées GPS,
   // qui appartiennent à l'ancienne compagnie.
@@ -459,7 +478,7 @@ async function chargerGroupe(
         lignesTexte,
         avaitTaxe: true,
         shipAddr,
-        rabais,
+        rabais: rabais ?? rabaisLignes.global,
         rabaisLignes: rabaisLignes.valeur,
         courriels,
       },
