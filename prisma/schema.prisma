@@ -706,6 +706,10 @@ model RecurringTask {
   // dans sa propre table (QboCustomer), synchronisee depuis QuickBooks — on ne
   // la melange pas aux fiches Client de l'ERP, qui servent a autre chose.
   qboCustomerId String?
+  // Nom de client tapé librement, quand le client n'est ni dans QuickBooks ni
+  // dans l'ERP (Keven, 2026-11-15). Le client QuickBooks, s'il y en a un,
+  // passe devant.
+  clientNom     String?
 
   tenant      Tenant       @relation(fields: [tenantId], references: [id])
   qboCustomer QboCustomer? @relation(fields: [qboCustomerId], references: [id])

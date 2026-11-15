@@ -79,6 +79,8 @@ export async function createTask(formData: FormData): Promise<void> {
   const user = await requireUser();
 
   const qboCustomerId = String(formData.get("qboCustomerId") ?? "").trim();
+  // Un nom tapé librement, quand le client n'est dans aucune liste.
+  const clientNom = String(formData.get("clientNom") ?? "").trim().slice(0, 191);
   const title = String(formData.get("title") ?? "").trim().slice(0, 191);
   const priceRaw = String(formData.get("price") ?? "").replace(",", ".").trim();
   const periodRaw = String(formData.get("periodDays") ?? "30").trim();
@@ -108,6 +110,7 @@ export async function createTask(formData: FormData): Promise<void> {
     data: {
       tenantId: user.tenantId,
       qboCustomerId: qboCustomerId || null,
+      clientNom: qboCustomerId ? null : clientNom || null,
       title,
       price: price.toFixed(4),
       periodDays,
@@ -124,7 +127,7 @@ export async function createTask(formData: FormData): Promise<void> {
     action: "task.create",
     entityType: "RecurringTask",
     entityId: created.id,
-    after: { title, price, periodDays, qboCustomerId: qboCustomerId || null },
+    after: { title, price, periodDays, qboCustomerId: qboCustomerId || null, clientNom: clientNom || null },
   });
 
   revalidatePath("/taches");

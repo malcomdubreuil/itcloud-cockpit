@@ -45,6 +45,8 @@ export type TaskCardData = {
   client: { id: string; companyName: string } | null;
   /** Client QuickBooks : la liste de reference aujourd'hui. */
   qboCustomer: { id: string; displayName: string } | null;
+  /** Nom tapé librement à la création, quand le client n'est dans aucune liste. */
+  clientNom?: string | null;
 };
 
 export function TaskCard({
@@ -56,7 +58,7 @@ export function TaskCard({
 }) {
   // Le client QuickBooks fait foi ; la fiche ERP ne sert plus que d'historique
   // pour les taches creees avant la bascule.
-  const nomClient = t.qboCustomer?.displayName ?? t.client?.companyName ?? null;
+  const nomClient = t.qboCustomer?.displayName ?? t.clientNom ?? t.client?.companyName ?? null;
   const urgency = taskUrgency(t.nextDueDate, t.periodDays, t.active);
   const days = t.nextDueDate ? daysUntil(t.nextDueDate) : null;
   const yearly = yearlyRevenue(t.price, t.periodDays);

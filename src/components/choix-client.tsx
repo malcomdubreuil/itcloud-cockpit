@@ -30,6 +30,8 @@ export function ChoixClient({
   clients,
   valeur,
   onChoisir,
+  libre = null,
+  onLibre,
   placeholder = "Chercher un client…",
   className,
   desactive = false,
@@ -38,6 +40,10 @@ export function ChoixClient({
   clients: ClientChoisissable[];
   valeur: string | null;
   onChoisir: (id: string | null) => void;
+  /** Nom tapé librement, quand le client n'est dans aucune liste. */
+  libre?: string | null;
+  /** Rend le champ « libre » : ce qui est tapé peut être gardé tel quel. */
+  onLibre?: (nom: string | null) => void;
   placeholder?: string;
   className?: string;
   desactive?: boolean;
@@ -80,15 +86,28 @@ export function ChoixClient({
 
   const prendre = (c: ClientChoisissable | null) => {
     onChoisir(c?.id ?? null);
+    onLibre?.(null);
     setRecherche("");
     setOuvert(false);
   };
+
+  // Garder le texte tel quel : un client qui n'est ni dans QuickBooks ni
+  // dans l'ERP (Keven, 2026-11-15).
+  const garderLibre = () => {
+    const nom = recherche.trim();
+    if (!nom || !onLibre) return;
+    onChoisir(null);
+    onLibre(nom);
+    setRecherche("");
+    setOuvert(false);
+  };
+  const affiche = choisi?.nom ?? libre ?? "";
 
   return (
     <div ref={boite} className={cn("relative", className)}>
       <div className="flex items-center gap-1">
         <input
-          value={ouvert ? recherche : (choisi?.nom ?? "")}
+          value={ouvert ? recherche : affiche}
           onChange={(e) => {
             setRecherche(e.target.value);
             setOuvert(true);
@@ -106,13 +125,14 @@ export function ChoixClient({
               if (!ouvert) return;
               e.preventDefault();
               if (visibles[actif]) prendre(visibles[actif]);
+              else garderLibre();
             } else if (e.key === "Escape") {
               setRecherche("");
               setOuvert(false);
             }
           }}
           disabled={desactive}
-          placeholder={choisi ? choisi.nom : placeholder}
+          placeholder={affiche || placeholder}
           aria-label="Client"
           aria-expanded={ouvert}
           role="combobox"
@@ -120,7 +140,7 @@ export function ChoixClient({
           autoComplete="off"
           className="h-8 w-full min-w-0 rounded-md border border-input bg-transparent px-2 pr-6 text-sm focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
         />
-        {choisi && !ouvert ? (
+        {(choisi || libre) && !ouvert ? (
           <button
             type="button"
             aria-label="Retirer le client"
@@ -159,9 +179,24 @@ export function ChoixClient({
             Sans client
           </button>
 
+          {onLibre && recherche.trim() && !visibles.some((c) => pliage(c.nom) === pliage(recherche.trim())) && (
+            <button
+              type="button"
+              role="option"
+              aria-selected={false}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                garderLibre();
+              }}
+              className="flex w-full items-center gap-2 border-b px-2 py-1.5 text-left text-sm hover:bg-muted"
+            >
+              Utiliser « {recherche.trim()} » tel quel (client hors liste)
+            </button>
+          )}
+
           {visibles.length === 0 ? (
             <p className="px-2 py-3 text-center text-sm text-muted-foreground">
-              Aucun client ne correspond.
+              {onLibre ? "Aucun client ne correspond — Entrée pour garder ce nom." : "Aucun client ne correspond."}
             </p>
           ) : (
             visibles.map((c, i) => (

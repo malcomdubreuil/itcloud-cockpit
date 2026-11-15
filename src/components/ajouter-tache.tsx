@@ -34,6 +34,7 @@ const isoInDays = (days: number) => {
 export function AjouterTache({ clients }: { clients: ClientQbo[] }) {
   const [ouvert, setOuvert] = useState(false);
   const [qboCustomerId, setQboCustomerId] = useState("");
+  const [clientNom, setClientNom] = useState("");
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
   const [periodDays, setPeriodDays] = useState(30);
@@ -58,6 +59,7 @@ export function AjouterTache({ clients }: { clients: ClientQbo[] }) {
 
     const fd = new FormData();
     fd.set("qboCustomerId", qboCustomerId);
+    fd.set("clientNom", clientNom);
     fd.set("title", title.trim());
     fd.set("price", String(lu.montant));
     fd.set("periodDays", String(periodDays));
@@ -70,6 +72,7 @@ export function AjouterTache({ clients }: { clients: ClientQbo[] }) {
         await createTask(fd);
         toast.success(`« ${title.trim()} » ajoutée.`);
         setOuvert(false);
+        setClientNom("");
         setTitle("");
         setPrice("");
         setFacture("");
@@ -97,6 +100,8 @@ export function AjouterTache({ clients }: { clients: ClientQbo[] }) {
           clients={clients}
           valeur={qboCustomerId || null}
           onChoisir={(id) => setQboCustomerId(id ?? "")}
+          libre={clientNom || null}
+          onLibre={(nom) => setClientNom(nom ?? "")}
           desactive={pending}
           className="min-w-0 flex-1 basis-56"
         />

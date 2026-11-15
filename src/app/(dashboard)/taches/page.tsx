@@ -47,6 +47,7 @@ export default async function TachesPage({
         { notes: { contains: m } },
         { client: { companyName: { contains: m } } },
         { qboCustomer: { displayName: { contains: m } } },
+        { clientNom: { contains: m } },
       ],
     })),
   };
@@ -61,6 +62,7 @@ export default async function TachesPage({
         lastQbInvoiceNo: true, lastQbInvoiceRealm: true, notes: true, active: true,
         client: { select: { id: true, companyName: true } },
         qboCustomer: { select: { id: true, displayName: true } },
+        clientNom: true,
       },
     }),
     // La liste de reference vient de QuickBooks, pas des fiches Client de
@@ -87,6 +89,7 @@ export default async function TachesPage({
     active: t.active,
     client: t.client,
     qboCustomer: t.qboCustomer,
+    clientNom: t.clientNom,
   }));
 
   // Totaux : seules les tâches actives comptent comme revenu récurrent.
