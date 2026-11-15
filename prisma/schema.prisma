@@ -170,6 +170,11 @@ model Client {
   // qui a plusieurs sites laisse ce champ vide — ses domaines vivent alors sur
   // ses services, là où ils se facturent séparément.
   mainDomainId  String?
+  // « Facturé via » : le revendeur (Pclogic, Acxzon…) qui reçoit les factures
+  // de ce client. Depuis le 2026-11-15, chaque client final a sa propre fiche ;
+  // le revendeur n'est plus qu'un menu en haut de la fiche. NULL = facturé
+  // directement.
+  resellerId    String?
   anniversary   DateTime?
   deletedAt     DateTime?
 
@@ -177,6 +182,8 @@ model Client {
 
   services         ClientService[]
   mainDomain       Domain?            @relation(fields: [mainDomainId], references: [id])
+  reseller         Client?            @relation("Revendeur", fields: [resellerId], references: [id], onDelete: SetNull)
+  clientsRevendus  Client[]           @relation("Revendeur")
   recurringTasks   RecurringTask[]
   mailingContacts  MailingContact[]
   invoices         Invoice[]

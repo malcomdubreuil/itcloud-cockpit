@@ -61,6 +61,7 @@ export default async function DomainePage({
             select: {
               id: true, companyName: true, urgencyDays: true,
               isReseller: true, internal: true,
+              reseller: { select: { id: true, companyName: true } },
             },
           },
           product: { select: { name: true, billingCycle: true, msrp: true } },
@@ -75,7 +76,9 @@ export default async function DomainePage({
   const payeurs = [
     ...new Map(domaine.services.map((s) => [s.client.id, s.client])).values(),
   ];
-  const revendeur = payeurs.find((c) => c.isReseller);
+  // Le revendeur : celui du client final (« facturé via »), ou le payeur
+  // lui-même s'il est encore un revendeur portant des services.
+  const revendeur = payeurs.find((c) => c.isReseller) ?? payeurs.find((c) => c.reseller)?.reseller ?? undefined;
   // Une facture commune à tout le site : c'est le repère de refacturation.
   // Chaque numéro est suivi de la compagnie qui l'a émis : depuis
   // l'incorporation, « 2026-0012 » existe potentiellement dans les deux.

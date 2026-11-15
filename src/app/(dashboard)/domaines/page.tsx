@@ -64,7 +64,7 @@ export default async function DomainesPage({
             id: true,
             status: true,
             renewalDate: true,
-            client: { select: { id: true, companyName: true, isReseller: true } },
+            client: { select: { id: true, companyName: true, isReseller: true, reseller: { select: { companyName: true } } } },
           },
         },
       },
@@ -155,10 +155,11 @@ export default async function DomainesPage({
                     <span
                       key={c.id}
                       className="text-xs text-muted-foreground"
-                      title={c.isReseller ? "Revendeur — c'est lui qu'on facture" : undefined}
+                      title={c.isReseller ? "Revendeur — c'est lui qu'on facture" : c.reseller ? `Facturé via ${c.reseller.companyName}` : undefined}
                     >
                       {c.isReseller ? "via " : ""}
                       {c.companyName}
+                      {c.reseller ? ` · via ${c.reseller.companyName}` : ""}
                     </span>
                   ))}
                   {proche && (

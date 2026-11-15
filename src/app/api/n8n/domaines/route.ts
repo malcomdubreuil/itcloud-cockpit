@@ -39,7 +39,7 @@ export async function GET(req: Request) {
         select: {
           status: true,
           renewalDate: true,
-          client: { select: { id: true, companyName: true, isReseller: true } },
+          client: { select: { id: true, companyName: true, isReseller: true, reseller: { select: { companyName: true } } } },
         },
       },
     },
@@ -54,13 +54,14 @@ export async function GET(req: Request) {
         .filter((x): x is Date => !!x)
         .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
       const payeurs = [...new Map(d.services.map((s) => [s.client.id, s.client])).values()];
-      const revendeur = payeurs.find((c) => c.isReseller) ?? null;
       const direct = payeurs.find((c) => !c.isReseller) ?? null;
+      // Le revendeur : celui du client final (« facturé via »), ou le payeur
+      // lui-même s'il est encore un revendeur portant des services.
+      const revendeur = direct?.reseller?.companyName ?? payeurs.find((c) => c.isReseller)?.companyName ?? null;
       return {
         domaine: normaliserDomaineApi(d.name),
-        // Chez un revendeur, le vrai client est celui de la fiche du domaine.
         client: direct?.companyName ?? d.endClientName ?? null,
-        revendeur: revendeur?.companyName ?? null,
+        revendeur,
         services: actifs.length,
         echeance: isoJour(proche),
         actif: actifs.length > 0,

@@ -219,7 +219,7 @@ async function chargerGroupe(
       monthlyBilling: true, commitmentEndDate: true, renewalDate: true, lastQbInvoiceNo: true, lastQbInvoiceRealm: true,
       product: { select: { name: true, billingCycle: true, factureAuMois: true, division: true } },
       domain: { select: { name: true } },
-      client: { select: { companyName: true } },
+      client: { select: { companyName: true, reseller: { select: { companyName: true } } } },
     },
   });
   if (services.length === 0) throw new Error("Aucun service facturable dans la sélection.");
@@ -308,7 +308,9 @@ async function chargerGroupe(
     client = corr("CUSTOMER", custId);
   }
   if (!client) {
-    const nom = services[0].client.companyName;
+    // Un client « facturé via » un revendeur : c'est le revendeur qu'on
+    // cherche dans QuickBooks — c'est lui qui reçoit la facture.
+    const nom = services[0].client.reseller?.companyName ?? services[0].client.companyName;
     const cands = candidatsParNom(
       nom,
       (await prisma.qboCustomer.findMany({

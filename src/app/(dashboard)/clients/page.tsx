@@ -134,6 +134,7 @@ export default async function ClientsPage({
       select: {
         id: true, companyName: true, contactName: true, clientCode: true,
         email: true, phone: true, status: true, urgencyDays: true, isReseller: true,
+        reseller: { select: { companyName: true } },
         // Agrégats de facturation : indirect seulement (Direct = ITCloud facture)
         services: {
           where: { deletedAt: null, status: "ACTIF", billingMode: "INDIRECT", ...inDivision },
@@ -310,6 +311,9 @@ export default async function ClientsPage({
                     )}
                     {division !== "ITCLOUD" && c.isReseller && (
                       <Badge variant="outline">Revendeur</Badge>
+                    )}
+                    {c.reseller && (
+                      <Badge variant="outline" title="Facturé via ce revendeur">via {c.reseller.companyName}</Badge>
                     )}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">

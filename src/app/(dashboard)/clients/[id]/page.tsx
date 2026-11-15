@@ -9,6 +9,7 @@ import { domainePrincipal } from "@/lib/domaine";
 import { CYCLE_MONTHS, ServiceCard } from "@/components/service-card";
 import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { ResellerToggle } from "@/components/reseller-toggle";
+import { ResellerSelect } from "@/components/reseller-select";
 import { InternalToggle } from "@/components/internal-toggle";
 import { FacturerGroupe } from "@/components/facturer-groupe";
 import { AjouterService } from "@/components/ajouter-service";
@@ -23,12 +24,7 @@ import {
   updateClientPhone,
 } from "@/app/(dashboard)/clients/actions";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const cad = new Intl.NumberFormat("fr-CA", {
   style: "currency",
@@ -64,6 +60,7 @@ export default async function ClientPage({ params }: Props) {
       id: true, tenantId: true, companyName: true, contactName: true,
       clientCode: true, email: true, phone: true, status: true,
       urgencyDays: true, isReseller: true, internal: true,
+      resellerId: true, reseller: { select: { id: true, companyName: true } },
       mainDomain: { select: { id: true, name: true } },
       services: {
         // Fiche cloisonnee : cote Hebergement on ne voit que les domaines et
@@ -84,6 +81,25 @@ export default async function ClientPage({ params }: Props) {
   });
   if (!client || client.tenantId !== session.user.tenantId) notFound();
   const nomCompagnie = await nommeurDeCompagnie(session.user.tenantId);
+  // Les revendeurs, pour le menu « Facturé via » ; et, sur la fiche d'un
+  // revendeur, la liste de ses clients — c'est ce qu'il a d'intéressant.
+  const [revendeurs, clientsRevendus] = await Promise.all([
+    prisma.client.findMany({
+      where: { tenantId: session.user.tenantId, isReseller: true, deletedAt: null, id: { not: id } },
+      orderBy: { companyName: "asc" },
+      select: { id: true, companyName: true },
+    }),
+    client.isReseller
+      ? prisma.client.findMany({
+          where: { tenantId: session.user.tenantId, resellerId: id, deletedAt: null },
+          orderBy: { companyName: "asc" },
+          select: {
+            id: true, companyName: true, status: true,
+            services: { where: { deletedAt: null, status: "ACTIF" }, select: { renewalDate: true, unitPrice: true, quantity: true, product: { select: { billingCycle: true } } } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
   const suffixeCompagnie = (realm: string | null | undefined) => {
     const nom = nomCompagnie(realm);
     return nom ? ` · ${nom}` : "";
@@ -193,6 +209,13 @@ export default async function ClientPage({ params }: Props) {
             <ResellerToggle clientId={client.id} isReseller={client.isReseller} />
           )}
           <InternalToggle clientId={client.id} internal={client.internal} />
+          {division !== "ITCLOUD" && !client.isReseller && (
+            <ResellerSelect
+              clientId={client.id}
+              valeur={client.resellerId}
+              revendeurs={revendeurs.map((r) => ({ id: r.id, nom: r.companyName }))}
+            />
+          )}
         </div>
         {/* Le domaine principal : LE site du client, à part de sa raison
             sociale. Vide chez un revendeur — ses 152 sites appartiennent à
@@ -306,6 +329,35 @@ export default async function ClientPage({ params }: Props) {
           </Card>
         ))}
       </div>
+
+      {client.isReseller && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">
+            Clients facturés via {client.companyName}
+            <span className="ml-2 text-sm font-normal text-muted-foreground">{clientsRevendus.length}</span>
+          </h2>
+          {clientsRevendus.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucun client rattaché. Sur la fiche d&apos;un client, choisis « Facturé via ».</p>
+          ) : (
+            <Card className="py-0">
+              <CardContent className="divide-y px-0">
+                {clientsRevendus.map((c) => {
+                  const proche = c.services.map((s) => s.renewalDate).filter((d): d is Date => !!d).sort((a, b) => a.getTime() - b.getTime())[0];
+                  const annuel = c.services.reduce((t, s) => t + (Number(s.unitPrice) * s.quantity) * (12 / (CYCLE_MONTHS[s.product.billingCycle] ?? 1)), 0);
+                  return (
+                    <Link key={c.id} href={`/clients/${c.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 hover:bg-muted/50">
+                      <span className="min-w-0 flex-1 basis-56 truncate font-medium">{c.companyName}</span>
+                      <span className="text-xs text-muted-foreground">{c.services.length} service{c.services.length > 1 ? "s" : ""}</span>
+                      <span className="text-xs tabular-nums text-muted-foreground">{cad.format(annuel)}/an</span>
+                      {proche && <span className="text-xs tabular-nums text-muted-foreground">{proche.toLocaleDateString("fr-CA")}</span>}
+                    </Link>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+        </section>
+      )}
 
       <AjouterService
         clientId={client.id}

@@ -132,6 +132,39 @@ export async function updateClientEmail(clientId: string, value: string) {
   return updateClientField(clientId, "email", value);
 }
 
+/** « Facturé via » : rattache le client à un revendeur, ou à personne. */
+export async function setClientResellerOf(clientId: string, resellerId: string | null): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "clients:write");
+  const tenantId = session.user.tenantId;
+
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, tenantId, deletedAt: null },
+    select: { id: true, resellerId: true, isReseller: true, reseller: { select: { companyName: true } } },
+  });
+  if (!client) throw new Error("Client introuvable");
+  if (client.isReseller && resellerId) throw new Error("Un revendeur ne se facture pas via un autre revendeur.");
+  let nom: string | null = null;
+  if (resellerId) {
+    if (resellerId === clientId) throw new Error("Un client ne peut pas être son propre revendeur.");
+    const r = await prisma.client.findFirst({ where: { id: resellerId, tenantId, isReseller: true, deletedAt: null }, select: { companyName: true } });
+    if (!r) throw new Error("Revendeur introuvable");
+    nom = r.companyName;
+  }
+  if ((client.resellerId ?? null) === resellerId) return;
+  await prisma.client.update({ where: { id: clientId }, data: { resellerId } });
+  await audit({
+    tenantId, userId: session.user.id,
+    action: "client.update_reseller", entityType: "Client", entityId: clientId,
+    before: { reseller: client.reseller?.companyName ?? null },
+    after: { reseller: nom },
+  });
+  revalidatePath("/clients");
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/domaines");
+}
+
 export async function createClient(formData: FormData): Promise<void> {
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");

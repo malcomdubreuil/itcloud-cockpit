@@ -155,9 +155,11 @@ export default async function DashboardPage() {
 
   const kpis = [
     { label: "Clients actifs", value: String(clientCount) },
-    { label: "Licences", value: String(licenses) },
-    { label: "MRR", value: cad.format(mrr) },
-    { label: "ARR", value: cad.format(mrr * 12) },
+    // Côté hébergement, ce sont des produits (domaines, hébergements, SSL),
+    // pas des licences. Et MRR/ARR en toutes lettres (Keven, 2026-11-15).
+    { label: division === "ITCLOUD" ? "Licences actives" : "Produits et services actifs", value: String(licenses) },
+    { label: "Revenu mensuel récurrent (MRR)", value: cad.format(mrr) },
+    { label: "Revenu annuel récurrent (ARR)", value: cad.format(mrr * 12) },
     ...(monthlyFixed > 0
       ? [{ label: "Coûts fixes", value: `${cad.format(monthlyFixed)}/mois` }]
       : []),
