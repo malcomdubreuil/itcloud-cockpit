@@ -165,6 +165,53 @@ export async function setClientResellerOf(clientId: string, resellerId: string |
   revalidatePath("/domaines");
 }
 
+/** Supprime un client (parti ailleurs) et ses services — suppression douce :
+ *  tout reste en base pour l'historique, rien n'apparaît plus dans l'ERP. */
+export async function deleteClient(clientId: string): Promise<void> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié");
+  assertCan(session.user, "clients:write");
+  const tenantId = session.user.tenantId;
+
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, tenantId, deletedAt: null },
+    select: {
+      id: true, companyName: true, isReseller: true,
+      services: { where: { deletedAt: null }, select: { id: true, status: true } },
+      _count: { select: { clientsRevendus: { where: { deletedAt: null } } } },
+    },
+  });
+  if (!client) throw new Error("Client introuvable");
+  if (client._count.clientsRevendus > 0) {
+    throw new Error(`${client.companyName} est le revendeur de ${client._count.clientsRevendus} client(s) : retire-les d'abord (« Facturé via »).`);
+  }
+
+  const maintenant = new Date();
+  await prisma.$transaction([
+    prisma.clientService.updateMany({ where: { clientId, deletedAt: null }, data: { deletedAt: maintenant } }),
+    ...client.services.map((s) =>
+      prisma.serviceChange.create({
+        data: {
+          tenantId, serviceId: s.id, changeType: "ANNULATION", field: "deletedAt",
+          oldValue: s.status, newValue: { suppression: "client supprimé", client: client.companyName },
+          source: "MANUEL", userId: session.user.id,
+        },
+      }),
+    ),
+    prisma.client.update({ where: { id: clientId }, data: { deletedAt: maintenant } }),
+  ]);
+  await audit({
+    tenantId, userId: session.user.id,
+    action: "client.delete", entityType: "Client", entityId: clientId,
+    before: { companyName: client.companyName, services: client.services.length },
+    after: { deletedAt: maintenant.toISOString() },
+  });
+  revalidatePath("/clients");
+  revalidatePath("/services");
+  revalidatePath("/domaines");
+  revalidatePath("/dashboard");
+}
+
 export async function createClient(formData: FormData): Promise<void> {
   const session = await auth();
   if (!session?.user) throw new Error("Non authentifié");

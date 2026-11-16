@@ -10,6 +10,7 @@ import { CYCLE_MONTHS, ServiceCard } from "@/components/service-card";
 import { UrgencyDaysToggle } from "@/components/urgency-days-toggle";
 import { ResellerToggle } from "@/components/reseller-toggle";
 import { ResellerSelect } from "@/components/reseller-select";
+import { SupprimerClient } from "@/components/supprimer-client";
 import { InternalToggle } from "@/components/internal-toggle";
 import { FacturerGroupe } from "@/components/facturer-groupe";
 import { AjouterService } from "@/components/ajouter-service";
@@ -216,6 +217,7 @@ export default async function ClientPage({ params }: Props) {
               revendeurs={revendeurs.map((r) => ({ id: r.id, nom: r.companyName }))}
             />
           )}
+          <SupprimerClient clientId={client.id} nom={principal || client.companyName} services={active.length} />
         </div>
         {/* Le domaine principal : LE site du client, à part de sa raison
             sociale. Vide chez un revendeur — ses 152 sites appartiennent à
