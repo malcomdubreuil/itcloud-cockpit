@@ -9,7 +9,8 @@ import { currentDivision, serviceDivisionFilter } from "@/lib/division";
 import { domaineDeService, domainePrincipal } from "@/lib/domaine";
 import { cleDeGroupe } from "@/lib/groupe-facturation";
 import { LigneAFacturer } from "@/components/ligne-a-facturer";
-import { ControleTaxes } from "@/components/controle-taxes";
+import { ControleTaxes, ListeTaxes } from "@/components/controle-taxes";
+import { lireInstantaneTaxes, lireTaxesIgnorees } from "@/lib/controle-taxes";
 import { nommeurDeCompagnie } from "@/infrastructure/quickbooks/store";
 import { resumeCommissions } from "@/app/(dashboard)/commissions/actions";
 import { dureeDepuis } from "@/lib/commissions";
@@ -47,6 +48,12 @@ export default async function DashboardPage() {
   if (!session?.user) redirect("/login");
   const tenantId = session.user.tenantId;
   const nomCompagnie = await nommeurDeCompagnie(tenantId);
+  // Le dernier contrôle des taxes connu : affiché tout de suite, puis
+  // remplacé par le contrôle frais dès que QuickBooks a répondu.
+  const reglages = (await prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } }))?.settings;
+  const taxesIgnorees = new Set(lireTaxesIgnorees(reglages));
+  const instantaneTaxes = lireInstantaneTaxes(reglages);
+  const taxesConnues = (instantaneTaxes?.anomalies ?? []).filter((a) => !taxesIgnorees.has(a.id));
   // Ce qui est dû à Malcom, pour ne pas l'oublier trois mois de suite.
   const commissions = await resumeCommissions(tenantId);
   // Division active (ITCloud / Hebergement) : chaque vue est cloisonnee.
@@ -191,7 +198,7 @@ export default async function DashboardPage() {
 
       {/* ── Contrôle des taxes : n'apparaît que s'il y a quelque chose à
           corriger, et ne retarde pas le reste de la page. ─────────────── */}
-      <Suspense fallback={null}>
+      <Suspense fallback={<ListeTaxes anomalies={taxesConnues} note="vérification en cours…" />}>
         <ControleTaxes tenantId={tenantId} />
       </Suspense>
 

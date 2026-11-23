@@ -2,47 +2,82 @@ import { TriangleAlert } from "lucide-react";
 import { prisma } from "@/infrastructure/db/prisma";
 import { QuickBooksClient } from "@/infrastructure/quickbooks/QuickBooksClient";
 import { qbInvoiceUrl } from "@/infrastructure/quickbooks/duplicate";
-import { anomalieDeTaxes, lireTaxesIgnorees, type AnomalieTaxes } from "@/lib/controle-taxes";
+import {
+  anomalieDeTaxes,
+  ecrireInstantaneTaxes,
+  lireInstantaneTaxes,
+  lireTaxesIgnorees,
+  type AnomalieTaxes,
+} from "@/lib/controle-taxes";
 import { IgnorerTaxes } from "@/components/ignorer-taxes";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 
 // Contrôle des taxes, sur le tableau de bord : les factures récentes de la
-// nouvelle compagnie dont les taxes ne font pas 14,975 % du sous-total. Rien
-// ne s'affiche quand tout est juste — ni quand QuickBooks ne répond pas : ce
-// contrôle ne doit jamais empêcher le tableau de bord de s'ouvrir.
+// nouvelle compagnie dont les taxes ne font pas 14,975 % du sous-total.
 //
 // Composant serveur asynchrone, rendu sous <Suspense> : l'appel à QuickBooks
-// (une seconde environ) ne retarde pas le reste de la page.
+// (une seconde environ) ne retarde pas le reste de la page. Pendant ce temps,
+// et quand QuickBooks ne répond pas, c'est le DERNIER contrôle réussi qui
+// s'affiche — une facture fautive ne disparaît de la liste que lorsqu'un
+// contrôle réussi constate qu'elle est corrigée, ou que Keven dit « C'est
+// voulu ». Avant, un simple raté de QuickBooks cachait toute la section.
 
 const cad = new Intl.NumberFormat("fr-CA", { style: "currency", currency: "CAD" });
 const JOURS = 90;
+const heure = new Intl.DateTimeFormat("fr-CA", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Toronto" });
 
 export async function ControleTaxes({ tenantId }: { tenantId: string }) {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+  const ignorees = new Set(lireTaxesIgnorees(tenant?.settings));
+  const dernier = lireInstantaneTaxes(tenant?.settings);
+
   let anomalies: AnomalieTaxes[];
   try {
     const qb = new QuickBooksClient(tenantId, "nouvelle");
     const depuis = new Date(Date.now() - JOURS * 86_400_000).toISOString().slice(0, 10);
-    const [factures, codes, tenant] = await Promise.all([
-      qb.getInvoicesSince(depuis),
-      qb.getTaxCodes(),
-      prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } }),
-    ]);
+    const [factures, codes] = await Promise.all([qb.getInvoicesSince(depuis), qb.getTaxCodes()]);
     const tpsTvq = codes.find((t) => t.Active !== false && /tps\s*\/\s*tvq/i.test(t.Name) && /9[,.]975/.test(t.Name));
     const noms = new Map(codes.map((t) => [t.Id, t.Name]));
-    const ignorees = new Set(lireTaxesIgnorees(tenant?.settings));
     anomalies = factures
-      .filter((f) => !ignorees.has(f.Id))
       .map((f) => anomalieDeTaxes(f, tpsTvq?.Id ?? null, noms))
       .filter((a): a is AnomalieTaxes => a !== null)
       // Les non envoyées d'abord : ce sont celles qu'on peut encore rattraper.
       .sort((a, b) => Number(a.envoyee) - Number(b.envoyee) || (b.date ?? "").localeCompare(a.date ?? ""));
   } catch (e) {
-    console.error("ControleTaxes : contrôle impossible", e);
-    return null;
+    console.error("ControleTaxes : QuickBooks n'a pas répondu, on garde le dernier contrôle", e);
+    if (!dernier) return null;
+    return (
+      <ListeTaxes
+        anomalies={dernier.anomalies.filter((a) => !ignorees.has(a.id))}
+        note={`QuickBooks n'a pas répondu à l'instant — liste du ${heure.format(new Date(dernier.verifieLe))}`}
+      />
+    );
   }
-  if (anomalies.length === 0) return null;
 
+  // On garde ce contrôle pour la prochaine fois — toutes les anomalies, y
+  // compris les ignorées, que l'affichage filtre. Écrit seulement quand la
+  // liste change ou que le dernier contrôle a plus de dix minutes.
+  const change = JSON.stringify(dernier?.anomalies ?? null) !== JSON.stringify(anomalies);
+  const vieux = !dernier || Date.now() - new Date(dernier.verifieLe).getTime() > 600_000;
+  if (change || vieux) {
+    try {
+      const frais = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+      await prisma.tenant.update({
+        where: { id: tenantId },
+        data: { settings: ecrireInstantaneTaxes(frais?.settings, { verifieLe: new Date().toISOString(), anomalies }) as object },
+      });
+    } catch (e) {
+      console.error("ControleTaxes : instantané non enregistré", e);
+    }
+  }
+
+  return <ListeTaxes anomalies={anomalies.filter((a) => !ignorees.has(a.id))} />;
+}
+
+/** La liste elle-même. Rien quand il n'y a rien à corriger. */
+export function ListeTaxes({ anomalies, note }: { anomalies: AnomalieTaxes[]; note?: string }) {
+  if (anomalies.length === 0) return null;
   const manqueTotal = anomalies.reduce((t, a) => t + a.manque, 0);
   return (
     <section className="space-y-3">
@@ -52,6 +87,7 @@ export async function ControleTaxes({ tenantId }: { tenantId: string }) {
         <Badge className="bg-red-500 text-white hover:bg-red-500">{anomalies.length}</Badge>
         <span className="text-sm font-normal text-muted-foreground">
           {cad.format(manqueTotal)} de TPS/TVQ non facturés · {JOURS} derniers jours · God-Info Inc.
+          {note ? ` · ${note}` : ""}
         </span>
       </h2>
       <Card className="border-red-500/40 py-0">

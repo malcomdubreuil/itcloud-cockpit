@@ -72,6 +72,12 @@ export type QboAccount = {
 };
 export type QboTerm = { Id: string; Name: string; Active?: boolean; DueDays?: number };
 
+type JetonEnCache = { accessToken: string; realmId: string; expire: number };
+/** Jetons d'accès encore valides, par locataire et compagnie. */
+const JETONS = new Map<string, JetonEnCache>();
+/** Renouvellements en cours : les appels simultanés attendent le même. */
+const RENOUVELLEMENTS = new Map<string, Promise<JetonEnCache>>();
+
 export class QuickBooksClient {
   private accessToken: string | null = null;
   private realmId: string | null = null;
@@ -86,13 +92,37 @@ export class QuickBooksClient {
 
   // Charge la connexion, renouvelle l'access token et repersiste le refresh
   // token (rotatif). À appeler avant toute requête.
+  //
+  // Le jeton d'accès vaut une heure : on le garde en mémoire pour tout le
+  // processus et on ne le redemande qu'à l'approche de son expiration. Avant
+  // (jusqu'au 2026-11-23), chaque page le redemandait, et deux appels lancés
+  // ensemble le redemandaient DEUX fois avec le même jeton de renouvellement
+  // — Intuit en refusait parfois un, et le contrôle des taxes du tableau de
+  // bord disparaissait sans rien dire. Les appels simultanés partagent
+  // maintenant le même renouvellement.
   private async ensureAuth(): Promise<void> {
     if (this.accessToken && this.realmId) return;
+    const cle = `${this.tenantId}:${this.compagnie}`;
+    const enCache = JETONS.get(cle);
+    if (enCache && enCache.expire > Date.now()) {
+      this.accessToken = enCache.accessToken;
+      this.realmId = enCache.realmId;
+      return;
+    }
+    let enCours = RENOUVELLEMENTS.get(cle);
+    if (!enCours) {
+      enCours = this.renouveler().finally(() => RENOUVELLEMENTS.delete(cle));
+      RENOUVELLEMENTS.set(cle, enCours);
+    }
+    const jeton = await enCours;
+    this.accessToken = jeton.accessToken;
+    this.realmId = jeton.realmId;
+  }
+
+  private async renouveler(): Promise<JetonEnCache> {
     const conn = await getConnection(this.tenantId, this.compagnie);
     if (!conn) throw new QuickBooksNotConnectedError(this.compagnie);
     const tokens = await refreshTokens(conn.refreshToken);
-    this.accessToken = tokens.accessToken;
-    this.realmId = conn.realmId;
     // le refresh token a pu changer → on le resauvegarde (en gardant le nom)
     if (tokens.refreshToken && tokens.refreshToken !== conn.refreshToken) {
       await saveConnection(
@@ -102,6 +132,14 @@ export class QuickBooksClient {
       );
     }
     await markUsed(this.tenantId, this.compagnie);
+    const jeton: JetonEnCache = {
+      accessToken: tokens.accessToken,
+      realmId: conn.realmId,
+      // Cinq minutes de marge avant l'expiration annoncée (une heure).
+      expire: Date.now() + Math.max(60, (tokens.expiresIn ?? 3600) - 300) * 1000,
+    };
+    JETONS.set(`${this.tenantId}:${this.compagnie}`, jeton);
+    return jeton;
   }
 
   /** L'identifiant de compagnie Intuit de cette connexion. Sert à étiqueter
@@ -129,6 +167,12 @@ export class QuickBooksClient {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      // Jeton refusé (révoqué, compagnie reconnectée) : on l'oublie, le
+      // prochain appel en redemandera un.
+      if (res.status === 401) {
+        JETONS.delete(`${this.tenantId}:${this.compagnie}`);
+        this.accessToken = null;
+      }
       throw new Error(`API QuickBooks ${res.status} sur ${path} : ${text.slice(0, 400)}`);
     }
     return (await res.json()) as T;

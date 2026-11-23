@@ -1,7 +1,7 @@
 // Éprouve le contrôle des taxes sur les vraies factures fautives de God-Info
 // Inc. relevées le 2026-11-23 (montants et codes réels).
 //   npx tsx scripts/verif-controle-taxes.mts
-import { anomalieDeTaxes, ecrireTaxesIgnorees, lireTaxesIgnorees, type FactureQbo } from "@/lib/controle-taxes";
+import { anomalieDeTaxes, ecrireInstantaneTaxes, ecrireTaxesIgnorees, lireInstantaneTaxes, lireTaxesIgnorees, type FactureQbo } from "@/lib/controle-taxes";
 
 let echecs = 0;
 function verifie(nom: string, ok: boolean, detail?: unknown) {
@@ -43,6 +43,13 @@ verifie("facture à 0 $ : ignorée", anomalieDeTaxes({ Id: "7", TotalAmt: 0, Txn
 const r = ecrireTaxesIgnorees({ mailing: { expediteur: "x" } }, ["73", "73", "12"]);
 verifie("ignorées : dédoublonnées, autres réglages gardés", JSON.stringify(lireTaxesIgnorees(r)) === '["73","12"]' && (r.mailing as { expediteur: string }).expediteur === "x", r);
 verifie("ignorées : réglages vides", lireTaxesIgnorees(null).length === 0);
+
+// L'instantané : relu tel qu'écrit, sans toucher aux ignorées ni au reste.
+const inst = ecrireInstantaneTaxes(r, { verifieLe: "2026-11-23T17:00:00.000Z", anomalies: a090 ? [a090] : [] });
+verifie("instantané : relu tel quel", lireInstantaneTaxes(inst)?.anomalies[0]?.numero === "GI-2026-090" && lireInstantaneTaxes(inst)?.verifieLe === "2026-11-23T17:00:00.000Z", inst);
+verifie("instantané : les ignorées et les autres réglages survivent", JSON.stringify(lireTaxesIgnorees(inst)) === '["73","12"]' && "mailing" in inst);
+verifie("instantané : absent = null", lireInstantaneTaxes({}) === null && lireInstantaneTaxes(null) === null);
+verifie("ignorées : écrire ne perd pas l'instantané", lireInstantaneTaxes(ecrireTaxesIgnorees(inst, ["1"])) !== null);
 
 console.log(echecs ? `\n${echecs} échec(s)` : "\ntous les cas passent");
 process.exit(echecs ? 1 : 0);

@@ -110,3 +110,21 @@ export function ecrireTaxesIgnorees(settings: unknown, ignorees: string[]): Reco
   const s = (settings && typeof settings === "object" ? settings : {}) as Record<string, unknown>;
   return { ...s, controleTaxes: { ignorees: [...new Set(ignorees)].slice(-500) } };
 }
+
+/** Le dernier résultat du contrôle, gardé dans les réglages : la liste reste
+ *  affichée même quand QuickBooks ne répond pas, au lieu d'apparaître et de
+ *  disparaître d'un chargement à l'autre (Keven, 2026-11-23). */
+export type InstantaneTaxes = { verifieLe: string; anomalies: AnomalieTaxes[] };
+
+export function lireInstantaneTaxes(settings: unknown): InstantaneTaxes | null {
+  const i = ((settings ?? {}) as { controleTaxesInstantane?: unknown }).controleTaxesInstantane as
+    | { verifieLe?: unknown; anomalies?: unknown }
+    | undefined;
+  if (!i || typeof i.verifieLe !== "string" || !Array.isArray(i.anomalies)) return null;
+  return { verifieLe: i.verifieLe, anomalies: i.anomalies as AnomalieTaxes[] };
+}
+
+export function ecrireInstantaneTaxes(settings: unknown, instantane: InstantaneTaxes): Record<string, unknown> {
+  const s = (settings && typeof settings === "object" ? settings : {}) as Record<string, unknown>;
+  return { ...s, controleTaxesInstantane: instantane };
+}
