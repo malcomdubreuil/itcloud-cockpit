@@ -138,6 +138,9 @@ export type BillResult =
        *  renseigné quand on ne facture qu'une partie du groupe. */
       linesKept?: number;
       linesTotal?: number;
+      /** Les taxes de la facture créée ne font pas 14,975 % de son
+       *  sous-total : à corriger dans QuickBooks AVANT de l'envoyer. */
+      alerteTaxes?: string;
     }
   | { status: "draft_no_number"; invoiceId: string; invoiceUrl: string }
   // En production, Next cache le message d'une erreur levée par une action
@@ -321,17 +324,18 @@ async function chargerGroupe(
     if (cands.length === 1) client = cands[0];
   }
 
-  let taxCode = src && sourceDejaNouvelle && taxId ? { id: taxId, nom: taxId } : corr("TAXCODE", taxId);
-  if (!taxCode) {
-    // Sans source (ou source sans taxe) : le code porté par les articles
-    // cibles eux-mêmes — ils ont tous été créés avec « TPS/TVQ QC - 9,975 ».
-    const parArticle = plusFrequent(
-      [...articleParProduit.values()]
-        .map((a) => items.find((i) => i.Id === a.id)?.SalesTaxCodeRef?.value)
-        .filter((v): v is string => !!v),
-    );
-    if (parArticle) taxCode = { id: parArticle, nom: parArticle };
-  }
+  // LA TAXE EST TOUJOURS TPS/TVQ (14,975 %) — Keven, 2026-11-23.
+  // On reprenait le code de taxe de la facture modèle : quand elle était
+  // « Hors champ » (d'avant l'inscription aux taxes), la nouvelle sortait
+  // sans taxes et partait telle quelle chez le client — GI-2026-090, Luc
+  // Joubert, 171,99 $ sans un sou de taxe. Le code ne vient donc plus jamais
+  // de la source : c'est « TPS/TVQ QC - 9,975 » de la nouvelle compagnie,
+  // cherché par son nom, et son absence bloque la facture.
+  const codesTaxe = await nouvelle.getTaxCodes();
+  const tpsTvq = codesTaxe.find(
+    (t) => t.Active !== false && /tps\s*\/\s*tvq/i.test(t.Name) && /9[,.]975/.test(t.Name),
+  );
+  const taxCode: Ref | null = tpsTvq ? { id: tpsTvq.Id, nom: tpsTvq.Name } : null;
   const terme = src && sourceDejaNouvelle && termId ? { id: termId, nom: termId } : corr("TERM", termId);
 
   // Les textes de la source : période, N.B., message.
@@ -588,6 +592,17 @@ export async function billGroupViaQuickBooks(
   });
 
   const newDoc = created.DocNumber?.trim() || newNumber;
+
+  // Dernier filet : on relit ce que QuickBooks a réellement calculé. Une
+  // facture créée sans ses 14,975 % est signalée en rouge, tout de suite.
+  const taxesCalculees = Number((created.TxnTaxDetail as { TotalTax?: number } | undefined)?.TotalTax ?? 0);
+  const taxesAttendues = Math.round(r.total * 14.975) / 100;
+  const alerteTaxes =
+    r.total > 0 && Math.abs(taxesCalculees - taxesAttendues) > 0.05
+      ? `ATTENTION — taxes de la facture ${newDoc} : ${taxesCalculees.toFixed(2)} $ au lieu de ${taxesAttendues.toFixed(2)} $ (14,975 % de ${r.total.toFixed(2)} $). Corrige-la dans QuickBooks avant de l'envoyer.`
+      : undefined;
+  if (alerteTaxes) console.error("billGroupViaQuickBooks :", alerteTaxes);
+
   const { count } = await markServicesBilled(
     g.services.map((x) => x.id),
     { qbInvoiceNo: newDoc, qbInvoiceRealm: g.realmNouvelle, moisParService: r.moisParService },
@@ -598,6 +613,7 @@ export async function billGroupViaQuickBooks(
     newDocNumber: newDoc,
     invoiceUrl: qbInvoiceUrl(created.Id),
     servicesBilled: count,
+    alerteTaxes,
   };
 }
 

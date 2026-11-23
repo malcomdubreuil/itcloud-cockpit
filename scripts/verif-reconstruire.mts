@@ -353,5 +353,20 @@ verifie("7. fin le 29 février", texteEngagement(new Date("2028-02-29T00:00:00Z"
   }
 }
 
+// ── 16. Jamais de facture sans taxes : sans code TPS/TVQ, refus ; avec, chaque ligne le porte.
+{
+  const sans = corr();
+  sans.taxCode = null;
+  const r0 = reconstruire({ services: [svc({ id: "a" })], correspondances: sans, source: { ...source, avaitTaxe: false }, txnDate: "2026-11-23", docNumber: "GI-2026-900", unite: "year" });
+  verifie("16. sans code de taxe : refusé, même si la source n'en avait pas", !r0.ok && r0.manques.some((m) => /TPS\/TVQ/.test(m)), r0);
+  const r1 = reconstruire({ services: [svc({ id: "a", quantity: 2 })], correspondances: corr(), source: { ...source, avaitTaxe: false }, txnDate: "2026-11-23", docNumber: "GI-2026-901", unite: "year" });
+  verifie("16. réussite", r1.ok, r1);
+  if (r1.ok) {
+    const articles = (r1.payload.Line as { DetailType: string; SalesItemLineDetail?: { TaxCodeRef?: { value: string } } }[]).filter((l) => l.DetailType === "SalesItemLineDetail");
+    verifie("16. chaque ligne porte le code TPS/TVQ", articles.length === 2 && articles.every((l) => l.SalesItemLineDetail?.TaxCodeRef?.value === "9"), articles);
+    verifie("16. taxes en sus, explicitement", r1.payload.GlobalTaxCalculation === "TaxExcluded", r1.payload.GlobalTaxCalculation);
+  }
+}
+
 console.log(echecs ? `\n${echecs} échec(s)` : "\ntous les cas passent");
 process.exit(echecs ? 1 : 0);

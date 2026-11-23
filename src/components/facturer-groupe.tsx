@@ -126,6 +126,7 @@ export function FacturerGroupe({
         }
         if (r.status === "billed") {
           setResultat({ doc: r.newDocNumber, url: r.invoiceUrl, n: r.servicesBilled });
+          if (r.alerteTaxes) toast.error(r.alerteTaxes, { duration: 60000 });
           const lignes =
             r.linesKept !== undefined && r.linesTotal !== undefined && r.linesKept !== r.linesTotal
               ? ` — ${r.linesKept} ligne${r.linesKept > 1 ? "s" : ""} sur ${r.linesTotal} reprises`

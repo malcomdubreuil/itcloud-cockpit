@@ -127,6 +127,7 @@ export function ServiceActions({
         }
         setDialog(false);
         if (res.status === "billed") {
+          if (res.alerteTaxes) toast.error(res.alerteTaxes, { duration: 60000 });
           toast.success(
             `Facture #${res.newDocNumber} créée dans QuickBooks (non envoyée) — ${servicesLabel(res.servicesBilled)}. Vérifie-la puis envoie-la.`,
             {

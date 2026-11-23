@@ -248,7 +248,7 @@ export function reconstruire(args: {
   const manques: string[] = [];
   if (services.length === 0) manques.push("aucun service à facturer");
   if (!c.client) manques.push("client introuvable dans la nouvelle compagnie");
-  if (source.avaitTaxe && !c.taxCode) manques.push("code de taxe sans équivalent dans la nouvelle compagnie");
+  if (!c.taxCode) manques.push("code de taxe « TPS/TVQ QC - 9,975 » introuvable dans la nouvelle compagnie — aucune facture ne part sans taxes");
   const produitsSansArticle = new Set<string>();
   for (const s of services) {
     if (!c.articleParProduit.get(s.productId)) produitsSansArticle.add(s.productName);
@@ -457,6 +457,9 @@ export function reconstruire(args: {
     Line: lines,
     TxnDate: txnDate,
     DocNumber: docNumber,
+    // Montants hors taxes, taxes calculées en sus par QuickBooks : dit en
+    // toutes lettres pour ne dépendre d'aucun réglage par défaut.
+    GlobalTaxCalculation: "TaxExcluded",
   };
   if (c.terme) payload.SalesTermRef = { value: c.terme.id };
   if (source.shipAddr && Object.keys(source.shipAddr).length) payload.ShipAddr = source.shipAddr;
