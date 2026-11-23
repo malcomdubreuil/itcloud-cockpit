@@ -159,6 +159,17 @@ export class QuickBooksClient {
     return this.request<T>("GET", `query?query=${encodeURIComponent(sql)}&minorversion=73`);
   }
 
+  /** Les factures datées d'un jour donné ou après (AAAA-MM-JJ), pour le
+   *  contrôle des taxes du tableau de bord. Une seule requête : 1000 factures
+   *  couvrent largement trois mois. */
+  async getInvoicesSince(depuis: string): Promise<QboInvoice[]> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(depuis)) throw new Error("Date invalide");
+    const data = await this.query<{ QueryResponse: { Invoice?: QboInvoice[] } }>(
+      `SELECT * FROM Invoice WHERE TxnDate >= '${depuis}' ORDERBY TxnDate DESC MAXRESULTS 1000`,
+    );
+    return data.QueryResponse.Invoice ?? [];
+  }
+
   // Retrouve une facture par son numéro (DocNumber).
   async getInvoiceByDocNumber(docNumber: string): Promise<QboInvoice | null> {
     const safe = docNumber.replace(/'/g, "\\'");

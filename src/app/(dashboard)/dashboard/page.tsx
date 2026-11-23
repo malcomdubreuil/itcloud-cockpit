@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowRight, Receipt } from "lucide-react";
@@ -8,6 +9,7 @@ import { currentDivision, serviceDivisionFilter } from "@/lib/division";
 import { domaineDeService, domainePrincipal } from "@/lib/domaine";
 import { cleDeGroupe } from "@/lib/groupe-facturation";
 import { LigneAFacturer } from "@/components/ligne-a-facturer";
+import { ControleTaxes } from "@/components/controle-taxes";
 import { nommeurDeCompagnie } from "@/infrastructure/quickbooks/store";
 import { resumeCommissions } from "@/app/(dashboard)/commissions/actions";
 import { dureeDepuis } from "@/lib/commissions";
@@ -186,6 +188,12 @@ export default async function DashboardPage() {
           (30, 45 ou 60 jours).
         </p>
       </div>
+
+      {/* ── Contrôle des taxes : n'apparaît que s'il y a quelque chose à
+          corriger, et ne retarde pas le reste de la page. ─────────────── */}
+      <Suspense fallback={null}>
+        <ControleTaxes tenantId={tenantId} />
+      </Suspense>
 
       {/* ── À facturer ─────────────────────────────────────────────── */}
       <section className="space-y-3">
